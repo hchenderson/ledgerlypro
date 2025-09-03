@@ -20,7 +20,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useEffect, useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { NewTransactionSheet } from "@/components/new-transaction-sheet";
-import { PlusCircle, LogIn } from "lucide-react";
+import { PlusCircle, Download } from "lucide-react";
 import { ImportTransactionsDialog } from "@/components/import-transactions-dialog";
 
 function AppLayoutSkeleton() {
@@ -111,7 +111,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     onTransactionsImported={(transactions) => console.log('imported', transactions)}
                   >
                     <Button size="sm" variant="outline" className="gap-2" onClick={() => setIsImportDialogOpen(true)}>
-                      <LogIn className="size-4" />
+                      <Download className="size-4" />
                       <span className="hidden sm:inline">Import</span>
                     </Button>
                   </ImportTransactionsDialog>
