@@ -48,12 +48,16 @@ export default function SignInPage() {
         try {
             await signInWithEmail(email, password);
             router.push('/dashboard');
-        } catch (error) {
+        } catch (error: any) {
             console.error("Email Sign-in failed:", error)
+            let description = "An unexpected error occurred. Please try again.";
+            if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+                description = "Invalid credentials. Please check your email and password.";
+            }
             toast({
                 variant: "destructive",
                 title: "Sign-in Failed",
-                description: "Invalid email or password. Please try again."
+                description: description,
             })
         } finally {
             setIsSubmitting(false);
