@@ -1,3 +1,7 @@
+
+"use client";
+
+import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -6,9 +10,44 @@ import { format } from "date-fns";
 import { MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { NewTransactionSheet } from "@/components/new-transaction-sheet";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import type { Transaction } from "@/types";
+import { useToast } from "@/hooks/use-toast";
+
 
 export default function TransactionsPage() {
+  const [transactions, setTransactions] = useState<Transaction[]>(mockTransactions);
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
+  const { toast } = useToast();
+
+  const handleEdit = (transaction: Transaction) => {
+    setSelectedTransaction(transaction);
+    setIsSheetOpen(true);
+  };
+  
+  const handleSheetClose = (open: boolean) => {
+    if (!open) {
+      setSelectedTransaction(null);
+    }
+    setIsSheetOpen(open);
+  }
+
+  const handleTransactionUpdated = (id: string, values: Omit<Transaction, 'id' | 'type'> & { type: "income" | "expense" }) => {
+    setTransactions(prev => prev.map(t => t.id === id ? { ...t, ...values, date: values.date.toISOString() } : t));
+  };
+  
+  const handleDelete = (id: string) => {
+    setTransactions(prev => prev.filter(t => t.id !== id));
+    toast({
+      title: "Transaction Deleted",
+      description: "The transaction has been successfully deleted.",
+    })
+  }
+
   return (
+    <>
     <Card>
       <CardHeader>
         <CardTitle>Transactions</CardTitle>
@@ -28,7 +67,7 @@ export default function TransactionsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {mockTransactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map((transaction) => (
+            {transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map((transaction) => (
               <TableRow key={transaction.id}>
                 <TableCell className="font-medium">{transaction.description}</TableCell>
                 <TableCell>
@@ -51,8 +90,28 @@ export default function TransactionsPage() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                         <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                        <DropdownMenuItem>Edit</DropdownMenuItem>
-                        <DropdownMenuItem>Delete</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleEdit(transaction)}>Edit</DropdownMenuItem>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" className="w-full justify-start text-sm p-1.5 h-auto font-normal text-red-600 hover:text-red-700">
+                              Delete
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This action cannot be undone. This will permanently delete this transaction.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => handleDelete(transaction.id)} className="bg-red-600 hover:bg-red-700">
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                         </DropdownMenuContent>
                     </DropdownMenu>
                 </TableCell>
@@ -62,5 +121,12 @@ export default function TransactionsPage() {
         </Table>
       </CardContent>
     </Card>
+     <NewTransactionSheet 
+        isOpen={isSheetOpen}
+        onOpenChange={handleSheetClose}
+        transaction={selectedTransaction}
+        onTransactionUpdated={handleTransactionUpdated}
+     />
+    </>
   );
 }

@@ -17,9 +17,10 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { NewTransactionSheet } from "@/components/new-transaction-sheet";
+import { PlusCircle } from "lucide-react";
 
 function AppLayoutSkeleton() {
     return (
@@ -55,6 +56,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, loading } = useAuth();
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
+
 
   useEffect(() => {
     if (!loading && !user) {
@@ -100,7 +103,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 <h1 className="font-headline text-xl font-semibold">{getPageTitle()}</h1>
             </div>
             <div className="ml-auto flex items-center gap-4">
-                <NewTransactionSheet />
+                 <NewTransactionSheet 
+                    isOpen={isSheetOpen}
+                    onOpenChange={setIsSheetOpen}
+                    onTransactionCreated={(values) => console.log(values)}
+                  >
+                     <Button size="sm" className="gap-2" onClick={() => setIsSheetOpen(true)}>
+                        <PlusCircle className="size-4"/>
+                        <span className="hidden sm:inline">New Transaction</span>
+                    </Button>
+                </NewTransactionSheet>
                 <UserNav />
             </div>
         </header>

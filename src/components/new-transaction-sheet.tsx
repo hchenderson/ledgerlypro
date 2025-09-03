@@ -1,7 +1,7 @@
 
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { z } from "zod"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -41,6 +41,7 @@ import {
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { useToast } from "@/hooks/use-toast"
 import { mockCategories } from "@/lib/data"
+import type { Transaction } from "@/types"
 
 const formSchema = z.object({
   type: z.enum(["income", "expense"], {
@@ -60,44 +61,82 @@ const formSchema = z.object({
   }),
 })
 
-export function NewTransactionSheet() {
-  const [isOpen, setIsOpen] = useState(false)
+type FormValues = z.infer<typeof formSchema>
+
+interface NewTransactionSheetProps {
+    isOpen?: boolean;
+    onOpenChange?: (isOpen: boolean) => void;
+    transaction?: Transaction | null;
+    onTransactionCreated?: (values: FormValues) => void;
+    onTransactionUpdated?: (id: string, values: FormValues) => void;
+    children?: React.ReactNode;
+}
+
+
+export function NewTransactionSheet({ 
+    isOpen,
+    onOpenChange,
+    transaction,
+    onTransactionCreated,
+    onTransactionUpdated,
+    children
+}: NewTransactionSheetProps) {
   const { toast } = useToast()
 
-  const form = useForm<z.infer<typeof formSchema>>({
+  const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
-    defaultValues: {
-      type: "expense",
-      description: "",
-    },
   })
   
+  useEffect(() => {
+    if (transaction) {
+      form.reset({
+        ...transaction,
+        date: new Date(transaction.date),
+      });
+    } else {
+      form.reset({
+        type: 'expense',
+        description: '',
+        amount: undefined,
+        category: undefined,
+        date: new Date(),
+      })
+    }
+  }, [transaction, form])
+
   const transactionType = form.watch("type")
 
-  function onSubmit(values: z.infer<typeof formSchema>) {
-    console.log(values)
-    toast({
-      title: "Transaction Created",
-      description: "Your new transaction has been successfully recorded.",
-    })
-    setIsOpen(false)
+  function onSubmit(values: FormValues) {
+    if (transaction && onTransactionUpdated) {
+        onTransactionUpdated(transaction.id, values);
+         toast({
+            title: "Transaction Updated",
+            description: "Your transaction has been successfully updated.",
+        });
+    } else if(onTransactionCreated) {
+        onTransactionCreated(values);
+        toast({
+            title: "Transaction Created",
+            description: "Your new transaction has been successfully recorded.",
+        });
+    }
+
+    if(onOpenChange) onOpenChange(false)
     form.reset()
   }
 
-  return (
-    <Sheet open={isOpen} onOpenChange={setIsOpen}>
-      <SheetTrigger asChild>
-         <Button size="sm" className="gap-2">
-            <PlusCircle className="size-4"/>
-            <span className="hidden sm:inline">New Transaction</span>
-        </Button>
-      </SheetTrigger>
-      <SheetContent>
+  const isEditing = !!transaction;
+  const sheetTitle = isEditing ? "Edit Transaction" : "New Transaction";
+  const sheetDescription = isEditing 
+    ? "Update the details of your transaction." 
+    : "Add a new income or expense record. Click save when you're done.";
+  const buttonText = isEditing ? "Save Changes" : "Create Transaction";
+
+  const sheetContent = (
+      <>
         <SheetHeader>
-          <SheetTitle>New Transaction</SheetTitle>
-          <SheetDescription>
-            Add a new income or expense record. Click save when you're done.
-          </SheetDescription>
+          <SheetTitle>{sheetTitle}</SheetTitle>
+          <SheetDescription>{sheetDescription}</SheetDescription>
         </SheetHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
@@ -163,14 +202,14 @@ export function NewTransactionSheet() {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Category</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="Select a category" />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {mockCategories[transactionType].map(cat => (
+                      {(mockCategories[transactionType as keyof typeof mockCategories] || []).map(cat => (
                         <SelectItem key={cat.value} value={cat.value}>
                           {cat.label}
                         </SelectItem>
@@ -226,10 +265,30 @@ export function NewTransactionSheet() {
                 <SheetClose asChild>
                     <Button type="button" variant="outline">Cancel</Button>
                 </SheetClose>
-                <Button type="submit">Create Transaction</Button>
+                <Button type="submit">{buttonText}</Button>
             </SheetFooter>
           </form>
         </Form>
+      </>
+  )
+
+  if (children) {
+    return (
+        <Sheet open={isOpen} onOpenChange={onOpenChange}>
+            <SheetTrigger asChild>
+                {children}
+            </SheetTrigger>
+            <SheetContent>
+                {sheetContent}
+            </SheetContent>
+        </Sheet>
+    )
+  }
+
+  return (
+    <Sheet open={isOpen} onOpenChange={onOpenChange}>
+      <SheetContent>
+        {sheetContent}
       </SheetContent>
     </Sheet>
   )
