@@ -3,10 +3,10 @@
 
 import { useState, useEffect } from "react"
 import { z } from "zod"
-import { useForm } from "react-hook-form"
+import { useForm, useWatch } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { format } from "date-fns"
-import { Calendar as CalendarIcon, PlusCircle } from "lucide-react"
+import { Calendar as CalendarIcon, PlusCircle, Sparkles } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -40,8 +40,18 @@ import {
 } from "@/components/ui/select"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { useToast } from "@/hooks/use-toast"
-import { mockCategories } from "@/lib/data"
-import type { Transaction } from "@/types"
+import { allCategories } from "@/lib/data"
+import type { Transaction, Category, SubCategory } from "@/types"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogClose,
+} from "@/components/ui/dialog"
 
 const formSchema = z.object({
   type: z.enum(["income", "expense"], {
@@ -72,6 +82,78 @@ interface NewTransactionSheetProps {
     children?: React.ReactNode;
 }
 
+const AddCategoryDialog = ({ onCategoryAdded, type }: { onCategoryAdded: (name: string) => void, type: 'income' | 'expense' }) => {
+    const [name, setName] = useState('');
+    const [parent, setParent] = useState('');
+    const [isOpen, setIsOpen] = useState(false);
+
+    const mainCategories = allCategories.filter(c => c.type === type);
+
+    const handleSubmit = () => {
+        if (!name || !parent) return;
+        
+        // This is a simplified way to add a category. 
+        // In a real app, this would be a more robust state management call.
+        const parentCategory = allCategories.find(c => c.id === parent);
+        if (parentCategory) {
+            if (!parentCategory.subCategories) {
+                parentCategory.subCategories = [];
+            }
+            parentCategory.subCategories.push({
+                id: `sub_${Date.now()}`,
+                name: name,
+                icon: Sparkles
+            });
+        }
+        onCategoryAdded(name);
+        setIsOpen(false);
+        setName('');
+        setParent('');
+    }
+
+    return (
+        <Dialog open={isOpen} onOpenChange={setIsOpen}>
+            <DialogTrigger asChild>
+                <Button type="button" variant="ghost" className="w-full justify-center mt-2 text-sm">
+                    <PlusCircle className="mr-2 h-4 w-4"/>
+                    Add New Category
+                </Button>
+            </DialogTrigger>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Add a New Category</DialogTitle>
+                    <DialogDescription>Create a new sub-category to organize your transaction.</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                    <div className="space-y-2">
+                        <Label>Main Category</Label>
+                        <Select onValueChange={setParent} value={parent}>
+                            <SelectTrigger>
+                                <SelectValue placeholder={`Select a parent ${type} category`} />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {mainCategories.map(cat => (
+                                    <SelectItem key={cat.id} value={cat.id}>
+                                        {cat.name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                     <div className="space-y-2">
+                        <Label htmlFor="category-name">New Sub-Category Name</Label>
+                        <Input id="category-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Coffee" />
+                    </div>
+                </div>
+                <DialogFooter>
+                    <DialogClose asChild><Button variant="outline" type="button">Cancel</Button></DialogClose>
+                    <Button onClick={handleSubmit} type="button">Add Category</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    )
+}
+
 
 export function NewTransactionSheet({ 
     isOpen,
@@ -82,6 +164,8 @@ export function NewTransactionSheet({
     children
 }: NewTransactionSheetProps) {
   const { toast } = useToast()
+  
+  const [categories, setCategories] = useState(allCategories);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -102,9 +186,9 @@ export function NewTransactionSheet({
         date: new Date(),
       })
     }
-  }, [transaction, form])
+  }, [transaction, form, isOpen]) // Rerun on open to get fresh categories
 
-  const transactionType = form.watch("type")
+  const transactionType = useWatch({ control: form.control, name: 'type' });
 
   function onSubmit(values: FormValues) {
     if (transaction && onTransactionUpdated) {
@@ -125,12 +209,26 @@ export function NewTransactionSheet({
     form.reset()
   }
 
+  const handleCategoryAdded = (newCategoryName: string) => {
+    // A bit of a hack to force a re-render of the select
+    setCategories([...allCategories]); 
+    form.setValue('category', newCategoryName, { shouldValidate: true });
+     toast({
+        title: "Category Added",
+        description: `Successfully added and selected "${newCategoryName}".`,
+    });
+  }
+
   const isEditing = !!transaction;
   const sheetTitle = isEditing ? "Edit Transaction" : "New Transaction";
   const sheetDescription = isEditing 
     ? "Update the details of your transaction." 
     : "Add a new income or expense record. Click save when you're done.";
   const buttonText = isEditing ? "Save Changes" : "Create Transaction";
+
+  const availableCategories = categories
+    .filter(cat => cat.type === transactionType)
+    .flatMap(cat => cat.subCategories ? cat.subCategories.map(sub => ({...sub, parent: cat.name})) : [{ id: cat.id, name: cat.name, parent: 'Main Categories' }])
 
   const sheetContent = (
       <>
@@ -148,7 +246,10 @@ export function NewTransactionSheet({
                   <FormLabel>Transaction Type</FormLabel>
                   <FormControl>
                     <RadioGroup
-                      onValueChange={field.onChange}
+                      onValueChange={(value) => {
+                        field.onChange(value);
+                        form.resetField('category');
+                      }}
                       defaultValue={field.value}
                       className="flex items-center space-x-4"
                     >
@@ -209,11 +310,12 @@ export function NewTransactionSheet({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {(mockCategories[transactionType as keyof typeof mockCategories] || []).map(cat => (
-                        <SelectItem key={cat.value} value={cat.value}>
-                          {cat.label}
+                      {availableCategories.map(cat => (
+                        <SelectItem key={cat.id} value={cat.name}>
+                          {cat.name} <span className="text-muted-foreground/80 ml-2">({cat.parent})</span>
                         </SelectItem>
                       ))}
+                      <AddCategoryDialog onCategoryAdded={handleCategoryAdded} type={transactionType} />
                     </SelectContent>
                   </Select>
                   <FormMessage />

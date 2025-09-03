@@ -15,3 +15,17 @@ export type NavItem = {
   icon: LucideIcon;
   variant: "default" | "ghost";
 };
+
+export type SubCategory = {
+    id: string;
+    name: string;
+    icon: LucideIcon;
+};
+
+export type Category = {
+    id: string;
+    name: string;
+    type: "income" | "expense";
+    icon: LucideIcon;
+    subCategories?: SubCategory[];
+};

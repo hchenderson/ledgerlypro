@@ -4,65 +4,24 @@
 import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, Utensils, Car, Home, ShoppingBag, HeartPulse, Sparkles, HandCoins, Building, Shirt, Pizza, Plane, LucideIcon } from "lucide-react";
+import { PlusCircle, Sparkles } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { NewCategorySheet } from "@/components/new-category-sheet";
 import { Badge } from "@/components/ui/badge";
-
-export type SubCategory = {
-    id: string;
-    name: string;
-    icon: LucideIcon;
-};
-
-export type Category = {
-    id: string;
-    name: string;
-    icon: LucideIcon;
-    subCategories?: SubCategory[];
-};
-
-
-const preloadedCategories: Category[] = [
-    { id: "cat_1", name: "Food", icon: Utensils, subCategories: [
-        { id: "sub_1", name: "Groceries", icon: ShoppingBag },
-        { id: "sub_2", name: "Restaurants", icon: Pizza },
-    ]},
-    { id: "cat_2", name: "Transport", icon: Car, subCategories: [
-        { id: "sub_3", name: "Gas", icon: Car },
-        { id: "sub_4", name: "Public Transit", icon: Car },
-    ] },
-    { id: "cat_3", name: "Housing", icon: Home, subCategories: [
-        { id: "sub_5", name: "Rent", icon: Home },
-        { id: "sub_6", name: "Utilities", icon: Home },
-    ]},
-    { id: "cat_4", name: "Shopping", icon: ShoppingBag, subCategories: [
-        { id: "sub_7", name: "Clothes", icon: Shirt },
-        { id: "sub_8", name: "Electronics", icon: Sparkles },
-    ]},
-    { id: "cat_5", name: "Health", icon: HeartPulse },
-    { id: "cat_6", name: "Salary", icon: HandCoins },
-]
-
-const initialCustomCategories: Category[] = [
-    { id: "cat_7", name: "Business", icon: Building, subCategories: [
-        { id: "sub_9", name: "Travel", icon: Plane },
-        { id: "sub_10", name: "Software", icon: Sparkles },
-    ]},
-    { id: "cat_8", name: "Freelance", icon: Sparkles },
-]
-
+import type { Category, SubCategory } from "@/types";
+import { allCategories } from "@/lib/data";
 
 export default function CategoriesPage() {
-    const [customCategories, setCustomCategories] = useState<Category[]>(initialCustomCategories);
+    const [categories, setCategories] = useState<Category[]>(allCategories);
 
-    const handleAddCategory = (categoryName: string) => {
+    const handleAddCategory = (categoryName: string, type: 'income' | 'expense') => {
         const newCategory: Category = { 
             id: `cat_${Date.now()}`,
             name: categoryName, 
-            icon: Sparkles 
+            icon: Sparkles,
+            type: type
         };
-        setCustomCategories(prev => [...prev, newCategory]);
+        setCategories(prev => [...prev, newCategory]);
     };
 
     const handleAddSubCategory = (parentId: string, subCategoryName: string) => {
@@ -84,18 +43,18 @@ export default function CategoriesPage() {
             });
         };
 
-        setCustomCategories(updateCategories);
+        setCategories(updateCategories);
     }
 
-    const renderCategoryList = (categories: Category[], isCustom: boolean) => (
+    const renderCategoryList = (filteredCategories: Category[]) => (
          <Accordion type="multiple" className="w-full">
-            {categories.map((category) => (
+            {filteredCategories.map((category) => (
                 <AccordionItem value={category.id} key={category.id}>
                     <AccordionTrigger className="hover:no-underline">
                         <div className="flex items-center gap-4">
                             <category.icon className="h-6 w-6 text-muted-foreground" />
                             <span className="text-base font-medium">{category.name}</span>
-                             {isCustom && <Badge variant="secondary">Custom</Badge>}
+                             <Badge variant={category.type === 'income' ? 'default' : 'secondary'}>{category.type}</Badge>
                         </div>
                     </AccordionTrigger>
                     <AccordionContent>
@@ -138,21 +97,19 @@ export default function CategoriesPage() {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Default Categories</CardTitle>
-                    <CardDescription>Standard categories to get you started.</CardDescription>
+                    <CardTitle>Income Categories</CardTitle>
                 </CardHeader>
                 <CardContent>
-                    {renderCategoryList(preloadedCategories, false)}
+                    {renderCategoryList(categories.filter(c => c.type === 'income'))}
                 </CardContent>
             </Card>
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Custom Categories</CardTitle>
-                    <CardDescription>Your personalized categories. Click to expand and add sub-categories.</CardDescription>
+                    <CardTitle>Expense Categories</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2">
-                    {renderCategoryList(customCategories, true)}
+                    {renderCategoryList(categories.filter(c => c.type === 'expense'))}
                      <NewCategorySheet onAddCategory={handleAddCategory}>
                         <Button variant="ghost" className="w-full mt-2">
                             <PlusCircle className="mr-2 h-4 w-4" />
@@ -164,4 +121,3 @@ export default function CategoriesPage() {
         </div>
     );
 }
-

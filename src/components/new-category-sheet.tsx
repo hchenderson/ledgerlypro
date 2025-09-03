@@ -28,16 +28,17 @@ import {
   SheetClose
 } from "@/components/ui/sheet"
 import { useToast } from "@/hooks/use-toast"
+import { RadioGroup, RadioGroupItem } from "./ui/radio-group"
 
 const formSchema = z.object({
   name: z.string().min(2, {
     message: "Category name must be at least 2 characters.",
   }),
+  type: z.enum(['income', 'expense']).optional(),
 })
 
 interface NewCategorySheetProps {
-    onAddCategory: (name: string) => void;
-    isTriggerCard?: boolean;
+    onAddCategory: (name: string, type?: 'income' | 'expense') => void;
     children?: ReactNode;
     isSubCategory?: boolean;
     parentCategoryName?: string;
@@ -45,7 +46,6 @@ interface NewCategorySheetProps {
 
 export function NewCategorySheet({ 
     onAddCategory, 
-    isTriggerCard = false, 
     children,
     isSubCategory = false,
     parentCategoryName
@@ -57,11 +57,12 @@ export function NewCategorySheet({
     resolver: zodResolver(formSchema),
     defaultValues: {
       name: "",
+      type: "expense"
     },
   })
 
   function onSubmit(values: z.infer<typeof formSchema>) {
-    onAddCategory(values.name);
+    onAddCategory(values.name, values.type);
     toast({
       title: isSubCategory ? "Sub-category Created" : "Category Created",
       description: `The "${values.name}" category has been successfully added.`,
@@ -82,7 +83,7 @@ export function NewCategorySheet({
     <Sheet open={isOpen} onOpenChange={setIsOpen}>
       <SheetTrigger asChild>
         {children ? (
-            <div onClick={(e) => e.stopPropagation()}>{children}</div>
+            <div onClick={(e) => { e.stopPropagation(); setIsOpen(true) }}>{children}</div>
         ) : (
             <Button>
                 <PlusCircle className="mr-2 h-4 w-4" />
@@ -112,6 +113,38 @@ export function NewCategorySheet({
                 </FormItem>
               )}
             />
+            {!isSubCategory && (
+                <FormField
+                control={form.control}
+                name="type"
+                render={({ field }) => (
+                  <FormItem className="space-y-3">
+                    <FormLabel>Category Type</FormLabel>
+                    <FormControl>
+                      <RadioGroup
+                        onValueChange={field.onChange}
+                        defaultValue={field.value}
+                        className="flex items-center space-x-4"
+                      >
+                        <FormItem className="flex items-center space-x-2 space-y-0">
+                          <FormControl>
+                            <RadioGroupItem value="income" />
+                          </FormControl>
+                          <FormLabel className="font-normal">Income</FormLabel>
+                        </FormItem>
+                        <FormItem className="flex items-center space-x-2 space-y-0">
+                          <FormControl>
+                            <RadioGroupItem value="expense" />
+                          </FormControl>
+                          <FormLabel className="font-normal">Expense</FormLabel>
+                        </FormItem>
+                      </RadioGroup>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
             <SheetFooter className="pt-4">
                 <SheetClose asChild>
                     <Button type="button" variant="outline">Cancel</Button>
