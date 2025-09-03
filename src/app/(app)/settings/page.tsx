@@ -1,10 +1,41 @@
+
+"use client";
+
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
+import { useToast } from '@/hooks/use-toast';
 
 export default function SettingsPage() {
+    const { toast } = useToast();
+    const [startingBalance, setStartingBalance] = useState('');
+
+    useEffect(() => {
+        const storedBalance = localStorage.getItem('startingBalance');
+        if (storedBalance) {
+            setStartingBalance(storedBalance);
+        }
+    }, []);
+
+    const handleSaveStartingBalance = () => {
+        const balance = parseFloat(startingBalance);
+        if (!isNaN(balance)) {
+            localStorage.setItem('startingBalance', balance.toString());
+            toast({
+                title: "Settings Saved",
+                description: "Your starting balance has been updated.",
+            });
+        } else {
+            toast({
+                variant: "destructive",
+                title: "Invalid Input",
+                description: "Please enter a valid number for the starting balance.",
+            });
+        }
+    };
+
     return (
         <div className="space-y-6 max-w-4xl mx-auto">
             <div>
@@ -27,6 +58,28 @@ export default function SettingsPage() {
                     <div className="space-y-2">
                         <Label htmlFor="email">Email</Label>
                         <Input id="email" type="email" defaultValue="user@example.com" />
+                    </div>
+                </CardContent>
+                <CardHeader>
+                    <CardTitle>Account</CardTitle>
+                    <CardDescription>Manage your account settings.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                        <Label htmlFor="starting-balance">Starting Balance</Label>
+                        <div className="flex items-center gap-2">
+                            <Input 
+                                id="starting-balance" 
+                                type="number" 
+                                placeholder="0.00" 
+                                value={startingBalance}
+                                onChange={(e) => setStartingBalance(e.target.value)}
+                            />
+                            <Button onClick={handleSaveStartingBalance}>Save</Button>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                            Set your initial account balance. This will be used as the baseline for your dashboard calculations.
+                        </p>
                     </div>
                 </CardContent>
                 <CardHeader>

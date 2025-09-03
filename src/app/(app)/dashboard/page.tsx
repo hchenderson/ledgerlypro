@@ -1,12 +1,25 @@
+
+"use client";
+
 import { DollarSign, TrendingUp, TrendingDown, Wallet } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { OverviewChart } from "@/components/dashboard/overview-chart";
 import { RecentTransactions } from "@/components/dashboard/recent-transactions";
 import { mockTransactions } from "@/lib/data";
+import { useEffect, useState } from "react";
 
 
 export default function DashboardPage() {
+  const [startingBalance, setStartingBalance] = useState(0);
+
+  useEffect(() => {
+    const storedBalance = localStorage.getItem('startingBalance');
+    if (storedBalance) {
+      setStartingBalance(parseFloat(storedBalance));
+    }
+  }, []);
+
   const totalIncome = mockTransactions
     .filter(t => t.type === 'income')
     .reduce((sum, t) => sum + t.amount, 0);
@@ -15,7 +28,7 @@ export default function DashboardPage() {
     .filter(t => t.type === 'expense')
     .reduce((sum, t) => sum + t.amount, 0);
 
-  const currentBalance = totalIncome - totalExpenses;
+  const currentBalance = startingBalance + totalIncome - totalExpenses;
 
   return (
     <div className="space-y-6">
