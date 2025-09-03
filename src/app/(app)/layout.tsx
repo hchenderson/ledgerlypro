@@ -22,6 +22,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { NewTransactionSheet } from "@/components/new-transaction-sheet";
 import { PlusCircle, Download } from "lucide-react";
 import { ImportTransactionsDialog } from "@/components/import-transactions-dialog";
+import { UserDataProvider, useUserData } from "@/hooks/use-user-data";
+import type { Transaction } from "@/types";
 
 function AppLayoutSkeleton() {
     return (
@@ -52,31 +54,36 @@ function AppLayoutSkeleton() {
     )
 }
 
-
-export default function AppLayout({ children }: { children: React.ReactNode }) {
+function AppLayoutContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const router = useRouter();
-  const { user, loading } = useAuth();
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const { categories, addTransaction, transactions } = useUserData();
 
+  const handleTransactionsImported = (importedTransactions: Omit<Transaction, 'id'>[]) => {
+      importedTransactions.forEach(t => {
+        const newTransaction: Transaction = {
+          id: `txn_${Date.now()}_${Math.random()}`,
+          ...t,
+        };
+        addTransaction(newTransaction);
+      })
+  }
 
-  useEffect(() => {
-    if (!loading && !user) {
-      router.push('/signin');
-    }
-  }, [user, loading, router]);
-
+  const handleTransactionCreated = (values: Omit<Transaction, 'id' | 'type'> & { type: "income" | "expense" }) => {
+     const newTransaction: Transaction = {
+      id: `txn_${Date.now()}`,
+      ...values,
+      date: values.date.toISOString()
+    };
+    addTransaction(newTransaction);
+  }
 
   const getPageTitle = () => {
     const segment = pathname.split('/').pop();
     if (!segment || segment === 'dashboard') return 'Dashboard';
     return segment.charAt(0).toUpperCase() + segment.slice(1);
   };
-  
-  if (loading || !user) {
-    return <AppLayoutSkeleton />;
-  }
   
   return (
     <SidebarProvider>
@@ -108,7 +115,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                  <ImportTransactionsDialog
                     isOpen={isImportDialogOpen}
                     onOpenChange={setIsImportDialogOpen}
-                    onTransactionsImported={(transactions) => console.log('imported', transactions)}
+                    onTransactionsImported={handleTransactionsImported}
                   >
                     <Button size="sm" variant="outline" className="gap-2" onClick={() => setIsImportDialogOpen(true)}>
                       <Download className="size-4" />
@@ -118,7 +125,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                  <NewTransactionSheet 
                     isOpen={isSheetOpen}
                     onOpenChange={setIsSheetOpen}
-                    onTransactionCreated={(values) => console.log(values)}
+                    onTransactionCreated={handleTransactionCreated}
+                    categories={categories}
                   >
                      <Button size="sm" className="gap-2" onClick={() => setIsSheetOpen(true)}>
                         <PlusCircle className="size-4"/>
@@ -133,5 +141,26 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </main>
       </SidebarInset>
     </SidebarProvider>
+  )
+}
+
+export default function AppLayout({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+  const { user, loading } = useAuth();
+  
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push('/signin');
+    }
+  }, [user, loading, router]);
+  
+  if (loading || !user) {
+    return <AppLayoutSkeleton />;
+  }
+  
+  return (
+    <UserDataProvider>
+      <AppLayoutContent>{children}</AppLayoutContent>
+    </UserDataProvider>
   )
 }

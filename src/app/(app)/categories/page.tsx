@@ -2,26 +2,26 @@
 "use client";
 
 import { useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PlusCircle, Sparkles } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { NewCategorySheet } from "@/components/new-category-sheet";
 import { Badge } from "@/components/ui/badge";
 import type { Category, SubCategory } from "@/types";
-import { allCategories } from "@/lib/data";
+import { useUserData } from "@/hooks/use-user-data";
 
 export default function CategoriesPage() {
-    const [categories, setCategories] = useState<Category[]>(allCategories);
+    const { categories, addCategory, addSubCategory, loading } = useUserData();
 
     const handleAddCategory = (categoryName: string, type: 'income' | 'expense') => {
         const newCategory: Category = { 
             id: `cat_${Date.now()}`,
             name: categoryName, 
-            icon: Sparkles,
+            icon: Sparkles, // A real app would have an icon picker
             type: type
         };
-        setCategories(prev => [...prev, newCategory]);
+        addCategory(newCategory);
     };
 
     const handleAddSubCategory = (parentId: string, subCategoryName: string) => {
@@ -30,20 +30,7 @@ export default function CategoriesPage() {
             name: subCategoryName,
             icon: Sparkles
         };
-
-        const updateCategories = (categories: Category[]): Category[] => {
-            return categories.map(cat => {
-                if (cat.id === parentId) {
-                    return {
-                        ...cat,
-                        subCategories: [...(cat.subCategories || []), newSubCategory]
-                    };
-                }
-                return cat;
-            });
-        };
-
-        setCategories(updateCategories);
+        addSubCategory(parentId, newSubCategory);
     }
 
     const renderCategoryList = (filteredCategories: Category[]) => (
@@ -52,7 +39,7 @@ export default function CategoriesPage() {
                 <AccordionItem value={category.id} key={category.id}>
                     <AccordionTrigger className="hover:no-underline">
                         <div className="flex items-center gap-4">
-                            <category.icon className="h-6 w-6 text-muted-foreground" />
+                            <Sparkles className="h-6 w-6 text-muted-foreground" />
                             <span className="text-base font-medium">{category.name}</span>
                              <Badge variant={category.type === 'income' ? 'default' : 'secondary'}>{category.type}</Badge>
                         </div>
@@ -61,7 +48,7 @@ export default function CategoriesPage() {
                         <div className="pl-12 space-y-3">
                             {category.subCategories?.map(sub => (
                                 <div key={sub.id} className="flex items-center gap-4">
-                                     <sub.icon className="h-5 w-5 text-muted-foreground" />
+                                     <Sparkles className="h-5 w-5 text-muted-foreground" />
                                      <span>{sub.name}</span>
                                 </div>
                             ))}
@@ -82,6 +69,14 @@ export default function CategoriesPage() {
         </Accordion>
     )
 
+    if (loading) {
+        return (
+             <div className="space-y-6">
+                <Card><CardHeader><CardTitle>Loading...</CardTitle></CardHeader></Card>
+                <Card><CardHeader><CardTitle>Loading...</CardTitle></CardHeader></Card>
+            </div>
+        )
+    }
 
     return (
         <div className="space-y-6">

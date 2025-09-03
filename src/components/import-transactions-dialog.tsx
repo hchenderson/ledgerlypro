@@ -161,7 +161,7 @@ export function ImportTransactionsDialog({
         return;
     }
     
-    const transactionsToImport = processedTransactions.map(item => item.transaction);
+    const transactionsToImport = processedTransactions.map(item => item.transaction as Omit<Transaction, 'id'>);
     onTransactionsImported(transactionsToImport);
     
     toast({

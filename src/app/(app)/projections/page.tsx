@@ -1,10 +1,11 @@
+
 "use client";
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getCashFlowProjections, GetCashFlowProjectionsInput } from "@/ai/flows/cash-flow-projections";
-import { mockTransactions } from "@/lib/data";
+import { useUserData } from "@/hooks/use-user-data";
 import { Rocket, Sparkles } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -13,15 +14,22 @@ export default function ProjectionsPage() {
   const [loading, setLoading] = useState(false);
   const [projection, setProjection] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { transactions } = useUserData();
 
   const handleGenerateProjection = async () => {
     setLoading(true);
     setError(null);
     setProjection(null);
 
+    if (transactions.length === 0) {
+        setError("You need at least one transaction to generate a projection.");
+        setLoading(false);
+        return;
+    }
+
     try {
       const input: GetCashFlowProjectionsInput = {
-        historicalData: JSON.stringify(mockTransactions),
+        historicalData: JSON.stringify(transactions),
       };
       const result = await getCashFlowProjections(input);
       setProjection(result.projection);

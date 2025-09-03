@@ -5,7 +5,6 @@ import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { mockTransactions } from "@/lib/data";
 import { format } from "date-fns";
 import { MoreHorizontal, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -15,22 +14,37 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import type { Transaction } from "@/types";
 import { useToast } from "@/hooks/use-toast";
 import Papa from "papaparse";
+import { useUserData } from "@/hooks/use-user-data";
+import { Skeleton } from "@/components/ui/skeleton";
+
+
+function TransactionsSkeleton() {
+  return (
+    <Card>
+      <CardHeader>
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-4 w-64" />
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4">
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
 
 
 export default function TransactionsPage() {
-  const [transactions, setTransactions] = useState<Transaction[]>(mockTransactions);
+  const { transactions, loading, addTransaction, updateTransaction, deleteTransaction, categories } = useUserData();
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const { toast } = useToast();
   
-  const handleAddTransactions = (newTransactions: Omit<Transaction, 'id'>[]) => {
-    const transactionsToAdd = newTransactions.map(t => ({
-      ...t,
-      id: `txn_${Date.now()}_${Math.random()}`
-    }));
-    setTransactions(prev => [...transactionsToAdd, ...prev]);
-  };
-
   const handleEdit = (transaction: Transaction) => {
     setSelectedTransaction(transaction);
     setIsSheetOpen(true);
@@ -49,15 +63,15 @@ export default function TransactionsPage() {
       ...values,
       date: values.date.toISOString()
     };
-    setTransactions(prev => [newTransaction, ...prev]);
+    addTransaction(newTransaction);
   }
 
   const handleTransactionUpdated = (id: string, values: Omit<Transaction, 'id' | 'type'> & { type: "income" | "expense" }) => {
-    setTransactions(prev => prev.map(t => t.id === id ? { ...t, ...values, date: values.date.toISOString() } : t));
+    updateTransaction(id, { ...values, date: values.date.toISOString() });
   };
   
   const handleDelete = (id: string) => {
-    setTransactions(prev => prev.filter(t => t.id !== id));
+    deleteTransaction(id);
     toast({
       title: "Transaction Deleted",
       description: "The transaction has been successfully deleted.",
@@ -80,6 +94,8 @@ export default function TransactionsPage() {
       description: "Your transactions have been exported to transactions.csv.",
     });
   }
+  
+  if (loading) return <TransactionsSkeleton />;
 
   return (
     <>
@@ -168,6 +184,7 @@ export default function TransactionsPage() {
         transaction={selectedTransaction}
         onTransactionCreated={handleTransactionCreated}
         onTransactionUpdated={handleTransactionUpdated}
+        categories={categories}
      />
     </>
   );

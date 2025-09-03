@@ -41,7 +41,6 @@ import {
 } from "@/components/ui/select"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { useToast } from "@/hooks/use-toast"
-import { allCategories } from "@/lib/data"
 import type { Transaction, Category, SubCategory } from "@/types"
 import {
   Dialog,
@@ -53,6 +52,7 @@ import {
   DialogTrigger,
   DialogClose,
 } from "@/components/ui/dialog"
+import { useUserData } from "@/hooks/use-user-data"
 
 const formSchema = z.object({
   type: z.enum(["income", "expense"], {
@@ -81,32 +81,20 @@ interface NewTransactionSheetProps {
     onTransactionCreated?: (values: FormValues) => void;
     onTransactionUpdated?: (id: string, values: FormValues) => void;
     children?: React.ReactNode;
+    categories: Category[];
 }
 
-const AddCategoryDialog = ({ onCategoryAdded, type }: { onCategoryAdded: (name: string) => void, type: 'income' | 'expense' }) => {
+const AddCategoryDialog = ({ onCategoryAdded, type, categories }: { onCategoryAdded: (newCategoryName: string, parentId: string) => void, type: 'income' | 'expense', categories: Category[] }) => {
     const [name, setName] = useState('');
     const [parent, setParent] = useState('');
     const [isOpen, setIsOpen] = useState(false);
 
-    const mainCategories = allCategories.filter(c => c.type === type);
+    const mainCategories = categories.filter(c => c.type === type);
 
     const handleSubmit = () => {
         if (!name || !parent) return;
         
-        // This is a simplified way to add a category. 
-        // In a real app, this would be a more robust state management call.
-        const parentCategory = allCategories.find(c => c.id === parent);
-        if (parentCategory) {
-            if (!parentCategory.subCategories) {
-                parentCategory.subCategories = [];
-            }
-            parentCategory.subCategories.push({
-                id: `sub_${Date.now()}`,
-                name: name,
-                icon: Sparkles
-            });
-        }
-        onCategoryAdded(name);
+        onCategoryAdded(name, parent);
         setIsOpen(false);
         setName('');
         setParent('');
@@ -162,12 +150,12 @@ export function NewTransactionSheet({
     transaction,
     onTransactionCreated,
     onTransactionUpdated,
-    children
+    children,
+    categories,
 }: NewTransactionSheetProps) {
   const { toast } = useToast()
+  const { addSubCategory } = useUserData();
   
-  const [categories, setCategories] = useState(allCategories);
-
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
   })
@@ -187,7 +175,7 @@ export function NewTransactionSheet({
         date: new Date(),
       })
     }
-  }, [transaction, form, isOpen]) // Rerun on open to get fresh categories
+  }, [transaction, form, isOpen])
 
   const transactionType = useWatch({ control: form.control, name: 'type' });
 
@@ -210,13 +198,17 @@ export function NewTransactionSheet({
     form.reset()
   }
 
-  const handleCategoryAdded = (newCategoryName: string) => {
-    // A bit of a hack to force a re-render of the select
-    setCategories([...allCategories]); 
+  const handleCategoryAdded = (newCategoryName: string, parentId: string) => {
+    const newSubCategory: SubCategory = {
+      id: `sub_${Date.now()}`,
+      name: newCategoryName,
+      icon: Sparkles,
+    };
+    addSubCategory(parentId, newSubCategory);
     form.setValue('category', newCategoryName, { shouldValidate: true });
-     toast({
-        title: "Category Added",
-        description: `Successfully added and selected "${newCategoryName}".`,
+    toast({
+      title: "Category Added",
+      description: `Successfully added and selected "${newCategoryName}".`,
     });
   }
 
@@ -229,7 +221,8 @@ export function NewTransactionSheet({
 
   const availableCategories = categories
     .filter(cat => cat.type === transactionType)
-    .flatMap(cat => cat.subCategories ? cat.subCategories.map(sub => ({...sub, parent: cat.name})) : [{ id: cat.id, name: cat.name, parent: 'Main Categories' }])
+    .flatMap(cat => cat.subCategories ? cat.subCategories.map(sub => ({...sub, parent: cat.name})) : [{ id: cat.id, name: cat.name, icon: cat.icon, parent: 'Main Categories' }])
+
 
   const sheetContent = (
       <>
@@ -316,7 +309,7 @@ export function NewTransactionSheet({
                           {cat.name} <span className="text-muted-foreground/80 ml-2">({cat.parent})</span>
                         </SelectItem>
                       ))}
-                      <AddCategoryDialog onCategoryAdded={handleCategoryAdded} type={transactionType} />
+                      <AddCategoryDialog onCategoryAdded={handleCategoryAdded} type={transactionType} categories={categories}/>
                     </SelectContent>
                   </Select>
                   <FormMessage />

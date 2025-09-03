@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useRef } from 'react';
+import { useRef, useMemo } from 'react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
@@ -16,14 +16,59 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart"
 import { Area, AreaChart, CartesianGrid, XAxis } from "recharts"
-import { mockOverviewData } from "@/lib/data";
 import { useToast } from '@/hooks/use-toast';
+import { useUserData } from '@/hooks/use-user-data';
 
 
 export default function ReportsPage() {
     const reportRef = useRef<HTMLDivElement>(null);
     const { toast } = useToast();
+    const { transactions } = useUserData();
+
+    const { overviewData, categoryData } = useMemo(() => {
+        const monthlyData: Record<string, { income: number, expense: number }> = {};
+        transactions.forEach(t => {
+            const month = new Date(t.date).toLocaleString('default', { month: 'short' });
+            if (!monthlyData[month]) {
+                monthlyData[month] = { income: 0, expense: 0 };
+            }
+            monthlyData[month][t.type] += t.amount;
+        });
+
+        const overviewData = Object.entries(monthlyData).map(([name, values]) => ({
+            name,
+            ...values
+        })).reverse();
+
+        const categorySpending: Record<string, number> = {};
+        transactions.filter(t => t.type === 'expense').forEach(t => {
+            if (!categorySpending[t.category]) {
+                categorySpending[t.category] = 0;
+            }
+            categorySpending[t.category] += t.amount;
+        });
+        
+        const categoryData = Object.entries(categorySpending).map(([category, amount], index) => ({
+            category,
+            amount,
+            fill: `hsl(var(--chart-${(index % 5) + 1}))`
+        }));
+        
+        return { overviewData, categoryData };
+    }, [transactions]);
     
+    const balanceTrendData = useMemo(() => {
+        let currentBalance = 0;
+        const trend = overviewData.map(d => {
+            currentBalance += d.income - d.expense;
+            return {
+                name: d.name,
+                balance: currentBalance,
+            }
+        });
+        return trend.reverse();
+    }, [overviewData]);
+
     const handleExportPdf = async () => {
         const input = reportRef.current;
         if (!input) {
@@ -94,7 +139,7 @@ export default function ReportsPage() {
                 <CardDescription>A breakdown of your income and expenses over the last few months.</CardDescription>
             </CardHeader>
             <CardContent>
-                <OverviewChart />
+                <OverviewChart data={overviewData} />
             </CardContent>
             </Card>
             <Card>
@@ -103,7 +148,7 @@ export default function ReportsPage() {
                 <CardDescription>How your spending is distributed across different categories this month.</CardDescription>
             </CardHeader>
             <CardContent>
-                <CategoryPieChart />
+                <CategoryPieChart data={categoryData} />
             </CardContent>
             </Card>
         </div>
@@ -124,7 +169,7 @@ export default function ReportsPage() {
                     >
                     <AreaChart
                         accessibilityLayer
-                        data={mockOverviewData.map(d => ({...d, balance: d.income - d.expense}))}
+                        data={balanceTrendData}
                         margin={{
                         left: 12,
                         right: 12,

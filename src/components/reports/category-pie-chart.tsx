@@ -1,3 +1,4 @@
+
 "use client"
 
 import * as React from "react"
@@ -10,15 +11,26 @@ import {
   ChartLegendContent,
   type ChartConfig
 } from "@/components/ui/chart"
-import { mockCategoryData } from "@/lib/data"
+import type { Transaction } from "@/types"
 
-const chartConfig = mockCategoryData.reduce((acc, cur) => {
+interface CategoryPieChartProps {
+    data: { category: string; amount: number; fill: string }[];
+}
+
+export function CategoryPieChart({ data }: CategoryPieChartProps) {
+  const chartConfig = data.reduce((acc, cur) => {
     acc[cur.category.toLowerCase()] = { label: cur.category, color: cur.fill }
     return acc
-}, {} as ChartConfig);
+  }, {} as ChartConfig);
+    
+  if (data.length === 0) {
+    return (
+        <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+            No expense data to display.
+        </div>
+    )
+  }
 
-
-export function CategoryPieChart() {
   return (
     <ChartContainer
       config={chartConfig}
@@ -31,12 +43,12 @@ export function CategoryPieChart() {
             content={<ChartTooltipContent hideLabel />}
           />
           <Pie
-            data={mockCategoryData}
+            data={data}
             dataKey="amount"
             nameKey="category"
             innerRadius={60}
           >
-             {mockCategoryData.map((entry, index) => (
+             {data.map((entry, index) => (
               <Cell key={`cell-${index}`} fill={entry.fill} />
             ))}
           </Pie>
