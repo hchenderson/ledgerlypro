@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from "next/link";
@@ -14,6 +15,7 @@ import {
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import type { NavItem } from "@/types";
 
@@ -28,6 +30,7 @@ const navItems: NavItem[] = [
 
 export function MainNav() {
   const pathname = usePathname();
+  const { setOpenMobile } = useSidebar();
 
   return (
     <SidebarMenu>
@@ -37,6 +40,7 @@ export function MainNav() {
             asChild
             isActive={pathname === item.href}
             tooltip={{ children: item.title }}
+            onClick={() => setOpenMobile(false)}
           >
             <Link href={item.href}>
               <item.icon />
