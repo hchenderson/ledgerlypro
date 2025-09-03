@@ -1,11 +1,15 @@
 
 "use client";
 
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { LedgerlyProLogo } from "@/components/icons";
-import { signInWithGoogle } from "@/lib/auth";
+import { signInWithGoogle, signInWithEmail, signUpWithEmail } from "@/lib/auth";
 import { useRouter } from "next/navigation";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { useToast } from "@/hooks/use-toast";
 
 const GoogleIcon = () => (
     <svg className="size-4" viewBox="0 0 48 48">
@@ -19,6 +23,10 @@ const GoogleIcon = () => (
 
 export default function SignInPage() {
     const router = useRouter();
+    const { toast } = useToast();
+    const [email, setEmail] = useState("");
+    const [password, setPassword] = useState("");
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const handleGoogleSignIn = async () => {
         try {
@@ -26,9 +34,59 @@ export default function SignInPage() {
             router.push("/dashboard");
         } catch (error) {
             console.error("Google Sign-In failed:", error);
-            // You can add user-facing error handling here, like a toast notification.
+            toast({
+                variant: "destructive",
+                title: "Sign-in Failed",
+                description: "Could not sign in with Google. Please try again."
+            })
         }
     };
+    
+    const handleEmailSignIn = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsSubmitting(true);
+        try {
+            await signInWithEmail(email, password);
+            router.push('/dashboard');
+        } catch (error) {
+            console.error("Email Sign-in failed:", error)
+            toast({
+                variant: "destructive",
+                title: "Sign-in Failed",
+                description: "Invalid email or password. Please try again."
+            })
+        } finally {
+            setIsSubmitting(false);
+        }
+    }
+
+    const handleEmailSignUp = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsSubmitting(true);
+        try {
+            await signUpWithEmail(email, password);
+            toast({
+                title: "Account Created",
+                description: "You have successfully signed up! Redirecting to dashboard...",
+            });
+            router.push('/dashboard');
+        } catch (error: any) {
+            console.error("Email Sign-up failed:", error)
+            let description = "An unexpected error occurred. Please try again.";
+            if (error.code === 'auth/email-already-in-use') {
+                description = "This email is already in use. Please sign in instead.";
+            } else if (error.code === 'auth/weak-password') {
+                description = "Password is too weak. It should be at least 6 characters long.";
+            }
+            toast({
+                variant: "destructive",
+                title: "Sign-up Failed",
+                description: description,
+            })
+        } finally {
+            setIsSubmitting(false);
+        }
+    }
 
     return (
         <div className="flex min-h-screen items-center justify-center bg-secondary/50">
@@ -38,8 +96,38 @@ export default function SignInPage() {
                     <CardTitle>Welcome to Ledgerly Pro</CardTitle>
                     <CardDescription>Sign in to access your dashboard.</CardDescription>
                 </CardHeader>
-                <CardContent>
-                    <Button className="w-full" onClick={handleGoogleSignIn}>
+                <CardContent className="space-y-4">
+                     <form onSubmit={handleEmailSignIn} className="space-y-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="email">Email</Label>
+                            <Input id="email" type="email" placeholder="m@example.com" required value={email} onChange={e => setEmail(e.target.value)} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="password">Password</Label>
+                            <Input id="password" type="password" required  value={password} onChange={e => setPassword(e.target.value)} />
+                        </div>
+                        <div className="flex gap-2">
+                            <Button type="submit" className="w-full" disabled={isSubmitting}>
+                                {isSubmitting ? 'Signing In...' : 'Sign In'}
+                            </Button>
+                            <Button type="button" variant="secondary" className="w-full" onClick={handleEmailSignUp} disabled={isSubmitting}>
+                                {isSubmitting ? 'Signing Up...' : 'Sign Up'}
+                            </Button>
+                        </div>
+                    </form>
+
+                    <div className="relative">
+                        <div className="absolute inset-0 flex items-center">
+                            <span className="w-full border-t" />
+                        </div>
+                        <div className="relative flex justify-center text-xs uppercase">
+                            <span className="bg-card px-2 text-muted-foreground">
+                                Or continue with
+                            </span>
+                        </div>
+                    </div>
+
+                    <Button className="w-full gap-2" variant="outline" onClick={handleGoogleSignIn}>
                        <GoogleIcon />
                         Sign in with Google
                     </Button>
