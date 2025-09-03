@@ -2,13 +2,15 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
 import { updateProfile } from 'firebase/auth';
+import { Badge } from '@/components/ui/badge';
+import Link from 'next/link';
 
 export default function SettingsPage() {
     const { toast } = useToast();
@@ -88,6 +90,8 @@ export default function SettingsPage() {
                     </div>
                      <Button onClick={handleSaveProfile}>Save Profile</Button>
                 </CardContent>
+                </Card>
+                <Card>
                 <CardHeader>
                     <CardTitle>Account</CardTitle>
                     <CardDescription>Manage your account settings.</CardDescription>
@@ -110,17 +114,23 @@ export default function SettingsPage() {
                         </p>
                     </div>
                 </CardContent>
+                </Card>
+                <Card>
                 <CardHeader>
                     <CardTitle>Subscription</CardTitle>
                     <CardDescription>Manage your billing and subscription.</CardDescription>
                 </CardHeader>
                  <CardContent className="flex items-center justify-between rounded-lg border p-4">
                     <div>
-                        <p className="font-medium">You are on the <span className="text-primary font-bold">Yearly</span> plan.</p>
-                        <p className="text-sm text-muted-foreground">Your plan renews on July 20, 2025.</p>
+                        <p className="font-medium">You are on the <Badge variant="secondary" className="font-bold">Free</Badge> plan.</p>
+                        <p className="text-sm text-muted-foreground">Limited to 100 transactions.</p>
                     </div>
-                     <Button variant="outline">Manage Billing</Button>
+                     <Button asChild>
+                        <Link href="/pricing">Upgrade Plan</Link>
+                     </Button>
                 </CardContent>
+                </Card>
+                <Card>
                 <CardHeader>
                     <CardTitle>Danger Zone</CardTitle>
                     <CardDescription>These actions are permanent and cannot be undone.</CardDescription>
