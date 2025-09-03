@@ -7,13 +7,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { mockTransactions } from "@/lib/data";
 import { format } from "date-fns";
-import { MoreHorizontal } from "lucide-react";
+import { MoreHorizontal, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { NewTransactionSheet } from "@/components/new-transaction-sheet";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import type { Transaction } from "@/types";
 import { useToast } from "@/hooks/use-toast";
+import Papa from "papaparse";
 
 
 export default function TransactionsPage() {
@@ -62,13 +63,36 @@ export default function TransactionsPage() {
       description: "The transaction has been successfully deleted.",
     })
   }
+  
+  const handleExport = () => {
+    const csv = Papa.unparse(transactions);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'transactions.csv');
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast({
+      title: "Export Successful",
+      description: "Your transactions have been exported to transactions.csv.",
+    });
+  }
 
   return (
     <>
     <Card>
-      <CardHeader>
-        <CardTitle>Transactions</CardTitle>
-        <CardDescription>A list of your recent financial activities.</CardDescription>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <div>
+            <CardTitle>Transactions</CardTitle>
+            <CardDescription>A list of your recent financial activities.</CardDescription>
+        </div>
+        <Button onClick={handleExport} variant="outline">
+            <Upload className="mr-2 h-4 w-4" />
+            Export CSV
+        </Button>
       </CardHeader>
       <CardContent>
         <Table>
