@@ -4,7 +4,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { LedgerlyProLogo } from "@/components/icons";
+import { LedgerlyLogo } from "@/components/icons";
 import { signInWithGoogle, signUpWithEmail, isNewUser } from "@/lib/auth";
 import { useRouter } from "next/navigation";
 import { Label } from "@/components/ui/label";
@@ -105,8 +105,8 @@ export default function SignInPage() {
         <div className="flex min-h-screen items-center justify-center bg-secondary/50">
             <Card className="w-full max-w-sm">
                 <CardHeader className="text-center">
-                    <LedgerlyProLogo className="mx-auto h-10 w-10 mb-2" />
-                    <CardTitle>Welcome to Ledgerly Pro</CardTitle>
+                    <LedgerlyLogo className="mx-auto h-10 w-10 mb-2" />
+                    <CardTitle>Welcome to Ledgerly</CardTitle>
                     <CardDescription>Sign in or create an account to continue.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">

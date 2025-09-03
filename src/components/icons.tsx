@@ -1,21 +1,31 @@
 import type { SVGProps } from "react";
 
-export function LedgerlyProLogo(props: SVGProps<SVGSVGElement>) {
+export function LedgerlyLogo(props: SVGProps<SVGSVGElement>) {
   return (
     <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
+      width="40"
+      height="40"
+      viewBox="0 0 120 120"
       fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
+      xmlns="http://www.w3.org/2000/svg"
       {...props}
     >
-      <path d="M3 3v18h18" />
-      <path d="M18.7 8a6 6 0 0 0-6-6" />
-      <path d="M12.7 14a6 6 0 0 0 6 6" />
-      <path d="M12.7 8a6 6 0 0 1 6 6" />
+        <g>
+            <path 
+                d="M25,10 C16.716,10 10,16.716 10,25 L10,85 C10,93.284 16.716,100 25,100 L85,100 C93.284,100 100,93.284 100,85 L100,25 C100,16.716 93.284,10 85,10 L25,10 Z"
+                className="fill-primary"
+            />
+            <path d="M30 30h50v8H30z" className="fill-primary-foreground" />
+            <path d="M30 42h50v8H30z" className="fill-primary-foreground" />
+            <text 
+                x="55" 
+                y="82" 
+                textAnchor="middle" 
+                className="font-bold text-4xl fill-primary-foreground"
+            >
+                $
+            </text>
+        </g>
     </svg>
   );
 }

@@ -3,7 +3,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { BarChart, Briefcase, FileText, PieChart } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { LedgerlyProLogo } from '@/components/icons';
+import { LedgerlyLogo } from '@/components/icons';
 
 const features = [
   {
@@ -33,8 +33,8 @@ export default function LandingPage() {
     <div className="flex min-h-screen flex-col">
       <header className="container mx-auto flex h-20 items-center justify-between px-4 md:px-6">
         <Link href="#" className="flex items-center gap-2" prefetch={false}>
-          <LedgerlyProLogo className="h-8 w-8 text-primary" />
-          <span className="font-headline text-xl font-bold text-foreground">Ledgerly Pro</span>
+          <LedgerlyLogo className="h-8 w-8 text-primary" />
+          <span className="font-headline text-xl font-bold text-foreground">Ledgerly</span>
         </Link>
         <Button asChild>
           <Link href="/dashboard">Get Started</Link>
@@ -48,7 +48,7 @@ export default function LandingPage() {
                 Modern Bookkeeping, <span className="text-primary">Simplified.</span>
               </h1>
               <p className="max-w-[600px] text-lg text-muted-foreground md:text-xl">
-                Ledgerly Pro offers a clean, ad-free experience to manage your finances with confidence. Secure, private, and powerful—it's the tool you need to achieve financial clarity.
+                Ledgerly offers a clean, ad-free experience to manage your finances with confidence. Secure, private, and powerful—it's the tool you need to achieve financial clarity.
               </p>
               <div className="flex flex-col gap-4 sm:flex-row">
                 <Button asChild size="lg">
@@ -62,7 +62,7 @@ export default function LandingPage() {
             <div className="relative">
               <Image
                 src="https://picsum.photos/800/600"
-                alt="Ledgerly Pro Dashboard"
+                alt="Ledgerly Dashboard"
                 width={800}
                 height={600}
                 className="rounded-xl object-cover shadow-2xl"
@@ -110,8 +110,8 @@ export default function LandingPage() {
       <footer className="border-t bg-secondary/30">
         <div className="container mx-auto flex flex-col items-center justify-between gap-4 px-4 py-6 md:flex-row md:px-6">
           <div className="flex items-center gap-2">
-            <LedgerlyProLogo className="h-6 w-6 text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">&copy; 2024 Ledgerly Pro. All rights reserved.</p>
+            <LedgerlyLogo className="h-6 w-6 text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">&copy; 2024 Ledgerly. All rights reserved.</p>
           </div>
           <nav className="flex gap-4 sm:gap-6">
             <Link href="#" className="text-sm hover:underline" prefetch={false}>

@@ -59,7 +59,7 @@ export default function WelcomePage() {
             // 4. Mark onboarding as complete
             localStorage.setItem('onboardingComplete', 'true');
 
-            toast({ title: 'Setup Complete!', description: 'Welcome to Ledgerly Pro. Redirecting you to the dashboard...' });
+            toast({ title: 'Setup Complete!', description: 'Welcome to Ledgerly. Redirecting you to the dashboard...' });
             router.push('/dashboard');
 
         } catch (error) {
@@ -75,7 +75,7 @@ export default function WelcomePage() {
         <div className="flex min-h-screen items-center justify-center bg-secondary/50 p-4">
             <Card className="w-full max-w-2xl">
                 <CardHeader>
-                    <CardTitle className="text-center">Welcome to Ledgerly Pro!</CardTitle>
+                    <CardTitle className="text-center">Welcome to Ledgerly!</CardTitle>
                     <CardDescription className="text-center">Let's get your account set up in a few steps.</CardDescription>
                 </CardHeader>
                 <CardContent>

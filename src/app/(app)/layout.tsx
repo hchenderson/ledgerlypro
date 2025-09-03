@@ -10,7 +10,7 @@ import {
   SidebarTrigger,
   SidebarInset,
 } from "@/components/ui/sidebar"
-import { LedgerlyProLogo } from "@/components/icons";
+import { LedgerlyLogo } from "@/components/icons";
 import { MainNav } from "@/components/main-nav";
 import { UserNav } from "@/components/user-nav";
 import { Button } from "@/components/ui/button";
@@ -83,9 +83,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <Sidebar>
         <SidebarHeader>
           <Link href="/dashboard" className="flex items-center gap-2" prefetch={false}>
-            <LedgerlyProLogo className="size-8 text-sidebar-primary" />
+            <LedgerlyLogo className="size-8 text-sidebar-primary" />
             <span className="font-headline text-lg font-semibold text-sidebar-primary">
-              Ledgerly Pro
+              Ledgerly
             </span>
           </Link>
         </SidebarHeader>
