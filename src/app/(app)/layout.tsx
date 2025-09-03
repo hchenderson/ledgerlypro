@@ -1,3 +1,4 @@
+
 "use client"
 
 import {
@@ -15,16 +16,62 @@ import { UserNav } from "@/components/user-nav";
 import { Button } from "@/components/ui/button";
 import { PlusCircle } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useAuth } from "@/hooks/use-auth";
+import { useEffect } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
+
+function AppLayoutSkeleton() {
+    return (
+        <div className="flex min-h-screen">
+            <div className="hidden md:flex flex-col w-64 border-r">
+                <div className="p-4">
+                    <Skeleton className="h-8 w-32" />
+                </div>
+                <div className="p-4 space-y-2">
+                    <Skeleton className="h-8 w-full" />
+                    <Skeleton className="h-8 w-full" />
+                    <Skeleton className="h-8 w-full" />
+                </div>
+            </div>
+            <div className="flex-1">
+                <header className="flex h-16 items-center border-b px-6">
+                    <Skeleton className="h-8 w-32" />
+                    <div className="ml-auto flex items-center gap-4">
+                        <Skeleton className="h-8 w-24" />
+                        <Skeleton className="h-8 w-8 rounded-full" />
+                    </div>
+                </header>
+                <main className="p-6">
+                    <Skeleton className="h-64 w-full" />
+                </main>
+            </div>
+        </div>
+    )
+}
+
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { user, loading } = useAuth();
+
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push('/signin');
+    }
+  }, [user, loading, router]);
+
 
   const getPageTitle = () => {
     const segment = pathname.split('/').pop();
     if (!segment || segment === 'dashboard') return 'Dashboard';
     return segment.charAt(0).toUpperCase() + segment.slice(1);
   };
+  
+  if (loading || !user) {
+    return <AppLayoutSkeleton />;
+  }
   
   return (
     <SidebarProvider>
