@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { OverviewChart } from "@/components/dashboard/overview-chart";
 import { CategoryPieChart } from "@/components/reports/category-pie-chart";
 import { Button } from "@/components/ui/button";
-import { Download } from "lucide-react";
+import { Upload } from "lucide-react";
 import {
   ChartContainer,
   ChartTooltip,
@@ -82,7 +82,7 @@ export default function ReportsPage() {
             </p>
         </div>
         <Button variant="outline" onClick={handleExportPdf}>
-          <Download className="mr-2 h-4 w-4" />
+          <Upload className="mr-2 h-4 w-4" />
           Export PDF
         </Button>
       </div>
