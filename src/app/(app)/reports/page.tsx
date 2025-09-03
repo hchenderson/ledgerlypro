@@ -1,3 +1,5 @@
+"use client";
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { OverviewChart } from "@/components/dashboard/overview-chart";
 import { CategoryPieChart } from "@/components/reports/category-pie-chart";
@@ -8,7 +10,7 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart"
-import { Area, AreaChart, CartesianGrid, XAxis, ResponsiveContainer } from "recharts"
+import { Area, AreaChart, CartesianGrid, XAxis } from "recharts"
 import { mockOverviewData } from "@/lib/data";
 
 export default function ReportsPage() {
