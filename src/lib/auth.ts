@@ -6,16 +6,16 @@ import {
     GoogleAuthProvider,
     signOut as firebaseSignOut,
     createUserWithEmailAndPassword,
-    signInWithEmailAndPassword
+    signInWithEmailAndPassword,
+    UserCredential
 } from "firebase/auth";
 
 const auth = getAuth(app);
 const provider = new GoogleAuthProvider();
 
-export const signInWithGoogle = async () => {
+export const signInWithGoogle = (): Promise<UserCredential> => {
     try {
-        const result = await signInWithPopup(auth, provider);
-        return result.user;
+        return signInWithPopup(auth, provider);
     } catch (error) {
         console.error("Authentication error:", error);
         throw error;

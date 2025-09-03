@@ -5,11 +5,12 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { LedgerlyProLogo } from "@/components/icons";
-import { signInWithGoogle, signInWithEmail, signUpWithEmail } from "@/lib/auth";
+import { signInWithGoogle, signUpWithEmail, isNewUser } from "@/lib/auth";
 import { useRouter } from "next/navigation";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import { getAdditionalUserInfo } from "firebase/auth";
 
 const GoogleIcon = () => (
     <svg className="size-4" viewBox="0 0 48 48">
@@ -30,8 +31,14 @@ export default function SignInPage() {
 
     const handleGoogleSignIn = async () => {
         try {
-            await signInWithGoogle();
-            router.push("/dashboard");
+            const result = await signInWithGoogle();
+            const additionalInfo = getAdditionalUserInfo(result);
+            if(additionalInfo?.isNewUser) {
+                router.push("/welcome");
+            } else {
+                localStorage.setItem('onboardingComplete', 'true'); // For existing users
+                router.push("/dashboard");
+            }
         } catch (error) {
             console.error("Google Sign-In failed:", error);
             toast({
@@ -47,6 +54,7 @@ export default function SignInPage() {
         setIsSubmitting(true);
         try {
             await signInWithEmail(email, password);
+            localStorage.setItem('onboardingComplete', 'true'); // For existing users
             router.push('/dashboard');
         } catch (error: any) {
             console.error("Email Sign-in failed:", error)
@@ -69,11 +77,12 @@ export default function SignInPage() {
         setIsSubmitting(true);
         try {
             await signUpWithEmail(email, password);
+            localStorage.removeItem('onboardingComplete'); // Ensure it's cleared for new users
             toast({
                 title: "Account Created",
-                description: "You have successfully signed up! Redirecting to dashboard...",
+                description: "You have successfully signed up! Let's set up your profile.",
             });
-            router.push('/dashboard');
+            router.push('/welcome');
         } catch (error: any) {
             console.error("Email Sign-up failed:", error)
             let description = "An unexpected error occurred. Please try again.";
@@ -98,7 +107,7 @@ export default function SignInPage() {
                 <CardHeader className="text-center">
                     <LedgerlyProLogo className="mx-auto h-10 w-10 mb-2" />
                     <CardTitle>Welcome to Ledgerly Pro</CardTitle>
-                    <CardDescription>Sign in to access your dashboard.</CardDescription>
+                    <CardDescription>Sign in or create an account to continue.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                      <form onSubmit={handleEmailSignIn} className="space-y-4">

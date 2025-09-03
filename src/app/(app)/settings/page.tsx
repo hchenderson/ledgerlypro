@@ -7,18 +7,45 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/use-auth';
+import { updateProfile } from 'firebase/auth';
 
 export default function SettingsPage() {
     const { toast } = useToast();
+    const { user } = useAuth();
+    const [name, setName] = useState('');
     const [startingBalance, setStartingBalance] = useState('');
+    const [email, setEmail] = useState('');
 
     useEffect(() => {
+        if (user) {
+            setName(user.displayName || '');
+            setEmail(user.email || '');
+        }
         const storedBalance = localStorage.getItem('startingBalance');
         if (storedBalance) {
             setStartingBalance(storedBalance);
         }
-    }, []);
+    }, [user]);
 
+    const handleSaveProfile = async () => {
+        if (user) {
+            try {
+                await updateProfile(user, { displayName: name });
+                toast({
+                    title: "Profile Saved",
+                    description: "Your name has been updated.",
+                });
+            } catch (error) {
+                 toast({
+                    variant: "destructive",
+                    title: "Error",
+                    description: "Could not update your name.",
+                });
+            }
+        }
+    };
+    
     const handleSaveStartingBalance = () => {
         const balance = parseFloat(startingBalance);
         if (!isNaN(balance)) {
@@ -53,12 +80,13 @@ export default function SettingsPage() {
                 <CardContent className="space-y-4">
                     <div className="space-y-2">
                         <Label htmlFor="name">Name</Label>
-                        <Input id="name" defaultValue="Ledgerly User" />
+                        <Input id="name" value={name} onChange={(e) => setName(e.target.value)} />
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="email">Email</Label>
-                        <Input id="email" type="email" defaultValue="user@example.com" />
+                        <Input id="email" type="email" value={email} disabled />
                     </div>
+                     <Button onClick={handleSaveProfile}>Save Profile</Button>
                 </CardContent>
                 <CardHeader>
                     <CardTitle>Account</CardTitle>
@@ -75,7 +103,7 @@ export default function SettingsPage() {
                                 value={startingBalance}
                                 onChange={(e) => setStartingBalance(e.target.value)}
                             />
-                            <Button onClick={handleSaveStartingBalance}>Save</Button>
+                            <Button onClick={handleSaveStartingBalance}>Save Balance</Button>
                         </div>
                         <p className="text-sm text-muted-foreground">
                             Set your initial account balance. This will be used as the baseline for your dashboard calculations.
