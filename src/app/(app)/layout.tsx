@@ -14,12 +14,12 @@ import { LedgerlyProLogo } from "@/components/icons";
 import { MainNav } from "@/components/main-nav";
 import { UserNav } from "@/components/user-nav";
 import { Button } from "@/components/ui/button";
-import { PlusCircle } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { useEffect } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { NewTransactionSheet } from "@/components/new-transaction-sheet";
 
 function AppLayoutSkeleton() {
     return (
@@ -100,10 +100,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 <h1 className="font-headline text-xl font-semibold">{getPageTitle()}</h1>
             </div>
             <div className="ml-auto flex items-center gap-4">
-                <Button size="sm" className="gap-2">
-                    <PlusCircle className="size-4"/>
-                    <span className="hidden sm:inline">New Transaction</span>
-                </Button>
+                <NewTransactionSheet />
                 <UserNav />
             </div>
         </header>
