@@ -20,7 +20,8 @@ import { useAuth } from "@/hooks/use-auth";
 import { useEffect, useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { NewTransactionSheet } from "@/components/new-transaction-sheet";
-import { PlusCircle } from "lucide-react";
+import { PlusCircle, Upload } from "lucide-react";
+import { ImportTransactionsDialog } from "@/components/import-transactions-dialog";
 
 function AppLayoutSkeleton() {
     return (
@@ -57,6 +58,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { user, loading } = useAuth();
   const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
 
 
   useEffect(() => {
@@ -102,7 +104,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 <SidebarTrigger className="md:hidden" />
                 <h1 className="font-headline text-xl font-semibold">{getPageTitle()}</h1>
             </div>
-            <div className="ml-auto flex items-center gap-4">
+            <div className="ml-auto flex items-center gap-2">
+                 <ImportTransactionsDialog
+                    isOpen={isImportDialogOpen}
+                    onOpenChange={setIsImportDialogOpen}
+                    onTransactionsImported={(transactions) => console.log('imported', transactions)}
+                  >
+                    <Button size="sm" variant="outline" className="gap-2" onClick={() => setIsImportDialogOpen(true)}>
+                      <Upload className="size-4" />
+                      <span className="hidden sm:inline">Import</span>
+                    </Button>
+                  </ImportTransactionsDialog>
                  <NewTransactionSheet 
                     isOpen={isSheetOpen}
                     onOpenChange={setIsSheetOpen}

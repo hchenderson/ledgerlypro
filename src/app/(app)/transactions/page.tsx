@@ -21,6 +21,14 @@ export default function TransactionsPage() {
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const { toast } = useToast();
+  
+  const handleAddTransactions = (newTransactions: Omit<Transaction, 'id'>[]) => {
+    const transactionsToAdd = newTransactions.map(t => ({
+      ...t,
+      id: `txn_${Date.now()}_${Math.random()}`
+    }));
+    setTransactions(prev => [...transactionsToAdd, ...prev]);
+  };
 
   const handleEdit = (transaction: Transaction) => {
     setSelectedTransaction(transaction);
@@ -32,6 +40,15 @@ export default function TransactionsPage() {
       setSelectedTransaction(null);
     }
     setIsSheetOpen(open);
+  }
+  
+  const handleTransactionCreated = (values: Omit<Transaction, 'id' | 'type'> & { type: "income" | "expense" }) => {
+     const newTransaction: Transaction = {
+      id: `txn_${Date.now()}`,
+      ...values,
+      date: values.date.toISOString()
+    };
+    setTransactions(prev => [newTransaction, ...prev]);
   }
 
   const handleTransactionUpdated = (id: string, values: Omit<Transaction, 'id' | 'type'> & { type: "income" | "expense" }) => {
@@ -125,6 +142,7 @@ export default function TransactionsPage() {
         isOpen={isSheetOpen}
         onOpenChange={handleSheetClose}
         transaction={selectedTransaction}
+        onTransactionCreated={handleTransactionCreated}
         onTransactionUpdated={handleTransactionUpdated}
      />
     </>
