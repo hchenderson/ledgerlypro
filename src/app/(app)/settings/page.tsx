@@ -122,7 +122,7 @@ export default function SettingsPage() {
                 </CardHeader>
                  <CardContent className="flex items-center justify-between rounded-lg border p-4">
                     <div>
-                        <p className="font-medium">You are on the <Badge variant="secondary" className="font-bold">Free</Badge> plan.</p>
+                        <div className="font-medium">You are on the <Badge variant="secondary" className="font-bold">Free</Badge> plan.</div>
                         <p className="text-sm text-muted-foreground">Limited to 100 transactions.</p>
                     </div>
                      <Button asChild>
