@@ -18,6 +18,10 @@ interface UserDataContextType {
   deleteTransaction: (id: string) => void;
   addCategory: (category: Category) => void;
   addSubCategory: (parentId: string, subCategory: SubCategory) => void;
+  updateCategory: (id: string, newName: string) => void;
+  deleteCategory: (id: string) => void;
+  updateSubCategory: (parentId: string, subCategoryId: string, newName: string) => void;
+  deleteSubCategory: (parentId: string, subCategoryId: string) => void;
   addBudget: (budget: Budget) => void;
   updateBudget: (id: string, values: Partial<Omit<Budget, 'id'>>) => void;
   deleteBudget: (id: string) => void;
@@ -118,6 +122,14 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const addCategory = (category: Category) => {
     setCategories(prev => [...prev, category]);
   };
+  
+  const updateCategory = (id: string, newName: string) => {
+    setCategories(prev => prev.map(c => c.id === id ? {...c, name: newName} : c));
+  }
+
+  const deleteCategory = (id: string) => {
+      setCategories(prev => prev.filter(c => c.id !== id));
+  }
 
   const addSubCategory = (parentId: string, subCategory: SubCategory) => {
     setCategories(prev => prev.map(cat => {
@@ -130,6 +142,30 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return cat;
     }));
   };
+  
+  const updateSubCategory = (parentId: string, subCategoryId: string, newName: string) => {
+      setCategories(prev => prev.map(cat => {
+          if(cat.id === parentId) {
+              const newSubCategories = cat.subCategories?.map(sub => {
+                  if(sub.id === subCategoryId) {
+                      return {...sub, name: newName};
+                  }
+                  return sub;
+              });
+              return {...cat, subCategories: newSubCategories};
+          }
+          return cat;
+      }))
+  }
+
+  const deleteSubCategory = (parentId: string, subCategoryId: string) => {
+        setCategories(prev => prev.map(cat => {
+            if(cat.id === parentId) {
+                return {...cat, subCategories: cat.subCategories?.filter(sub => sub.id !== subCategoryId)};
+            }
+            return cat;
+        }))
+  }
 
   const addBudget = (budget: Budget) => {
     setBudgets(prev => [...prev, budget]);
@@ -227,6 +263,10 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         deleteTransaction,
         addCategory,
         addSubCategory,
+        updateCategory,
+        deleteCategory,
+        updateSubCategory,
+        deleteSubCategory,
         addBudget,
         updateBudget,
         deleteBudget,
