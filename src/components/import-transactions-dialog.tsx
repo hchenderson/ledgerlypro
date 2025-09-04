@@ -164,7 +164,6 @@ export function ImportTransactionsDialog({
 
         if (
           !type ||
-          amount === 0 ||
           isNaN(date.getTime())
         ) {
           return null; // Skip invalid rows
@@ -384,5 +383,3 @@ export function ImportTransactionsDialog({
     </Dialog>
   );
 }
-
-    
