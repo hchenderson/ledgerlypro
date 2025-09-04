@@ -24,9 +24,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
+import { FeatureGate } from '@/components/feature-gate';
 
 
-export default function ReportsPage() {
+function ReportsPageContent() {
     const reportRef = useRef<HTMLDivElement>(null);
     const { toast } = useToast();
     const { transactions } = useUserData();
@@ -292,4 +293,12 @@ export default function ReportsPage() {
         </div>
     </div>
   );
+}
+
+export default function ReportsPage() {
+    return (
+        <FeatureGate>
+            <ReportsPageContent />
+        </FeatureGate>
+    )
 }
