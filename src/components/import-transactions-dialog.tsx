@@ -116,43 +116,39 @@ export function ImportTransactionsDialog({
   }, [mapping, headers])
 
   const processedTransactions = useMemo(() => {
-    if (step !== "review") return [];
+    if (step !== "review" || !parsedData.length) return [];
 
-    return parsedData.map((row, index) => {
-        let hasError = false;
-        let errorMessages: string[] = [];
+    return parsedData
+      .map((row) => {
+        const amountStr = row[mapping.amount];
+        const dateStr = row[mapping.date];
+        const descriptionStr = row[mapping.description];
 
-        const amount = parseFloat(row[mapping.amount]);
-        if(isNaN(amount) || amount <= 0) {
-            hasError = true;
-            errorMessages.push("Invalid amount");
-        }
+        const amount = parseFloat(amountStr);
+        const date = new Date(dateStr);
 
-        const date = new Date(row[mapping.date]);
-        if (isNaN(date.getTime())) {
-            hasError = true;
-            errorMessages.push("Invalid date");
-        }
-        
-        const description = row[mapping.description];
-        if(!description || description.trim() === '') {
-            hasError = true;
-            errorMessages.push("Missing description");
+        if (
+          isNaN(amount) ||
+          amount <= 0 ||
+          !dateStr ||
+          isNaN(date.getTime()) ||
+          !descriptionStr ||
+          descriptionStr.trim() === ""
+        ) {
+          return null; // Skip invalid rows
         }
 
         return {
-            originalRow: row,
-            transaction: {
-                amount,
-                date: date.toISOString(),
-                description,
-                type: transactionType,
-                category: 'Imported' // Default category
-            },
-            hasError,
-            errorMessages
+          transaction: {
+            amount,
+            date: date.toISOString(),
+            description: descriptionStr,
+            type: transactionType,
+            category: "Imported", // Default category
+          },
         };
-    }).filter(item => !item.hasError);
+      })
+      .filter(Boolean) as { transaction: Omit<Transaction, "id"> }[];
   }, [step, parsedData, mapping, transactionType]);
 
 
