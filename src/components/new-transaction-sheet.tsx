@@ -77,7 +77,7 @@ type FormValues = z.infer<typeof formSchema>
 interface NewTransactionSheetProps {
     isOpen?: boolean;
     onOpenChange?: (isOpen: boolean) => void;
-    transaction?: Transaction | null;
+    transaction?: Partial<Omit<Transaction, 'id'>> & { id: string } | null;
     onTransactionCreated?: (values: FormValues) => void;
     onTransactionUpdated?: (id: string, values: FormValues) => void;
     children?: React.ReactNode;
@@ -161,26 +161,30 @@ export function NewTransactionSheet({
   })
   
   useEffect(() => {
-    if (transaction) {
-      form.reset({
-        ...transaction,
-        date: new Date(transaction.date),
-      });
-    } else {
-      form.reset({
-        type: 'expense',
-        description: '',
-        amount: '' as any,
-        category: undefined,
-        date: new Date(),
-      })
+    if (isOpen) {
+      if (transaction) {
+        form.reset({
+          ...transaction,
+          date: transaction.date ? new Date(transaction.date) : new Date(),
+          amount: transaction.amount || ('' as any),
+          category: transaction.category || undefined,
+        });
+      } else {
+        form.reset({
+          type: 'expense',
+          description: '',
+          amount: '' as any,
+          category: undefined,
+          date: new Date(),
+        });
+      }
     }
-  }, [transaction, form, isOpen])
+  }, [transaction, form, isOpen]);
 
   const transactionType = useWatch({ control: form.control, name: 'type' });
 
   function onSubmit(values: FormValues) {
-    if (transaction && onTransactionUpdated) {
+    if (transaction && transaction.id && onTransactionUpdated) {
         onTransactionUpdated(transaction.id, values);
          toast({
             title: "Transaction Updated",
@@ -212,7 +216,7 @@ export function NewTransactionSheet({
     });
   }
 
-  const isEditing = !!transaction;
+  const isEditing = !!transaction?.id;
   const sheetTitle = isEditing ? "Edit Transaction" : "New Transaction";
   const sheetDescription = isEditing 
     ? "Update the details of your transaction." 
