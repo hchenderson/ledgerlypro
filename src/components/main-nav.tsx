@@ -25,11 +25,11 @@ import type { NavItem } from "@/types";
 const navItems: NavItem[] = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, variant: "default" },
   { title: "Transactions", href: "/transactions", icon: ArrowRightLeft, variant: "ghost" },
-  { title: "Reports", href: "/reports", icon: PieChart, variant: "ghost" },
   { title: "Categories", href: "/categories", icon: Tag, variant: "ghost" },
 ];
 
 const proNavItems: NavItem[] = [
+  { title: "Reports", href: "/reports", icon: PieChart, variant: "ghost" },
   { title: "Budgets", href: "/budgets", icon: Target, variant: "ghost", badge: "New" },
   { title: "Recurring", href: "/recurring", icon: Repeat, variant: "ghost", badge: "New" },
   { title: "Receipt Scanner", href: "/receipt-scanner", icon: Camera, variant: "ghost", badge: "AI" },
