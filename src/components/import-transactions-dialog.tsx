@@ -31,8 +31,12 @@ import { Badge } from "./ui/badge";
 
 type ImportStep = "upload" | "mapping" | "review";
 
-const REQUIRED_COLUMNS = ['amount', 'date', 'description'] as const;
+const REQUIRED_COLUMNS = ['date', 'description'] as const;
 type RequiredColumn = typeof REQUIRED_COLUMNS[number];
+const AMOUNT_COLUMNS = ['amount', 'credit', 'debit'] as const;
+type AmountColumn = typeof AMOUNT_COLUMNS[number];
+const OPTIONAL_COLUMNS = ['category'] as const;
+type OptionalColumn = typeof OPTIONAL_COLUMNS[number];
 
 
 interface ImportTransactionsDialogProps {
@@ -52,10 +56,13 @@ export function ImportTransactionsDialog({
   const [file, setFile] = useState<File | null>(null);
   const [parsedData, setParsedData] = useState<Record<string, string>[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
-  const [mapping, setMapping] = useState<Record<RequiredColumn, string>>({
-    amount: "",
+  const [mapping, setMapping] = useState<Record<RequiredColumn | AmountColumn | OptionalColumn, string>>({
     date: "",
     description: "",
+    amount: "",
+    credit: "",
+    debit: "",
+    category: "",
   });
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
@@ -65,7 +72,7 @@ export function ImportTransactionsDialog({
     setFile(null);
     setParsedData([]);
     setHeaders([]);
-    setMapping({ amount: "", date: "", description: "" });
+    setMapping({ date: "", description: "", amount: "", credit: "", debit: "", category: "" });
     setIsLoading(false);
   };
 
@@ -111,7 +118,9 @@ export function ImportTransactionsDialog({
   };
   
   const canProceedToReview = useMemo(() => {
-    return REQUIRED_COLUMNS.every(col => mapping[col] && headers.includes(mapping[col]));
+    const hasRequired = REQUIRED_COLUMNS.every(col => mapping[col] && headers.includes(mapping[col]));
+    const hasAmount = mapping.amount || (mapping.credit && mapping.debit);
+    return hasRequired && hasAmount;
   }, [mapping, headers])
 
   const processedTransactions = useMemo(() => {
@@ -119,35 +128,55 @@ export function ImportTransactionsDialog({
 
     return parsedData
       .map((row) => {
-        const amountStr = row[mapping.amount];
         const dateStr = row[mapping.date];
         const descriptionStr = row[mapping.description];
 
-        if (!amountStr || !dateStr || !descriptionStr || descriptionStr.trim() === "") {
+        if (!dateStr || !descriptionStr || descriptionStr.trim() === "") {
           return null;
         }
         
-        // Sanitize amount string by removing currency symbols, commas, etc.
-        const sanitizedAmountStr = amountStr.replace(/[^0-9.-]+/g,"");
-        const amount = parseFloat(sanitizedAmountStr);
+        let amount = 0;
+        let type: 'income' | 'expense' | null = null;
+        
+        if(mapping.amount) {
+            const sanitizedAmountStr = (row[mapping.amount] || "").replace(/[^0-9.-]+/g,"");
+            const parsedAmount = parseFloat(sanitizedAmountStr);
+            if(!isNaN(parsedAmount)) {
+                amount = Math.abs(parsedAmount);
+                type = parsedAmount >= 0 ? 'income' : 'expense';
+            }
+        } else if (mapping.credit && mapping.debit) {
+             const creditStr = (row[mapping.credit] || "").replace(/[^0-9.-]+/g,"");
+             const debitStr = (row[mapping.debit] || "").replace(/[^0-9.-]+/g,"");
+             const creditAmount = parseFloat(creditStr);
+             const debitAmount = parseFloat(debitStr);
+
+             if(!isNaN(creditAmount) && creditAmount > 0) {
+                 amount = creditAmount;
+                 type = 'income';
+             } else if (!isNaN(debitAmount) && debitAmount > 0) {
+                 amount = debitAmount;
+                 type = 'expense';
+             }
+        }
+
         const date = new Date(dateStr);
 
         if (
-          isNaN(amount) ||
+          !type ||
+          amount === 0 ||
           isNaN(date.getTime())
         ) {
           return null; // Skip invalid rows
         }
 
-        const type = amount >= 0 ? 'income' : 'expense';
-
         return {
           transaction: {
-            amount: Math.abs(amount),
+            amount,
             date: date.toISOString(),
             description: descriptionStr,
             type: type,
-            category: "Imported", // Default category
+            category: row[mapping.category] || "Imported", // Use mapped category or default
           },
         };
       })
@@ -212,25 +241,76 @@ export function ImportTransactionsDialog({
             <DialogHeader>
               <DialogTitle>Step 2: Map Columns</DialogTitle>
               <DialogDescription>
-                Match the columns from your CSV to the required transaction fields. The transaction type will be determined automatically based on the amount.
+                Match the columns from your CSV to the required transaction fields.
               </DialogDescription>
             </DialogHeader>
-            <div className="py-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                {REQUIRED_COLUMNS.map(col => (
-                    <div key={col} className="space-y-2">
-                        <Label className="capitalize">{col}</Label>
-                        <Select onValueChange={(value) => setMapping(prev => ({...prev, [col]: value}))}>
-                            <SelectTrigger>
-                                <SelectValue placeholder="Select CSV column" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {headers.map(header => (
-                                    <SelectItem key={header} value={header}>{header}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+            <div className="py-4 space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                     {REQUIRED_COLUMNS.map(col => (
+                        <div key={col} className="space-y-2">
+                            <Label className="capitalize">{col} <span className="text-destructive">*</span></Label>
+                            <Select onValueChange={(value) => setMapping(prev => ({...prev, [col]: value}))}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select CSV column" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {headers.map(header => (
+                                        <SelectItem key={header} value={header}>{header}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    ))}
+                </div>
+                <div>
+                    <p className="text-sm text-muted-foreground mb-2">
+                        For amounts, map a single column (positive for income, negative for expense) OR map separate credit/debit columns.
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border p-4 rounded-md">
+                        {['amount'].map(col => (
+                            <div key={col} className="space-y-2">
+                                <Label className="capitalize">{col}</Label>
+                                <Select onValueChange={(value) => setMapping(prev => ({...prev, [col]: value, credit: '', debit: ''}))} disabled={!!(mapping.credit || mapping.debit)}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select column" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {headers.map(header => (<SelectItem key={header} value={header}>{header}</SelectItem>))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        ))}
+                        <div className="flex items-center justify-center text-muted-foreground text-sm">OR</div>
+                         <div className="grid grid-cols-2 gap-2 col-span-1">
+                             {['credit', 'debit'].map(col => (
+                                <div key={col} className="space-y-2">
+                                    <Label className="capitalize">{col}</Label>
+                                    <Select onValueChange={(value) => setMapping(prev => ({...prev, [col]: value, amount: ''}))} disabled={!!mapping.amount}>
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select column" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {headers.map(header => (<SelectItem key={header} value={header}>{header}</SelectItem>))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            ))}
+                         </div>
                     </div>
-                ))}
+                </div>
+                <div>
+                     <Label>Category (Optional)</Label>
+                      <Select onValueChange={(value) => setMapping(prev => ({...prev, category: value}))}>
+                        <SelectTrigger>
+                            <SelectValue placeholder="Select category column" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {headers.map(header => (
+                                <SelectItem key={header} value={header}>{header}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
             </div>
             <DialogFooter>
                 <Button variant="outline" onClick={() => setStep('upload')}>Back</Button>
@@ -257,6 +337,7 @@ export function ImportTransactionsDialog({
                     <TableRow>
                       <TableHead>Date</TableHead>
                       <TableHead>Description</TableHead>
+                      <TableHead>Category</TableHead>
                        <TableHead>Type</TableHead>
                       <TableHead className="text-right">Amount</TableHead>
                     </TableRow>
@@ -266,8 +347,9 @@ export function ImportTransactionsDialog({
                       <TableRow key={index}>
                         <TableCell>{new Date(item.transaction.date).toLocaleDateString()}</TableCell>
                         <TableCell>{item.transaction.description}</TableCell>
+                         <TableCell><Badge variant="outline">{item.transaction.category}</Badge></TableCell>
                         <TableCell>
-                          <Badge variant={item.transaction.type === 'income' ? 'default' : 'secondary'} className={item.transaction.type === 'income' ? 'bg-emerald-500/10 text-emerald-700' : 'bg-red-500/10 text-red-700'}>
+                          <Badge variant={item.transaction.type === 'income' ? 'default' : 'secondary'} className={cn(item.transaction.type === 'income' ? 'bg-emerald-500/10 text-emerald-700' : 'bg-red-500/10 text-red-700', 'border-none')}>
                               {item.transaction.type}
                           </Badge>
                         </TableCell>
@@ -296,7 +378,7 @@ export function ImportTransactionsDialog({
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
         <DialogTrigger asChild>{children}</DialogTrigger>
-        <DialogContent className="sm:max-w-2xl" onInteractOutside={(e) => e.preventDefault()}>
+        <DialogContent className="sm:max-w-3xl" onInteractOutside={(e) => e.preventDefault()}>
             {renderContent()}
         </DialogContent>
     </Dialog>
