@@ -92,6 +92,7 @@ export function ImportTransactionsDialog({
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
+      delimitersToGuess: [',', '\t', ';'],
       complete: (results) => {
         if (results.errors.length) {
           toast({
