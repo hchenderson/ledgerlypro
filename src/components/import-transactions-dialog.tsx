@@ -27,13 +27,13 @@ import { Label } from "./ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { cn } from "@/lib/utils";
 import type { Transaction } from "@/types";
+import { Badge } from "./ui/badge";
 
 type ImportStep = "upload" | "mapping" | "review";
 
 const REQUIRED_COLUMNS = ['amount', 'date', 'description'] as const;
 type RequiredColumn = typeof REQUIRED_COLUMNS[number];
 
-const transactionTypeOptions = ["income", "expense"] as const;
 
 interface ImportTransactionsDialogProps {
   isOpen: boolean;
@@ -57,7 +57,6 @@ export function ImportTransactionsDialog({
     date: "",
     description: "",
   });
-  const [transactionType, setTransactionType] = useState<(typeof transactionTypeOptions)[number]>('expense');
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
@@ -129,7 +128,7 @@ export function ImportTransactionsDialog({
 
         if (
           isNaN(amount) ||
-          amount <= 0 ||
+          amount === 0 || // Exclude transactions with zero amount
           !dateStr ||
           isNaN(date.getTime()) ||
           !descriptionStr ||
@@ -138,18 +137,20 @@ export function ImportTransactionsDialog({
           return null; // Skip invalid rows
         }
 
+        const type = amount > 0 ? 'income' : 'expense';
+
         return {
           transaction: {
-            amount,
+            amount: Math.abs(amount),
             date: date.toISOString(),
             description: descriptionStr,
-            type: transactionType,
+            type: type,
             category: "Imported", // Default category
           },
         };
       })
       .filter(Boolean) as { transaction: Omit<Transaction, "id"> }[];
-  }, [step, parsedData, mapping, transactionType]);
+  }, [step, parsedData, mapping]);
 
 
   const handleImport = () => {
@@ -209,7 +210,7 @@ export function ImportTransactionsDialog({
             <DialogHeader>
               <DialogTitle>Step 2: Map Columns</DialogTitle>
               <DialogDescription>
-                Match the columns from your CSV to the required transaction fields.
+                Match the columns from your CSV to the required transaction fields. The transaction type will be determined automatically based on the amount.
               </DialogDescription>
             </DialogHeader>
             <div className="py-4 grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -228,20 +229,6 @@ export function ImportTransactionsDialog({
                         </Select>
                     </div>
                 ))}
-                <div className="space-y-2">
-                  <Label>Transaction Type</Label>
-                  <Select value={transactionType} onValueChange={(v: any) => setTransactionType(v)}>
-                      <SelectTrigger>
-                          <SelectValue placeholder="Select transaction type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                          {transactionTypeOptions.map(type => (
-                            <SelectItem key={type} value={type} className="capitalize">{type}</SelectItem>
-                          ))}
-                      </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">Apply this type to all imported transactions.</p>
-                </div>
             </div>
             <DialogFooter>
                 <Button variant="outline" onClick={() => setStep('upload')}>Back</Button>
@@ -268,6 +255,7 @@ export function ImportTransactionsDialog({
                     <TableRow>
                       <TableHead>Date</TableHead>
                       <TableHead>Description</TableHead>
+                       <TableHead>Type</TableHead>
                       <TableHead className="text-right">Amount</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -276,8 +264,13 @@ export function ImportTransactionsDialog({
                       <TableRow key={index}>
                         <TableCell>{new Date(item.transaction.date).toLocaleDateString()}</TableCell>
                         <TableCell>{item.transaction.description}</TableCell>
-                        <TableCell className={cn("text-right font-code", transactionType === 'income' && 'text-emerald-600')}>
-                          {transactionType === 'income' ? '+' : '-'}
+                        <TableCell>
+                          <Badge variant={item.transaction.type === 'income' ? 'default' : 'secondary'} className={item.transaction.type === 'income' ? 'bg-emerald-500/10 text-emerald-700' : 'bg-red-500/10 text-red-700'}>
+                              {item.transaction.type}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className={cn("text-right font-code", item.transaction.type === 'income' ? 'text-emerald-600' : 'text-red-600')}>
+                          {item.transaction.type === 'income' ? '+' : '-'}
                           {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(item.transaction.amount)}
                         </TableCell>
                       </TableRow>
@@ -307,3 +300,5 @@ export function ImportTransactionsDialog({
     </Dialog>
   );
 }
+
+    
