@@ -32,6 +32,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import type { Budget } from '@/types';
+import { FeatureGate } from '@/components/feature-gate';
 
 
 const budgetFormSchema = z.object({
@@ -131,7 +132,7 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
 }
 
 
-export default function BudgetsPage() {
+function BudgetsPageContent() {
   const { budgets, transactions, categories, addBudget, updateBudget, deleteBudget, loading } = useUserData();
 
   const handleSaveBudget = (values: BudgetFormValues, id?: string) => {
@@ -271,4 +272,12 @@ export default function BudgetsPage() {
       )}
     </div>
   );
+}
+
+export default function BudgetsPage() {
+    return (
+        <FeatureGate>
+            <BudgetsPageContent />
+        </FeatureGate>
+    )
 }

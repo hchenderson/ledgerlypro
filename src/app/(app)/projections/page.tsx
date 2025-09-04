@@ -9,8 +9,9 @@ import { useUserData } from "@/hooks/use-user-data";
 import { Rocket, Sparkles } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { FeatureGate } from "@/components/feature-gate";
 
-export default function ProjectionsPage() {
+function ProjectionsPageContent() {
   const [loading, setLoading] = useState(false);
   const [projection, setProjection] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -109,4 +110,12 @@ export default function ProjectionsPage() {
       )}
     </div>
   );
+}
+
+export default function ProjectionsPage() {
+    return (
+        <FeatureGate>
+            <ProjectionsPageContent />
+        </FeatureGate>
+    )
 }

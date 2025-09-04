@@ -39,6 +39,7 @@ import { format } from 'date-fns';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { FeatureGate } from '@/components/feature-gate';
 
 const recurringFormSchema = z.object({
   description: z.string().min(2, 'Description must be at least 2 characters.'),
@@ -144,7 +145,7 @@ function RecurringDialog({ transaction, onSave, children }: { transaction?: Recu
   )
 }
 
-export default function RecurringPage() {
+function RecurringPageContent() {
   const { recurringTransactions, addRecurringTransaction, updateRecurringTransaction, deleteRecurringTransaction, loading } = useUserData();
 
   const handleSave = (values: RecurringFormValues, id?: string) => {
@@ -223,4 +224,13 @@ export default function RecurringPage() {
       </Card>
     </div>
   );
+}
+
+
+export default function RecurringPage() {
+    return (
+        <FeatureGate>
+            <RecurringPageContent />
+        </FeatureGate>
+    )
 }

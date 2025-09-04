@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
@@ -16,14 +16,20 @@ import { Progress } from '@/components/ui/progress';
 
 
 export default function WelcomePage() {
-    const { user } = useAuth();
+    const { user, setPlan } = useAuth();
     const router = useRouter();
     const { toast } = useToast();
     const [step, setStep] = useState(1);
     const [name, setName] = useState('');
     const [startingBalance, setStartingBalance] = useState('');
-    const [subscription, setSubscription] = useState('free');
+    const [subscription, setSubscription] = useState<'free' | 'monthly' | 'yearly'>('free');
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    useEffect(() => {
+        if(user?.displayName) {
+            setName(user.displayName);
+        }
+    }, [user])
 
     const handleNext = () => setStep(prev => prev + 1);
     const handleBack = () => setStep(prev => prev - 1);
@@ -42,10 +48,8 @@ export default function WelcomePage() {
 
         setIsSubmitting(true);
         try {
-            // 1. Update user profile name
             await updateProfile(user, { displayName: name });
 
-            // 2. Save starting balance to localStorage
             const balance = parseFloat(startingBalance);
             if (!isNaN(balance)) {
                 localStorage.setItem('startingBalance', balance.toString());
@@ -53,10 +57,12 @@ export default function WelcomePage() {
                  localStorage.setItem('startingBalance', '0');
             }
             
-            // 3. (Optional) Save subscription choice. For now, we'll just log it.
-            console.log(`User ${user.uid} chose the ${subscription} plan.`);
+            if (subscription === 'monthly' || subscription === 'yearly') {
+                setPlan('pro');
+            } else {
+                setPlan('free');
+            }
 
-            // 4. Mark onboarding as complete
             localStorage.setItem('onboardingComplete', 'true');
 
             toast({ title: 'Setup Complete!', description: 'Welcome to Ledgerly. Redirecting you to the dashboard...' });
@@ -142,8 +148,8 @@ export default function WelcomePage() {
                         <ArrowLeft className="mr-2 h-4 w-4" /> Back
                     </Button>
                     {step < 3 ? (
-                        <Button onClick={handleNext}>
-                            Next <ArrowRight className="mr-2 h-4 w-4" />
+                        <Button onClick={handleNext} disabled={!name && step === 1}>
+                            Next <ArrowRight className="ml-2 h-4 w-4" />
                         </Button>
                     ) : (
                         <Button onClick={handleFinish} disabled={isSubmitting}>

@@ -12,9 +12,9 @@ import type { Transaction } from '@/types';
 import { useUserData } from '@/hooks/use-user-data';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { cn } from '@/lib/utils';
-import { Separator } from '@/components/ui/separator';
+import { FeatureGate } from '@/components/feature-gate';
 
-export default function ReceiptScannerPage() {
+function ReceiptScannerPageContent() {
     const [file, setFile] = useState<File | null>(null);
     const [preview, setPreview] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
@@ -275,5 +275,13 @@ export default function ReceiptScannerPage() {
             categories={categories}
         />
         </>
+    )
+}
+
+export default function ReceiptScannerPage() {
+    return (
+        <FeatureGate>
+            <ReceiptScannerPageContent />
+        </FeatureGate>
     )
 }

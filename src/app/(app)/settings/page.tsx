@@ -16,7 +16,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 
 export default function SettingsPage() {
     const { toast } = useToast();
-    const { user } = useAuth();
+    const { user, plan } = useAuth();
     const { clearTransactions, clearAllData } = useUserData();
     const [name, setName] = useState('');
     const [startingBalance, setStartingBalance] = useState('');
@@ -141,11 +141,13 @@ export default function SettingsPage() {
                 </CardHeader>
                  <CardContent className="flex items-center justify-between rounded-lg border p-4">
                     <div>
-                        <div className="font-medium">You are on the <Badge variant="secondary" className="font-bold">Free</Badge> plan.</div>
-                        <p className="text-sm text-muted-foreground">Limited to 100 transactions.</p>
+                        <div className="font-medium">You are on the <Badge variant={plan === 'pro' ? 'default' : 'secondary'} className="font-bold capitalize">{plan}</Badge> plan.</div>
+                        <p className="text-sm text-muted-foreground">
+                            {plan === 'pro' ? 'You have access to all features.' : 'Limited to 100 transactions.'}
+                        </p>
                     </div>
                      <Button asChild>
-                        <Link href="/pricing">Upgrade Plan</Link>
+                        <Link href="/pricing">{plan === 'pro' ? 'Manage Plan' : 'Upgrade Plan'}</Link>
                      </Button>
                 </CardContent>
                 </Card>
