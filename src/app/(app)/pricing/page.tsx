@@ -1,13 +1,16 @@
 
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Check, X } from "lucide-react";
+import { Check, X, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { validPromoCodes } from '@/lib/promo-codes';
 
 const freeFeatures = [
     { text: "Up to 100 transactions", included: true },
@@ -33,13 +36,31 @@ const proFeatures = [
 const ProductDisplay = () => {
     const { plan, setPlan } = useAuth();
     const { toast } = useToast();
+    const [promoCode, setPromoCode] = useState('');
+    const [promoApplied, setPromoApplied] = useState(false);
 
     const handleChoosePlan = (newPlan: 'free' | 'pro') => {
         setPlan(newPlan);
         toast({
             title: "Plan Updated!",
-            description: `You are now on the ${newPlan} plan.`
+            description: `You are now on the ${newPlan === 'pro' ? 'Pro' : 'Free'} plan.`
         })
+    }
+
+    const handleApplyPromo = () => {
+        if(validPromoCodes.includes(promoCode.toUpperCase())) {
+            setPromoApplied(true);
+            toast({
+                title: 'Promo Code Applied!',
+                description: 'You have unlocked the Pro plan for free.',
+            });
+        } else {
+            toast({
+                variant: 'destructive',
+                title: 'Invalid Promo Code',
+                description: 'The code you entered is not valid. Please try again.',
+            });
+        }
     }
     
     return (
@@ -52,6 +73,26 @@ const ProductDisplay = () => {
                     Start for free, or unlock powerful bookkeeping features. Cancel anytime.
                 </p>
             </div>
+            
+            {!promoApplied && plan !== 'pro' && (
+                <Card className="max-w-md mx-auto mb-8">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2"><Sparkles className="text-primary"/> Have a Promo Code?</CardTitle>
+                    </CardHeader>
+                    <CardContent className="flex items-end gap-2">
+                        <div className="w-full space-y-2">
+                            <Label htmlFor="promo-code">Promo Code</Label>
+                            <Input 
+                                id="promo-code" 
+                                placeholder="Enter your code" 
+                                value={promoCode} 
+                                onChange={(e) => setPromoCode(e.target.value)}
+                            />
+                        </div>
+                        <Button onClick={handleApplyPromo}>Apply</Button>
+                    </CardContent>
+                </Card>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                     <Card>
@@ -88,8 +129,15 @@ const ProductDisplay = () => {
                     </CardHeader>
                     <CardContent className="space-y-6">
                         <div className="flex items-baseline gap-2">
+                            {promoApplied ? (
+                                <>
+                                    <span className="text-5xl font-bold font-code text-primary line-through">$4.99</span>
+                                    <span className="text-5xl font-bold font-code">$0</span>
+                                </>
+                            ) : (
                                 <span className="text-5xl font-bold font-code">$4.99</span>
-                                <span className="text-muted-foreground">/ month</span>
+                            )}
+                            <span className="text-muted-foreground">/ month</span>
                         </div>
                             <ul className="space-y-3">
                             {proFeatures.map(feature => (
@@ -104,7 +152,9 @@ const ProductDisplay = () => {
                        {plan === 'pro' ? (
                             <Button className="w-full" disabled>Current Plan</Button>
                         ) : (
-                            <Button className="w-full" variant="outline" onClick={() => handleChoosePlan('pro')}>Choose Monthly</Button>
+                            <Button className="w-full" variant={promoApplied ? "default" : "outline"} onClick={() => handleChoosePlan('pro')}>
+                                {promoApplied ? "Activate Pro" : "Choose Monthly"}
+                            </Button>
                         )}
                     </CardFooter>
                 </Card>
@@ -117,7 +167,14 @@ const ProductDisplay = () => {
                     </CardHeader>
                     <CardContent className="space-y-6">
                         <div className="flex items-baseline gap-2">
+                            {promoApplied ? (
+                                <>
+                                    <span className="text-5xl font-bold font-code text-primary line-through">$39.99</span>
+                                    <span className="text-5xl font-bold font-code">$0</span>
+                                </>
+                            ) : (
                                 <span className="text-5xl font-bold font-code">$39.99</span>
+                            )}
                                 <span className="text-muted-foreground">/ year</span>
                         </div>
                         <ul className="space-y-3">
@@ -133,7 +190,9 @@ const ProductDisplay = () => {
                         {plan === 'pro' ? (
                             <Button className="w-full" disabled>Current Plan</Button>
                         ) : (
-                           <Button className="w-full" onClick={() => handleChoosePlan('pro')}>Choose Yearly</Button>
+                           <Button className="w-full" onClick={() => handleChoosePlan('pro')}>
+                             {promoApplied ? "Activate Pro" : "Choose Yearly"}
+                           </Button>
                         )}
                     </CardFooter>
                 </Card>
