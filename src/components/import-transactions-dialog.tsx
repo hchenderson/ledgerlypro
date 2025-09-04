@@ -144,22 +144,21 @@ export function ImportTransactionsDialog({
           return null;
         }
         
-        let amountVal = 0;
+        let amountVal: number | null = null;
         let type: 'income' | 'expense' | null = null;
         
         if (mapping.amount) {
             const sanitizedAmountStr = (row[mapping.amount] || "").replace(/[^0-9.-]+/g,"");
             const parsedAmount = parseFloat(sanitizedAmountStr);
-            if (isNaN(parsedAmount)) return null;
+            
+            if (isNaN(parsedAmount) || parsedAmount === 0) return null;
 
             if (parsedAmount > 0) {
                 type = 'income';
                 amountVal = parsedAmount;
-            } else if (parsedAmount < 0) {
+            } else {
                 type = 'expense';
                 amountVal = Math.abs(parsedAmount);
-            } else { // parsedAmount === 0
-                return null; // Skip zero amount transactions
             }
         } else if (mapping.credit && mapping.debit) {
              const creditStr = (row[mapping.credit] || "0").replace(/[^0-9.-]+/g,"");
@@ -169,18 +168,18 @@ export function ImportTransactionsDialog({
              
              if (isNaN(creditAmount) || isNaN(debitAmount)) return null;
 
-             if(creditAmount > 0) {
+             if(creditAmount > 0 && debitAmount === 0) {
                  amountVal = creditAmount;
                  type = 'income';
-             } else if (debitAmount > 0) {
+             } else if (debitAmount > 0 && creditAmount === 0) {
                  amountVal = debitAmount;
                  type = 'expense';
              } else {
-                return null; // Skip if both are zero or invalid
+                return null;
              }
         }
         
-        if (type === null) return null;
+        if (type === null || amountVal === null) return null;
 
         const date = new Date(dateStr);
         if (isNaN(date.getTime())) {
@@ -433,5 +432,3 @@ export function ImportTransactionsDialog({
     </Dialog>
   );
 }
-
-    
