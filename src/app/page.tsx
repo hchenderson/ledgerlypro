@@ -1,3 +1,4 @@
+
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { BarChart, Briefcase, FileText, PieChart } from 'lucide-react';
@@ -24,7 +25,7 @@ const features = [
   {
     icon: <BarChart className="h-6 w-6" />,
     title: 'AI Projections',
-    description: 'Leverage AI to get cash flow projections based on your historical data.',
+    description: 'Leverage AI to get cash flow projections. AI can make mistakes, so please verify all results.',
   },
 ];
 

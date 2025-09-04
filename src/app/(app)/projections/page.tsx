@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getCashFlowProjections, GetCashFlowProjectionsInput } from "@/ai/flows/cash-flow-projections";
 import { useUserData } from "@/hooks/use-user-data";
-import { Rocket, Sparkles } from "lucide-react";
+import { Rocket, Sparkles, AlertTriangle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { FeatureGate } from "@/components/feature-gate";
@@ -53,6 +53,14 @@ function ProjectionsPageContent() {
           Leverage the power of AI to forecast your financial future based on your transaction history.
         </p>
       </div>
+      
+       <Alert>
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Verify AI Output</AlertTitle>
+          <AlertDescription>
+            AI can make mistakes. Please review the generated projection carefully and verify its accuracy against your own records.
+          </AlertDescription>
+        </Alert>
 
       <Card className="text-center">
         <CardHeader>

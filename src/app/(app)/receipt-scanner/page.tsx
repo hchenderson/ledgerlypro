@@ -153,6 +153,14 @@ function ReceiptScannerPageContent() {
                 </p>
             </div>
             
+            <Alert>
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Verify AI Output</AlertTitle>
+                <AlertDescription>
+                    AI can make mistakes. Please double-check the extracted data before creating a transaction.
+                </AlertDescription>
+            </Alert>
+
              <Card>
                 <CardHeader>
                     <CardTitle>1. Choose Input</CardTitle>
