@@ -104,11 +104,13 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
         <SidebarContent>
           <MainNav />
         </SidebarContent>
-        <SidebarFooter>
-          <Button asChild className="w-full" variant="secondary">
-            <Link href="/pricing">Upgrade to Pro</Link>
-          </Button>
-        </SidebarFooter>
+        {!isPro && (
+            <SidebarFooter>
+              <Button asChild className="w-full" variant="secondary">
+                <Link href="/pricing">Upgrade to Pro</Link>
+              </Button>
+            </SidebarFooter>
+        )}
       </Sidebar>
       <SidebarInset className="bg-background">
         <header className="sticky top-0 z-10 flex h-16 items-center gap-4 border-b bg-background/80 px-4 backdrop-blur-sm md:px-6">
