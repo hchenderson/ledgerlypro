@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from 'react';
-import { Camera, Loader2, Sparkles, Upload, CheckCircle, AlertTriangle, Video, Power, Capture } from 'lucide-react';
+import { Camera, Loader2, Sparkles, Upload, CheckCircle, AlertTriangle, Video, Power } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { scanReceipt, ScanReceiptOutput } from '@/ai/flows/scan-receipt-flow';
@@ -200,7 +200,7 @@ export default function ReceiptScannerPage() {
                             )}
                         </div>
                         <Button onClick={handleCapture} disabled={!hasCameraPermission} className="w-full">
-                            <Capture className="mr-2 h-4 w-4" /> Capture Photo
+                            <Camera className="mr-2 h-4 w-4" /> Capture Photo
                         </Button>
                     </CardContent>
                 </Card>
