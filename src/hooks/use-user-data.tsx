@@ -210,7 +210,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const clearAllData = () => {
     setTransactions([]);
-    setCategories(defaultCategories);
+    setCategories([]);
     setBudgets([]);
     setRecurringTransactions([]);
   }
