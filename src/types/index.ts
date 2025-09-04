@@ -14,6 +14,7 @@ export type NavItem = {
   href: string;
   icon: LucideIcon;
   variant: "default" | "ghost";
+  badge?: string;
 };
 
 export type SubCategory = {
@@ -28,4 +29,22 @@ export type Category = {
     type: "income" | "expense";
     icon: LucideIcon;
     subCategories?: SubCategory[];
+};
+
+export type Budget = {
+  id: string;
+  categoryId: string;
+  amount: number;
+  period: "monthly"; // Can be expanded later
+};
+
+export type RecurringTransaction = {
+  id: string;
+  description: string;
+  amount: number;
+  type: "income" | "expense";
+  category: string;
+  frequency: "daily" | "weekly" | "monthly" | "yearly";
+  startDate: string;
+  lastAddedDate?: string;
 };

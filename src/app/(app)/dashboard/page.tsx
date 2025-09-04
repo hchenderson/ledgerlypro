@@ -1,11 +1,12 @@
 
 "use client";
 
-import { DollarSign, TrendingUp, TrendingDown, Wallet, X, CheckCircle } from "lucide-react";
+import { DollarSign, TrendingUp, TrendingDown, Wallet, X, CheckCircle, Target } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { OverviewChart } from "@/components/dashboard/overview-chart";
 import { RecentTransactions } from "@/components/dashboard/recent-transactions";
+import { BudgetProgress } from "@/components/dashboard/budget-progress";
 import { useEffect, useMemo, useState } from "react";
 import { useUserData } from "@/hooks/use-user-data";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -25,6 +26,9 @@ function DashboardSkeleton() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
         <Skeleton className="lg:col-span-3 h-80" />
         <Skeleton className="lg:col-span-2 h-80" />
+      </div>
+       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+        <Skeleton className="lg:col-span-5 h-60" />
       </div>
     </div>
   )
@@ -54,7 +58,7 @@ function GettingStartedGuide({ onClearData, onDismiss }: { onClearData: () => vo
 }
 
 export default function DashboardPage() {
-  const { transactions, loading, clearTransactions } = useUserData();
+  const { transactions, loading, clearTransactions, budgets, categories } = useUserData();
   const [startingBalance, setStartingBalance] = useState(0);
   const [showGuide, setShowGuide] = useState(false);
 
@@ -173,6 +177,15 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+       <Card>
+        <CardHeader>
+            <CardTitle className="flex items-center gap-2"><Target /> Budget Overview</CardTitle>
+            <CardDescription>How you&apos;re tracking against your monthly spending goals.</CardDescription>
+        </CardHeader>
+        <CardContent>
+            <BudgetProgress budgets={budgets} transactions={transactions} categories={categories} />
+        </CardContent>
+      </Card>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 
-import type { Transaction, Category } from "@/types";
+import type { Transaction, Category, Budget, RecurringTransaction } from "@/types";
 import { Utensils, Car, Home, ShoppingBag, HeartPulse, Sparkles, HandCoins, Building, Shirt, Pizza, Plane } from "lucide-react";
 
 
@@ -106,4 +106,22 @@ export const defaultTransactions: Transaction[] = [
     type: "income",
     category: "Investments",
   },
+];
+
+
+export const defaultBudgets: Budget[] = [
+    { id: 'bud_1', categoryId: 'cat_1', amount: 500, period: 'monthly' }, // Food
+    { id: 'bud_2', categoryId: 'cat_4', amount: 250, period: 'monthly' }, // Shopping
+];
+
+export const defaultRecurringTransactions: RecurringTransaction[] = [
+    {
+        id: 'rec_1',
+        description: 'Netflix Subscription',
+        amount: 15.99,
+        type: 'expense',
+        category: 'Other',
+        frequency: 'monthly',
+        startDate: new Date('2024-07-01').toISOString(),
+    }
 ];

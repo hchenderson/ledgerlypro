@@ -2,19 +2,29 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import type { Transaction, Category, SubCategory } from '@/types';
-import { defaultTransactions, defaultCategories } from '@/lib/data';
+import type { Transaction, Category, SubCategory, Budget, RecurringTransaction } from '@/types';
+import { defaultTransactions, defaultCategories, defaultBudgets, defaultRecurringTransactions } from '@/lib/data';
 import { useAuth } from './use-auth';
+import { isSameDay, isSameWeek, isSameMonth, isSameYear, parseISO, isBefore, startOfDay } from 'date-fns';
 
 interface UserDataContextType {
   transactions: Transaction[];
   categories: Category[];
+  budgets: Budget[];
+  recurringTransactions: RecurringTransaction[];
   loading: boolean;
   addTransaction: (transaction: Transaction) => void;
   updateTransaction: (id: string, values: Partial<Omit<Transaction, 'id'>>) => void;
   deleteTransaction: (id: string) => void;
   addCategory: (category: Category) => void;
   addSubCategory: (parentId: string, subCategory: SubCategory) => void;
+  addBudget: (budget: Budget) => void;
+  updateBudget: (id: string, values: Partial<Omit<Budget, 'id'>>) => void;
+  deleteBudget: (id: string) => void;
+  addRecurringTransaction: (transaction: RecurringTransaction) => void;
+  updateRecurringTransaction: (id: string, values: Partial<Omit<RecurringTransaction, 'id'>>) => void;
+  deleteRecurringTransaction: (id: string) => void;
+  processRecurringTransactions: () => void;
   clearTransactions: () => void;
   clearAllData: () => void;
 }
@@ -25,6 +35,8 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const { user } = useAuth();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [budgets, setBudgets] = useState<Budget[]>([]);
+  const [recurringTransactions, setRecurringTransactions] = useState<RecurringTransaction[]>([]);
   const [loading, setLoading] = useState(true);
 
   const getStorageKey = useCallback((key: string) => {
@@ -32,50 +44,64 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return `${key}_${user.uid}`;
   }, [user]);
 
+  // Load data from localStorage
   useEffect(() => {
     if (user) {
       setLoading(true);
       
-      const transactionsKey = getStorageKey('transactions');
-      const categoriesKey = getStorageKey('categories');
+      const keys = ['transactions', 'categories', 'budgets', 'recurringTransactions'];
+      const setters = {
+          'transactions': setTransactions,
+          'categories': setCategories,
+          'budgets': setBudgets,
+          'recurringTransactions': setRecurringTransactions
+      };
+       const defaults = {
+          'transactions': defaultTransactions,
+          'categories': defaultCategories,
+          'budgets': defaultBudgets,
+          'recurringTransactions': defaultRecurringTransactions
+      };
 
-      if (transactionsKey && categoriesKey) {
-        const storedTransactions = localStorage.getItem(transactionsKey);
-        const storedCategories = localStorage.getItem(categoriesKey);
-
-        if (storedTransactions) {
-          setTransactions(JSON.parse(storedTransactions));
-        } else {
-          setTransactions(defaultTransactions);
+      keys.forEach(key => {
+        const storageKey = getStorageKey(key);
+        if (storageKey) {
+            const storedValue = localStorage.getItem(storageKey);
+            if (storedValue) {
+                setters[key as keyof typeof setters](JSON.parse(storedValue));
+            } else {
+                 setters[key as keyof typeof setters](defaults[key as keyof typeof defaults]);
+            }
         }
-
-        if (storedCategories) {
-          setCategories(JSON.parse(storedCategories));
-        } else {
-          setCategories(defaultCategories);
-        }
-      }
+      });
+      
       setLoading(false);
     } else {
       // Clear data if user logs out
       setTransactions([]);
       setCategories([]);
+      setBudgets([]);
+      setRecurringTransactions([]);
     }
   }, [user, getStorageKey]);
 
+  // Save data to localStorage
   useEffect(() => {
-    const transactionsKey = getStorageKey('transactions');
-    if (user && transactionsKey && !loading) {
-      localStorage.setItem(transactionsKey, JSON.stringify(transactions));
+    if (user && !loading) {
+        const dataToStore = {
+            transactions,
+            categories,
+            budgets,
+            recurringTransactions,
+        };
+        for (const [key, value] of Object.entries(dataToStore)) {
+            const storageKey = getStorageKey(key);
+            if (storageKey) {
+                localStorage.setItem(storageKey, JSON.stringify(value));
+            }
+        }
     }
-  }, [transactions, user, getStorageKey, loading]);
-  
-  useEffect(() => {
-    const categoriesKey = getStorageKey('categories');
-    if (user && categoriesKey && !loading) {
-      localStorage.setItem(categoriesKey, JSON.stringify(categories));
-    }
-  }, [categories, user, getStorageKey, loading]);
+  }, [transactions, categories, budgets, recurringTransactions, user, getStorageKey, loading]);
 
   const addTransaction = (transaction: Transaction) => {
     setTransactions(prev => [transaction, ...prev]);
@@ -105,6 +131,79 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }));
   };
 
+  const addBudget = (budget: Budget) => {
+    setBudgets(prev => [...prev, budget]);
+  };
+
+  const updateBudget = (id: string, values: Partial<Omit<Budget, 'id'>>) => {
+    setBudgets(prev => prev.map(b => (b.id === id ? { ...b, ...values } : b)));
+  };
+
+  const deleteBudget = (id: string) => {
+    setBudgets(prev => prev.filter(b => b.id !== id));
+  };
+  
+  const addRecurringTransaction = (transaction: RecurringTransaction) => {
+    setRecurringTransactions(prev => [...prev, transaction]);
+  };
+
+  const updateRecurringTransaction = (id: string, values: Partial<Omit<RecurringTransaction, 'id'>>) => {
+    setRecurringTransactions(prev => prev.map(rt => (rt.id === id ? { ...rt, ...values } : rt)));
+  };
+
+  const deleteRecurringTransaction = (id: string) => {
+    setRecurringTransactions(prev => prev.filter(rt => rt.id !== id));
+  };
+  
+  const processRecurringTransactions = useCallback(() => {
+    const today = startOfDay(new Date());
+    let newTransactions: Transaction[] = [];
+    const updatedRecurring = recurringTransactions.map(rt => {
+      const startDate = parseISO(rt.startDate);
+      let lastAdded = rt.lastAddedDate ? parseISO(rt.lastAddedDate) : startDate;
+      
+      let shouldAdd = false;
+      switch(rt.frequency) {
+        case 'daily':
+          if (isBefore(lastAdded, today)) shouldAdd = true;
+          break;
+        case 'weekly':
+          if (!isSameWeek(lastAdded, today, { weekStartsOn: 1 })) shouldAdd = true;
+          break;
+        case 'monthly':
+          if (!isSameMonth(lastAdded, today)) shouldAdd = true;
+          break;
+        case 'yearly':
+          if (!isSameYear(lastAdded, today)) shouldAdd = true;
+          break;
+      }
+      
+      if (isBefore(startDate, today) && shouldAdd) {
+        newTransactions.push({
+          id: `txn_${Date.now()}_${Math.random()}`,
+          date: today.toISOString(),
+          description: `(Recurring) ${rt.description}`,
+          amount: rt.amount,
+          type: rt.type,
+          category: rt.category
+        });
+        return {...rt, lastAddedDate: today.toISOString()};
+      }
+      return rt;
+    });
+
+    if (newTransactions.length > 0) {
+      setTransactions(prev => [...newTransactions, ...prev]);
+      setRecurringTransactions(updatedRecurring);
+    }
+  }, [recurringTransactions]);
+
+  useEffect(() => {
+    if (user && !loading) {
+      processRecurringTransactions();
+    }
+  }, [user, loading, processRecurringTransactions]);
+
   const clearTransactions = () => {
     setTransactions([]);
   };
@@ -112,18 +211,29 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const clearAllData = () => {
     setTransactions([]);
     setCategories(defaultCategories);
+    setBudgets([]);
+    setRecurringTransactions([]);
   }
 
   return (
     <UserDataContext.Provider value={{ 
         transactions, 
         categories, 
+        budgets,
+        recurringTransactions,
         loading, 
         addTransaction, 
         updateTransaction,
         deleteTransaction,
         addCategory,
         addSubCategory,
+        addBudget,
+        updateBudget,
+        deleteBudget,
+        addRecurringTransaction,
+        updateRecurringTransaction,
+        deleteRecurringTransaction,
+        processRecurringTransactions,
         clearTransactions,
         clearAllData,
     }}>

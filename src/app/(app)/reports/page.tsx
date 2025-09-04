@@ -1,15 +1,17 @@
 
 "use client";
 
-import { useRef, useMemo } from 'react';
+import { useRef, useMemo, useState } from 'react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { DateRange } from 'react-day-picker';
+import { addDays, format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { OverviewChart } from "@/components/dashboard/overview-chart";
 import { CategoryPieChart } from "@/components/reports/category-pie-chart";
 import { Button } from "@/components/ui/button";
-import { Upload } from "lucide-react";
+import { Upload, Calendar as CalendarIcon } from "lucide-react";
 import {
   ChartContainer,
   ChartTooltip,
@@ -18,16 +20,36 @@ import {
 import { Area, AreaChart, CartesianGrid, XAxis } from "recharts"
 import { useToast } from '@/hooks/use-toast';
 import { useUserData } from '@/hooks/use-user-data';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { cn } from '@/lib/utils';
 
 
 export default function ReportsPage() {
     const reportRef = useRef<HTMLDivElement>(null);
     const { toast } = useToast();
     const { transactions } = useUserData();
+    
+    const [dateRange, setDateRange] = useState<DateRange | undefined>({
+      from: startOfMonth(new Date()),
+      to: endOfMonth(new Date()),
+    });
+    const [categoryFilter, setCategoryFilter] = useState<string>('all');
+
+    const filteredTransactions = useMemo(() => {
+        return transactions.filter(t => {
+            const transactionDate = new Date(t.date);
+            const isInDateRange = dateRange?.from && dateRange?.to ? 
+                (transactionDate >= dateRange.from && transactionDate <= dateRange.to) : true;
+            const isInCategory = categoryFilter === 'all' || t.category === categoryFilter;
+            return isInDateRange && isInCategory;
+        });
+    }, [transactions, dateRange, categoryFilter]);
 
     const { overviewData, categoryData } = useMemo(() => {
         const monthlyData: Record<string, { income: number, expense: number }> = {};
-        transactions.forEach(t => {
+        filteredTransactions.forEach(t => {
             const month = new Date(t.date).toLocaleString('default', { month: 'short' });
             if (!monthlyData[month]) {
                 monthlyData[month] = { income: 0, expense: 0 };
@@ -41,7 +63,7 @@ export default function ReportsPage() {
         })).reverse();
 
         const categorySpending: Record<string, number> = {};
-        transactions.filter(t => t.type === 'expense').forEach(t => {
+        filteredTransactions.filter(t => t.type === 'expense').forEach(t => {
             if (!categorySpending[t.category]) {
                 categorySpending[t.category] = 0;
             }
@@ -55,7 +77,7 @@ export default function ReportsPage() {
         }));
         
         return { overviewData, categoryData };
-    }, [transactions]);
+    }, [filteredTransactions]);
     
     const balanceTrendData = useMemo(() => {
         let currentBalance = 0;
@@ -115,6 +137,18 @@ export default function ReportsPage() {
             });
         }
     };
+    
+    const allCategories = useMemo(() => [...new Set(transactions.map(t => t.category))], [transactions]);
+
+    const handlePresetDateRange = (preset: string) => {
+        const now = new Date();
+        if (preset === 'this-month') {
+            setDateRange({ from: startOfMonth(now), to: endOfMonth(now) });
+        } else if (preset === 'last-month') {
+            const lastMonth = subMonths(now, 1);
+            setDateRange({ from: startOfMonth(lastMonth), to: endOfMonth(lastMonth) });
+        }
+    }
 
 
   return (
@@ -131,6 +165,66 @@ export default function ReportsPage() {
           Export PDF
         </Button>
       </div>
+
+       <Card>
+           <CardHeader>
+               <CardTitle>Filters</CardTitle>
+           </CardHeader>
+           <CardContent className="flex flex-col md:flex-row gap-4">
+               <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      id="date"
+                      variant={"outline"}
+                      className={cn(
+                        "w-[300px] justify-start text-left font-normal",
+                        !dateRange && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {dateRange?.from ? (
+                        dateRange.to ? (
+                          <>
+                            {format(dateRange.from, "LLL dd, y")} -{" "}
+                            {format(dateRange.to, "LLL dd, y")}
+                          </>
+                        ) : (
+                          format(dateRange.from, "LLL dd, y")
+                        )
+                      ) : (
+                        <span>Pick a date</span>
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <div className="p-2">
+                        <Button variant="link" size="sm" onClick={() => handlePresetDateRange('this-month')}>This Month</Button>
+                        <Button variant="link" size="sm" onClick={() => handlePresetDateRange('last-month')}>Last Month</Button>
+                    </div>
+                    <Calendar
+                      initialFocus
+                      mode="range"
+                      defaultMonth={dateRange?.from}
+                      selected={dateRange}
+                      onSelect={setDateRange}
+                      numberOfMonths={2}
+                    />
+                  </PopoverContent>
+                </Popover>
+               <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                   <SelectTrigger className="w-full md:w-[200px]">
+                       <SelectValue placeholder="Filter by category" />
+                   </SelectTrigger>
+                   <SelectContent>
+                       <SelectItem value="all">All Categories</SelectItem>
+                       {allCategories.map(cat => (
+                           <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                       ))}
+                   </SelectContent>
+               </Select>
+           </CardContent>
+       </Card>
+
       <div ref={reportRef} className="space-y-6">
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <Card>
