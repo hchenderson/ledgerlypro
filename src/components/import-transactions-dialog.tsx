@@ -128,7 +128,6 @@ export function ImportTransactionsDialog({
 
         if (
           isNaN(amount) ||
-          amount === 0 || // Exclude transactions with zero amount
           !dateStr ||
           isNaN(date.getTime()) ||
           !descriptionStr ||
