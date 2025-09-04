@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useMemo, type ReactNode } from "react";
+import { useState, useMemo, type ReactNode, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -28,6 +28,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { cn } from "@/lib/utils";
 import type { Transaction } from "@/types";
 import { Badge } from "./ui/badge";
+import { useUserData } from "@/hooks/use-user-data";
 
 type ImportStep = "upload" | "mapping" | "review";
 
@@ -44,6 +45,10 @@ interface ImportTransactionsDialogProps {
   onOpenChange: (isOpen: boolean) => void;
   onTransactionsImported: (transactions: Omit<Transaction, 'id'>[]) => void;
   children: ReactNode;
+}
+
+type ProcessedTransaction = {
+    transaction: Omit<Transaction, 'id'>
 }
 
 export function ImportTransactionsDialog({
@@ -65,7 +70,10 @@ export function ImportTransactionsDialog({
     category: "",
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [processedTransactions, setProcessedTransactions] = useState<ProcessedTransaction[]>([]);
+
   const { toast } = useToast();
+  const { categories } = useUserData();
 
   const resetState = () => {
     setStep("upload");
@@ -74,6 +82,7 @@ export function ImportTransactionsDialog({
     setHeaders([]);
     setMapping({ date: "", description: "", amount: "", credit: "", debit: "", category: "" });
     setIsLoading(false);
+    setProcessedTransactions([]);
   };
 
   const handleClose = (open: boolean) => {
@@ -123,10 +132,10 @@ export function ImportTransactionsDialog({
     return hasRequired && hasAmount;
   }, [mapping, headers])
 
-  const processedTransactions = useMemo(() => {
-    if (step !== "review" || !parsedData.length) return [];
+  useEffect(() => {
+    if (step !== "review") return;
 
-    return parsedData
+    const transactions = parsedData
       .map((row) => {
         const dateStr = row[mapping.date];
         const descriptionStr = row[mapping.description];
@@ -142,16 +151,13 @@ export function ImportTransactionsDialog({
             const sanitizedAmountStr = (row[mapping.amount] || "").replace(/[^0-9.-]+/g,"");
             const parsedAmount = parseFloat(sanitizedAmountStr);
             
-            if(!isNaN(parsedAmount)) {
+            if (!isNaN(parsedAmount)) {
                 if (parsedAmount > 0) {
                     type = 'income';
                     amount = parsedAmount;
                 } else if (parsedAmount < 0) {
                     type = 'expense';
                     amount = Math.abs(parsedAmount);
-                } else {
-                    // This is a zero amount transaction, we can skip it or handle as needed
-                    return null;
                 }
             }
         } else if (mapping.credit && mapping.debit) {
@@ -168,11 +174,12 @@ export function ImportTransactionsDialog({
                  type = 'expense';
              }
         }
+        
+        if (amount === 0 || type === null) return null;
 
         const date = new Date(dateStr);
 
         if (
-          !type ||
           isNaN(date.getTime())
         ) {
           return null; // Skip invalid rows
@@ -188,7 +195,10 @@ export function ImportTransactionsDialog({
           },
         };
       })
-      .filter(Boolean) as { transaction: Omit<Transaction, "id"> }[];
+      .filter(Boolean) as ProcessedTransaction[];
+
+      setProcessedTransactions(transactions);
+
   }, [step, parsedData, mapping]);
 
 
@@ -207,6 +217,20 @@ export function ImportTransactionsDialog({
     });
     handleClose(false);
   }
+
+  const handleCategoryChange = (index: number, newCategory: string) => {
+    setProcessedTransactions(current => {
+      const newTransactions = [...current];
+      newTransactions[index].transaction.category = newCategory;
+      return newTransactions;
+    })
+  }
+  
+  const availableCategories = useMemo(() => {
+    const incomeCategories = categories.filter(c => c.type === 'income').flatMap(c => c.subCategories ? c.subCategories.map(s => s.name) : c.name);
+    const expenseCategories = categories.filter(c => c.type === 'expense').flatMap(c => c.subCategories ? c.subCategories.map(s => s.name) : c.name);
+    return { income: incomeCategories, expense: expenseCategories };
+  }, [categories]);
 
   const renderContent = () => {
     switch (step) {
@@ -355,13 +379,28 @@ export function ImportTransactionsDialog({
                       <TableRow key={index}>
                         <TableCell>{new Date(item.transaction.date).toLocaleDateString()}</TableCell>
                         <TableCell>{item.transaction.description}</TableCell>
-                         <TableCell><Badge variant="outline">{item.transaction.category}</Badge></TableCell>
+                         <TableCell>
+                           <Select 
+                              value={item.transaction.category} 
+                              onValueChange={(value) => handleCategoryChange(index, value)}
+                            >
+                                <SelectTrigger className="w-[180px] h-8">
+                                    <SelectValue placeholder="Select category" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {(item.transaction.type === 'income' ? availableCategories.income : availableCategories.expense).map(cat => (
+                                        <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                                    ))}
+                                    <SelectItem value="Imported">Imported</SelectItem>
+                                </SelectContent>
+                            </Select>
+                         </TableCell>
                         <TableCell>
                           <Badge variant={item.transaction.type === 'income' ? 'default' : 'secondary'} className={cn(item.transaction.type === 'income' ? 'bg-emerald-500/10 text-emerald-700' : 'bg-red-500/10 text-red-700', 'border-none')}>
                               {item.transaction.type}
                           </Badge>
                         </TableCell>
-                        <TableCell className={cn("text-right font-code", item.transaction.type === 'income' ? 'text-emerald-600' : 'text-red-600')}>
+                        <TableCell className={cn("text-right font-code", item.transaction.type === 'income' ? 'text-emerald-600' : 'text-foreground')}>
                           {item.transaction.type === 'income' ? '+' : '-'}
                           {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(item.transaction.amount)}
                         </TableCell>
