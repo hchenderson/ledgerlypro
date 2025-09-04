@@ -1,7 +1,7 @@
 
 "use client";
 
-import { DollarSign, TrendingUp, TrendingDown, Wallet } from "lucide-react";
+import { DollarSign, TrendingUp, TrendingDown, Wallet, X, CheckCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { OverviewChart } from "@/components/dashboard/overview-chart";
@@ -9,6 +9,8 @@ import { RecentTransactions } from "@/components/dashboard/recent-transactions";
 import { useEffect, useMemo, useState } from "react";
 import { useUserData } from "@/hooks/use-user-data";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 
 
 function DashboardSkeleton() {
@@ -28,14 +30,42 @@ function DashboardSkeleton() {
   )
 }
 
+function GettingStartedGuide({ onClearData, onDismiss }: { onClearData: () => void, onDismiss: () => void }) {
+    return (
+        <Alert className="mb-6 bg-primary/5 border-primary/20 relative pr-10">
+            <Button variant="ghost" size="icon" className="absolute top-2 right-2 h-6 w-6" onClick={onDismiss}>
+                <X className="h-4 w-4" />
+                <span className="sr-only">Dismiss</span>
+            </Button>
+            <CheckCircle className="h-4 w-4 text-primary" />
+            <AlertTitle className="font-headline text-lg text-primary">Welcome to Ledgerly!</AlertTitle>
+            <AlertDescription className="text-muted-foreground mt-2">
+                <p className="mb-4">You're all set up! We've loaded some sample data so you can explore. Here's what to do next:</p>
+                <ol className="list-decimal list-inside space-y-2 mb-4">
+                    <li><strong>Explore the Dashboard:</strong> Check out your balances and charts below.</li>
+                    <li><strong>View Transactions:</strong> Head to the "Transactions" page to see the sample data.</li>
+                    <li><strong>Add a New Transaction:</strong> Click the "New Transaction" button in the header.</li>
+                </ol>
+                <p className="font-semibold">Ready to start with your own data?</p>
+                <Button onClick={onClearData} size="sm" className="mt-2">Clear Sample Data & Start Fresh</Button>
+            </AlertDescription>
+        </Alert>
+    )
+}
+
 export default function DashboardPage() {
-  const { transactions, loading } = useUserData();
+  const { transactions, loading, clearTransactions } = useUserData();
   const [startingBalance, setStartingBalance] = useState(0);
+  const [showGuide, setShowGuide] = useState(false);
 
   useEffect(() => {
     const storedBalance = localStorage.getItem('startingBalance');
     if (storedBalance) {
       setStartingBalance(parseFloat(storedBalance));
+    }
+    const guideDismissed = localStorage.getItem('guideDismissed');
+    if (!guideDismissed) {
+      setShowGuide(true);
     }
   }, []);
 
@@ -70,6 +100,16 @@ export default function DashboardPage() {
     return { totalIncome, totalExpenses, currentBalance, overviewData };
   }, [transactions, startingBalance]);
 
+  const handleClearData = () => {
+    clearTransactions();
+    handleDismissGuide();
+  }
+
+  const handleDismissGuide = () => {
+    setShowGuide(false);
+    localStorage.setItem('guideDismissed', 'true');
+  }
+
   if (loading) {
     return <DashboardSkeleton />;
   }
@@ -78,6 +118,7 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      {showGuide && transactions.length > 0 && <GettingStartedGuide onClearData={handleClearData} onDismiss={handleDismissGuide} />}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Current Balance"
@@ -121,7 +162,14 @@ export default function DashboardPage() {
             <CardTitle>Recent Transactions</CardTitle>
           </CardHeader>
           <CardContent>
-            <RecentTransactions transactions={transactions.slice(0, 5)} />
+            {transactions.length > 0 ? (
+                 <RecentTransactions transactions={transactions.slice(0, 5)} />
+            ) : (
+                <div className="flex flex-col items-center justify-center h-full text-center">
+                    <p className="text-muted-foreground">No transactions yet.</p>
+                    <p className="text-sm text-muted-foreground">Add your first transaction to get started.</p>
+                </div>
+            )}
           </CardContent>
         </Card>
       </div>
