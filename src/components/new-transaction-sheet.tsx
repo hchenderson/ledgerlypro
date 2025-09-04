@@ -170,7 +170,7 @@ export function NewTransactionSheet({
       form.reset({
         type: 'expense',
         description: '',
-        amount: undefined,
+        amount: '' as any,
         category: undefined,
         date: new Date(),
       })
