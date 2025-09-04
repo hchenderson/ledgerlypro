@@ -123,20 +123,23 @@ export function ImportTransactionsDialog({
         const dateStr = row[mapping.date];
         const descriptionStr = row[mapping.description];
 
-        const amount = parseFloat(amountStr);
+        if (!amountStr || !dateStr || !descriptionStr || descriptionStr.trim() === "") {
+          return null;
+        }
+        
+        // Sanitize amount string by removing currency symbols, commas, etc.
+        const sanitizedAmountStr = amountStr.replace(/[^0-9.-]+/g,"");
+        const amount = parseFloat(sanitizedAmountStr);
         const date = new Date(dateStr);
 
         if (
           isNaN(amount) ||
-          !dateStr ||
-          isNaN(date.getTime()) ||
-          !descriptionStr ||
-          descriptionStr.trim() === ""
+          isNaN(date.getTime())
         ) {
           return null; // Skip invalid rows
         }
 
-        const type = amount > 0 ? 'income' : 'expense';
+        const type = amount >= 0 ? 'income' : 'expense';
 
         return {
           transaction: {
