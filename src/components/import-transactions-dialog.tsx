@@ -141,9 +141,18 @@ export function ImportTransactionsDialog({
         if(mapping.amount) {
             const sanitizedAmountStr = (row[mapping.amount] || "").replace(/[^0-9.-]+/g,"");
             const parsedAmount = parseFloat(sanitizedAmountStr);
+            
             if(!isNaN(parsedAmount)) {
-                type = parsedAmount >= 0 ? 'income' : 'expense';
-                amount = Math.abs(parsedAmount);
+                if (parsedAmount > 0) {
+                    type = 'income';
+                    amount = parsedAmount;
+                } else if (parsedAmount < 0) {
+                    type = 'expense';
+                    amount = Math.abs(parsedAmount);
+                } else {
+                    // This is a zero amount transaction, we can skip it or handle as needed
+                    return null;
+                }
             }
         } else if (mapping.credit && mapping.debit) {
              const creditStr = (row[mapping.credit] || "").replace(/[^0-9.-]+/g,"");
@@ -164,8 +173,7 @@ export function ImportTransactionsDialog({
 
         if (
           !type ||
-          isNaN(date.getTime()) ||
-          amount === 0
+          isNaN(date.getTime())
         ) {
           return null; // Skip invalid rows
         }
