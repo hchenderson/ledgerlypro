@@ -17,7 +17,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 export default function SettingsPage() {
     const { toast } = useToast();
     const { user } = useAuth();
-    const { clearTransactions } = useUserData();
+    const { clearTransactions, clearAllData } = useUserData();
     const [name, setName] = useState('');
     const [startingBalance, setStartingBalance] = useState('');
     const [email, setEmail] = useState('');
@@ -68,11 +68,19 @@ export default function SettingsPage() {
         }
     };
 
-    const handleClearData = () => {
+    const handleClearTransactions = () => {
         clearTransactions();
         toast({
-            title: "Data Cleared",
+            title: "Transactions Cleared",
             description: "All transaction data has been successfully deleted.",
+        });
+    }
+    
+    const handleClearAllData = () => {
+        clearAllData();
+        toast({
+            title: "All Data Cleared",
+            description: "All transaction and category data has been reset.",
         });
     }
 
@@ -150,11 +158,11 @@ export default function SettingsPage() {
                     <div className="flex items-center justify-between rounded-lg border border-destructive/50 p-4">
                         <div>
                             <p className="font-medium">Clear All Transaction Data</p>
-                            <p className="text-sm text-muted-foreground">Permanently delete all transactions, including sample data.</p>
+                            <p className="text-sm text-muted-foreground">Permanently delete all transactions, leaving your categories intact.</p>
                         </div>
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
-                            <Button variant="destructive" outline>Clear Data</Button>
+                            <Button variant="destructive" outline>Clear Transactions</Button>
                           </AlertDialogTrigger>
                           <AlertDialogContent>
                             <AlertDialogHeader>
@@ -165,8 +173,8 @@ export default function SettingsPage() {
                             </AlertDialogHeader>
                             <AlertDialogFooter>
                               <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction onClick={handleClearData} className="bg-red-600 hover:bg-red-700">
-                                Yes, delete all data
+                              <AlertDialogAction onClick={handleClearTransactions} className="bg-red-600 hover:bg-red-700">
+                                Yes, delete transactions
                               </AlertDialogAction>
                             </AlertDialogFooter>
                           </AlertDialogContent>
@@ -174,10 +182,28 @@ export default function SettingsPage() {
                     </div>
                     <div className="flex items-center justify-between rounded-lg border border-destructive/50 p-4">
                         <div>
-                            <p className="font-medium">Delete Account</p>
-                            <p className="text-sm text-muted-foreground">Permanently delete your account and all associated data.</p>
+                            <p className="font-medium">Clear All Data</p>
+                            <p className="text-sm text-muted-foreground">Permanently delete all transactions and categories.</p>
                         </div>
-                        <Button variant="destructive">Delete Account</Button>
+                         <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                           <Button variant="destructive">Clear All Data</Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This action cannot be undone. This will permanently delete all of your transaction and category data.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={handleClearAllData} className="bg-red-600 hover:bg-red-700">
+                                Yes, delete all data
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                     </div>
                  </CardContent>
             </Card>

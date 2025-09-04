@@ -16,6 +16,7 @@ interface UserDataContextType {
   addCategory: (category: Category) => void;
   addSubCategory: (parentId: string, subCategory: SubCategory) => void;
   clearTransactions: () => void;
+  clearAllData: () => void;
 }
 
 const UserDataContext = createContext<UserDataContextType | undefined>(undefined);
@@ -106,6 +107,11 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const clearTransactions = () => {
     setTransactions([]);
+  };
+
+  const clearAllData = () => {
+    setTransactions([]);
+    setCategories(defaultCategories);
   }
 
   return (
@@ -119,6 +125,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         addCategory,
         addSubCategory,
         clearTransactions,
+        clearAllData,
     }}>
       {children}
     </UserDataContext.Provider>
