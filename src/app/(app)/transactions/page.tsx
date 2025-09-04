@@ -16,6 +16,8 @@ import { useToast } from "@/hooks/use-toast";
 import Papa from "papaparse";
 import { useUserData } from "@/hooks/use-user-data";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth } from "@/hooks/use-auth";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 
 function TransactionsSkeleton() {
@@ -44,7 +46,10 @@ export default function TransactionsPage() {
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const { toast } = useToast();
+  const { plan } = useAuth();
   
+  const isPro = plan === 'pro';
+
   const handleEdit = (transaction: Transaction) => {
     setSelectedTransaction(transaction);
     setIsSheetOpen(true);
@@ -79,6 +84,7 @@ export default function TransactionsPage() {
   }
   
   const handleExport = () => {
+    if (!isPro) return;
     const csv = Papa.unparse(transactions);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
@@ -105,10 +111,21 @@ export default function TransactionsPage() {
             <CardTitle>Transactions</CardTitle>
             <CardDescription>A list of your recent financial activities.</CardDescription>
         </div>
-        <Button onClick={handleExport} variant="outline">
-            <Upload className="mr-2 h-4 w-4" />
-            Export CSV
-        </Button>
+         <Tooltip>
+            <TooltipTrigger asChild>
+                 <div className="inline-block"> {/* Wrapper div for tooltip on disabled button */}
+                    <Button onClick={handleExport} variant="outline" disabled={!isPro}>
+                        <Upload className="mr-2 h-4 w-4" />
+                        Export CSV
+                    </Button>
+                </div>
+            </TooltipTrigger>
+            {!isPro && (
+                 <TooltipContent>
+                    <p>Upgrade to Pro to export transactions.</p>
+                </TooltipContent>
+            )}
+        </Tooltip>
       </CardHeader>
       <CardContent>
         <Table>

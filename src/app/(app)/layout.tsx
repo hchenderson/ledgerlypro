@@ -24,6 +24,8 @@ import { PlusCircle, Download } from "lucide-react";
 import { ImportTransactionsDialog } from "@/components/import-transactions-dialog";
 import { UserDataProvider, useUserData } from "@/hooks/use-user-data";
 import type { Transaction } from "@/types";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+
 
 function AppLayoutSkeleton() {
     return (
@@ -59,6 +61,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const { categories, addTransaction, transactions } = useUserData();
+  const { plan } = useAuth();
 
   const handleTransactionsImported = (importedTransactions: Omit<Transaction, 'id'>[]) => {
       importedTransactions.forEach(t => {
@@ -85,6 +88,8 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
     return segment.charAt(0).toUpperCase() + segment.slice(1);
   };
   
+  const isPro = plan === 'pro';
+
   return (
     <SidebarProvider>
       <Sidebar>
@@ -113,14 +118,23 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
             </div>
             <div className="ml-auto flex items-center gap-2">
                  <ImportTransactionsDialog
-                    isOpen={isImportDialogOpen}
+                    isOpen={isPro && isImportDialogOpen}
                     onOpenChange={setIsImportDialogOpen}
                     onTransactionsImported={handleTransactionsImported}
                   >
-                    <Button size="sm" variant="outline" className="gap-2" onClick={() => setIsImportDialogOpen(true)}>
-                      <Download className="size-4" />
-                      <span className="hidden sm:inline">Import</span>
-                    </Button>
+                     <Tooltip>
+                        <TooltipTrigger asChild>
+                             <Button size="sm" variant="outline" className="gap-2" onClick={() => setIsImportDialogOpen(true)} disabled={!isPro}>
+                                <Download className="size-4" />
+                                <span className="hidden sm:inline">Import</span>
+                            </Button>
+                        </TooltipTrigger>
+                        {!isPro && (
+                             <TooltipContent>
+                                <p>Upgrade to Pro to import transactions.</p>
+                            </TooltipContent>
+                        )}
+                    </Tooltip>
                   </ImportTransactionsDialog>
                  <NewTransactionSheet 
                     isOpen={isSheetOpen}
