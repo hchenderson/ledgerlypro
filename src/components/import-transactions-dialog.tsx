@@ -144,54 +144,56 @@ export function ImportTransactionsDialog({
           return null;
         }
         
-        let amount = 0;
+        let amountVal = 0;
         let type: 'income' | 'expense' | null = null;
         
-        if(mapping.amount) {
+        if (mapping.amount) {
             const sanitizedAmountStr = (row[mapping.amount] || "").replace(/[^0-9.-]+/g,"");
             const parsedAmount = parseFloat(sanitizedAmountStr);
-            
-            if (!isNaN(parsedAmount)) {
-                if (parsedAmount > 0) {
-                    type = 'income';
-                    amount = parsedAmount;
-                } else if (parsedAmount < 0) {
-                    type = 'expense';
-                    amount = Math.abs(parsedAmount);
-                }
+            if (isNaN(parsedAmount)) return null;
+
+            if (parsedAmount > 0) {
+                type = 'income';
+                amountVal = parsedAmount;
+            } else if (parsedAmount < 0) {
+                type = 'expense';
+                amountVal = Math.abs(parsedAmount);
+            } else { // parsedAmount === 0
+                return null; // Skip zero amount transactions
             }
         } else if (mapping.credit && mapping.debit) {
-             const creditStr = (row[mapping.credit] || "").replace(/[^0-9.-]+/g,"");
-             const debitStr = (row[mapping.debit] || "").replace(/[^0-9.-]+/g,"");
+             const creditStr = (row[mapping.credit] || "0").replace(/[^0-9.-]+/g,"");
+             const debitStr = (row[mapping.debit] || "0").replace(/[^0-9.-]+/g,"");
              const creditAmount = parseFloat(creditStr);
              const debitAmount = parseFloat(debitStr);
+             
+             if (isNaN(creditAmount) || isNaN(debitAmount)) return null;
 
-             if(!isNaN(creditAmount) && creditAmount > 0) {
-                 amount = creditAmount;
+             if(creditAmount > 0) {
+                 amountVal = creditAmount;
                  type = 'income';
-             } else if (!isNaN(debitAmount) && debitAmount > 0) {
-                 amount = debitAmount;
+             } else if (debitAmount > 0) {
+                 amountVal = debitAmount;
                  type = 'expense';
+             } else {
+                return null; // Skip if both are zero or invalid
              }
         }
         
-        if (amount === 0 || type === null) return null;
+        if (type === null) return null;
 
         const date = new Date(dateStr);
-
-        if (
-          isNaN(date.getTime())
-        ) {
-          return null; // Skip invalid rows
+        if (isNaN(date.getTime())) {
+          return null;
         }
 
         return {
           transaction: {
-            amount,
+            amount: amountVal,
             date: date.toISOString(),
             description: descriptionStr,
             type: type,
-            category: row[mapping.category] || "Imported", // Use mapped category or default
+            category: row[mapping.category] || "Imported",
           },
         };
       })
@@ -431,3 +433,5 @@ export function ImportTransactionsDialog({
     </Dialog>
   );
 }
+
+    
