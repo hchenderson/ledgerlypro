@@ -29,7 +29,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import type { Budget } from '@/types';
 
@@ -73,7 +73,7 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
         <DialogHeader>
           <DialogTitle>{budget ? 'Edit' : 'Create'} Budget</DialogTitle>
           <DialogDescription>
-            Set a monthly spending limit for a category.
+            Set a monthly spending limit for a category or sub-category.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -92,7 +92,13 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
                     </FormControl>
                     <SelectContent>
                       {expenseCategories.map(cat => (
-                        <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                        <SelectGroup key={cat.id}>
+                          <SelectLabel>{cat.name}</SelectLabel>
+                          <SelectItem value={cat.id}>{cat.name} (Main Category)</SelectItem>
+                           {cat.subCategories?.map(sub => (
+                            <SelectItem key={sub.id} value={sub.id}>{sub.name}</SelectItem>
+                          ))}
+                        </SelectGroup>
                       ))}
                     </SelectContent>
                   </Select>
@@ -143,14 +149,32 @@ export default function BudgetsPage() {
 
   const budgetDetails = useMemo(() => {
     return budgets.map(budget => {
-      const category = categories.find(c => c.id === budget.categoryId);
-      const categoryName = category?.name || 'Unknown Category';
-      const allCategoryNames = [categoryName, ...(category?.subCategories?.map(sc => sc.name) || [])];
+      let categoryName = 'Unknown Category';
+      let targetCategoryNames: string[] = [];
+
+      // Find if the budget is for a main category or a sub-category
+      const mainCategory = categories.find(c => c.id === budget.categoryId);
+      if (mainCategory) {
+        categoryName = mainCategory.name;
+        // If it's a main category, include all its sub-categories for spending calculation
+        targetCategoryNames = [mainCategory.name, ...(mainCategory.subCategories?.map(sc => sc.name) || [])];
+      } else {
+        // If not a main category, search in sub-categories
+        for (const cat of categories) {
+          const subCategory = cat.subCategories?.find(sc => sc.id === budget.categoryId);
+          if (subCategory) {
+            categoryName = subCategory.name;
+            // If it's a sub-category, only track spending for that specific sub-category
+            targetCategoryNames = [subCategory.name];
+            break;
+          }
+        }
+      }
 
       const spent = transactions
         .filter(t => 
             t.type === 'expense' && 
-            allCategoryNames.includes(t.category) &&
+            targetCategoryNames.includes(t.category) &&
             new Date(t.date).getMonth() === new Date().getMonth() &&
             new Date(t.date).getFullYear() === new Date().getFullYear()
         )
