@@ -18,10 +18,12 @@ interface CategoryPieChartProps {
 }
 
 export function CategoryPieChart({ data }: CategoryPieChartProps) {
-  const chartConfig = data.reduce((acc, cur) => {
-    acc[cur.category.toLowerCase()] = { label: cur.category, color: cur.fill }
-    return acc
-  }, {} as ChartConfig);
+  const chartConfig = React.useMemo(() => {
+    return data.reduce((acc, cur) => {
+      acc[cur.category] = { label: cur.category, color: cur.fill };
+      return acc;
+    }, {} as ChartConfig);
+  }, [data]);
     
   if (data.length === 0) {
     return (
@@ -47,6 +49,7 @@ export function CategoryPieChart({ data }: CategoryPieChartProps) {
             dataKey="amount"
             nameKey="category"
             innerRadius={60}
+            strokeWidth={5}
           >
              {data.map((entry, index) => (
               <Cell key={`cell-${index}`} fill={entry.fill} />
@@ -61,3 +64,4 @@ export function CategoryPieChart({ data }: CategoryPieChartProps) {
     </ChartContainer>
   )
 }
+
