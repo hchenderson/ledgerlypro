@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { LedgerlyLogo } from "@/components/icons";
-import { signInWithGoogle, signUpWithEmail, isNewUser } from "@/lib/auth";
+import { signInWithGoogle, signUpWithEmail, signInWithEmail } from "@/lib/auth";
 import { useRouter } from "next/navigation";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -30,6 +30,7 @@ export default function SignInPage() {
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     const handleGoogleSignIn = async () => {
+        setIsSubmitting(true);
         try {
             const result = await signInWithGoogle();
             const additionalInfo = getAdditionalUserInfo(result);
@@ -46,6 +47,8 @@ export default function SignInPage() {
                 title: "Sign-in Failed",
                 description: "Could not sign in with Google. Please try again."
             })
+        } finally {
+            setIsSubmitting(false);
         }
     };
     
@@ -54,8 +57,7 @@ export default function SignInPage() {
         setIsSubmitting(true);
         try {
             await signInWithEmail(email, password);
-            localStorage.setItem('onboardingComplete', 'true'); // For existing users
-            router.push('/dashboard');
+            // The Auth layout will handle redirection for existing users
         } catch (error: any) {
             console.error("Email Sign-in failed:", error)
             let description = "An unexpected error occurred. Please try again.";
@@ -77,12 +79,11 @@ export default function SignInPage() {
         setIsSubmitting(true);
         try {
             await signUpWithEmail(email, password);
-            localStorage.removeItem('onboardingComplete'); // Ensure it's cleared for new users
+            // The Auth layout will handle redirection to the welcome page for new users
             toast({
                 title: "Account Created",
                 description: "You have successfully signed up! Let's set up your profile.",
             });
-            router.push('/welcome');
         } catch (error: any) {
             console.error("Email Sign-up failed:", error)
             let description = "An unexpected error occurred. Please try again.";
@@ -140,7 +141,7 @@ export default function SignInPage() {
                         </div>
                     </div>
 
-                    <Button className="w-full gap-2" variant="outline" onClick={handleGoogleSignIn}>
+                    <Button className="w-full gap-2" variant="outline" onClick={handleGoogleSignIn} disabled={isSubmitting}>
                        <GoogleIcon />
                         Sign in with Google
                     </Button>

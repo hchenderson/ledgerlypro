@@ -13,9 +13,9 @@ import {
 const auth = getAuth(app);
 const provider = new GoogleAuthProvider();
 
-export const signInWithGoogle = (): Promise<UserCredential> => {
+export const signInWithGoogle = async (): Promise<UserCredential> => {
     try {
-        return signInWithPopup(auth, provider);
+        return await signInWithPopup(auth, provider);
     } catch (error) {
         console.error("Authentication error:", error);
         throw error;
