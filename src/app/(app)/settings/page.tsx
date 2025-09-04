@@ -11,10 +11,13 @@ import { useAuth } from '@/hooks/use-auth';
 import { updateProfile } from 'firebase/auth';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
+import { useUserData } from '@/hooks/use-user-data';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
 export default function SettingsPage() {
     const { toast } = useToast();
     const { user } = useAuth();
+    const { clearTransactions } = useUserData();
     const [name, setName] = useState('');
     const [startingBalance, setStartingBalance] = useState('');
     const [email, setEmail] = useState('');
@@ -64,6 +67,14 @@ export default function SettingsPage() {
             });
         }
     };
+
+    const handleClearData = () => {
+        clearTransactions();
+        toast({
+            title: "Data Cleared",
+            description: "All transaction data has been successfully deleted.",
+        });
+    }
 
     return (
         <div className="space-y-6 max-w-4xl mx-auto">
@@ -135,13 +146,40 @@ export default function SettingsPage() {
                     <CardTitle>Danger Zone</CardTitle>
                     <CardDescription>These actions are permanent and cannot be undone.</CardDescription>
                 </CardHeader>
-                <CardContent className="flex items-center justify-between rounded-lg border border-destructive/50 p-4">
-                     <div>
-                        <p className="font-medium">Delete Account</p>
-                        <p className="text-sm text-muted-foreground">Permanently delete your account and all associated data.</p>
+                 <CardContent className="space-y-4">
+                    <div className="flex items-center justify-between rounded-lg border border-destructive/50 p-4">
+                        <div>
+                            <p className="font-medium">Clear All Transaction Data</p>
+                            <p className="text-sm text-muted-foreground">Permanently delete all transactions, including sample data.</p>
+                        </div>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="destructive" outline>Clear Data</Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This action cannot be undone. This will permanently delete all of your transaction data.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={handleClearData} className="bg-red-600 hover:bg-red-700">
+                                Yes, delete all data
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                     </div>
-                    <Button variant="destructive">Delete Account</Button>
-                </CardContent>
+                    <div className="flex items-center justify-between rounded-lg border border-destructive/50 p-4">
+                        <div>
+                            <p className="font-medium">Delete Account</p>
+                            <p className="text-sm text-muted-foreground">Permanently delete your account and all associated data.</p>
+                        </div>
+                        <Button variant="destructive">Delete Account</Button>
+                    </div>
+                 </CardContent>
             </Card>
 
         </div>
