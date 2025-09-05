@@ -20,6 +20,7 @@ interface UserDataContextType {
   addSubCategory: (parentId: string, subCategory: SubCategory) => void;
   updateCategory: (id: string, newName: string) => void;
   deleteCategory: (id: string) => void;
+  toggleFavoriteCategory: (id: string) => void;
   updateSubCategory: (parentId: string, subCategoryId: string, newName: string) => void;
   deleteSubCategory: (parentId: string, subCategoryId: string) => void;
   addBudget: (budget: Budget) => void;
@@ -129,6 +130,10 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const deleteCategory = (id: string) => {
       setCategories(prev => prev.filter(c => c.id !== id));
+  }
+
+  const toggleFavoriteCategory = (id: string) => {
+    setCategories(prev => prev.map(c => c.id === id ? { ...c, isFavorite: !c.isFavorite } : c));
   }
 
   const addSubCategory = (parentId: string, subCategory: SubCategory) => {
@@ -265,6 +270,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         addSubCategory,
         updateCategory,
         deleteCategory,
+        toggleFavoriteCategory,
         updateSubCategory,
         deleteSubCategory,
         addBudget,

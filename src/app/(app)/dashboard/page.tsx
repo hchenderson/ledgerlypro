@@ -1,7 +1,7 @@
 
 "use client";
 
-import { DollarSign, TrendingUp, TrendingDown, Wallet, X, CheckCircle, Target, CalendarClock } from "lucide-react";
+import { DollarSign, TrendingUp, TrendingDown, Wallet, X, CheckCircle, Target, CalendarClock, Star } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { OverviewChart } from "@/components/dashboard/overview-chart";
@@ -12,6 +12,7 @@ import { useUserData } from "@/hooks/use-user-data";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { FavoriteCategories } from "@/components/dashboard/favorite-categories";
 
 
 function DashboardSkeleton() {
@@ -199,6 +200,16 @@ export default function DashboardPage() {
           isPercentage
         />
       </div>
+      
+       <Card>
+        <CardHeader>
+            <CardTitle className="flex items-center gap-2"><Star className="text-yellow-400 fill-yellow-400" /> Favorite Categories</CardTitle>
+            <CardDescription>Your hand-picked categories for quick insights.</CardDescription>
+        </CardHeader>
+        <CardContent>
+            <FavoriteCategories categories={categories} transactions={transactions} />
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
         <Card className="lg:col-span-3">

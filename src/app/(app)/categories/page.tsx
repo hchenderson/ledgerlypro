@@ -4,7 +4,7 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, Sparkles, Edit, Trash2 } from "lucide-react";
+import { PlusCircle, Sparkles, Edit, Trash2, Star } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { NewCategorySheet } from "@/components/new-category-sheet";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +34,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 
 
 function EditCategoryDialog({ 
@@ -79,14 +80,15 @@ function EditCategoryDialog({
 }
 
 export default function CategoriesPage() {
-    const { categories, addCategory, addSubCategory, updateCategory, deleteCategory, updateSubCategory, deleteSubCategory, loading } = useUserData();
+    const { categories, addCategory, addSubCategory, updateCategory, deleteCategory, toggleFavoriteCategory, updateSubCategory, deleteSubCategory, loading } = useUserData();
 
     const handleAddCategory = (categoryName: string, type: 'income' | 'expense') => {
         const newCategory: Category = { 
             id: `cat_${Date.now()}`,
             name: categoryName, 
             icon: Sparkles, // A real app would have an icon picker
-            type: type
+            type: type,
+            isFavorite: false,
         };
         addCategory(newCategory);
     };
@@ -111,6 +113,9 @@ export default function CategoriesPage() {
                              <Badge variant={category.type === 'income' ? 'default' : 'secondary'}>{category.type}</Badge>
                         </div>
                         <div className="flex items-center gap-1 mr-2" onClick={(e) => e.stopPropagation()}>
+                             <Button variant="ghost" size="icon" onClick={() => toggleFavoriteCategory(category.id)}>
+                                <Star className={cn("h-4 w-4", category.isFavorite ? "text-yellow-400 fill-yellow-400" : "text-muted-foreground")}/>
+                            </Button>
                             <EditCategoryDialog name={category.name} onSave={(newName) => updateCategory(category.id, newName)}>
                                 <Button variant="ghost" size="icon"><Edit className="h-4 w-4"/></Button>
                             </EditCategoryDialog>

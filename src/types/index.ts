@@ -29,6 +29,7 @@ export type Category = {
     name: string;
     type: "income" | "expense";
     icon: LucideIcon;
+    isFavorite?: boolean;
     subCategories?: SubCategory[];
 };
 
