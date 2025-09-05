@@ -15,7 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import Papa from "papaparse";
-import { ArrowRight, FileUp, Loader2, Upload } from "lucide-react";
+import { ArrowRight, FileUp, Loader2 } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -32,10 +32,8 @@ import { useUserData } from "@/hooks/use-user-data";
 
 type ImportStep = "upload" | "mapping" | "review";
 
-const REQUIRED_COLUMNS = ['date', 'description'] as const;
+const REQUIRED_COLUMNS = ['date', 'description', 'credit', 'debit'] as const;
 type RequiredColumn = typeof REQUIRED_COLUMNS[number];
-const AMOUNT_COLUMNS = ['amount', 'credit', 'debit'] as const;
-type AmountColumn = typeof AMOUNT_COLUMNS[number];
 const OPTIONAL_COLUMNS = ['category'] as const;
 type OptionalColumn = typeof OPTIONAL_COLUMNS[number];
 
@@ -61,10 +59,9 @@ export function ImportTransactionsDialog({
   const [file, setFile] = useState<File | null>(null);
   const [parsedData, setParsedData] = useState<Record<string, string>[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
-  const [mapping, setMapping] = useState<Record<RequiredColumn | AmountColumn | OptionalColumn, string>>({
+  const [mapping, setMapping] = useState<Record<RequiredColumn | OptionalColumn, string>>({
     date: "",
     description: "",
-    amount: "",
     credit: "",
     debit: "",
     category: "",
@@ -80,7 +77,7 @@ export function ImportTransactionsDialog({
     setFile(null);
     setParsedData([]);
     setHeaders([]);
-    setMapping({ date: "", description: "", amount: "", credit: "", debit: "", category: "" });
+    setMapping({ date: "", description: "", credit: "", debit: "", category: "" });
     setIsLoading(false);
     setProcessedTransactions([]);
   };
@@ -127,9 +124,7 @@ export function ImportTransactionsDialog({
   };
   
   const canProceedToReview = useMemo(() => {
-    const hasRequired = REQUIRED_COLUMNS.every(col => mapping[col] && headers.includes(mapping[col]));
-    const hasAmount = mapping.amount || (mapping.credit && mapping.debit);
-    return hasRequired && hasAmount;
+    return REQUIRED_COLUMNS.every(col => mapping[col] && headers.includes(mapping[col]));
   }, [mapping, headers])
 
   useEffect(() => {
@@ -147,36 +142,21 @@ export function ImportTransactionsDialog({
         let amountVal: number | null = null;
         let type: 'income' | 'expense' | null = null;
         
-        if (mapping.amount) {
-            const sanitizedAmountStr = (row[mapping.amount] || "").replace(/[^0-9.-]+/g,"");
-            const parsedAmount = parseFloat(sanitizedAmountStr);
-            
-            if (isNaN(parsedAmount) || parsedAmount === 0) return null;
+        const creditStr = (row[mapping.credit] || "0").replace(/[^0-9.-]+/g,"");
+        const debitStr = (row[mapping.debit] || "0").replace(/[^0-9.-]+/g,"");
+        const creditAmount = parseFloat(creditStr);
+        const debitAmount = parseFloat(debitStr);
 
-            if (parsedAmount > 0) {
-                type = 'income';
-                amountVal = parsedAmount;
-            } else {
-                type = 'expense';
-                amountVal = Math.abs(parsedAmount);
-            }
-        } else if (mapping.credit && mapping.debit) {
-             const creditStr = (row[mapping.credit] || "0").replace(/[^0-9.-]+/g,"");
-             const debitStr = (row[mapping.debit] || "0").replace(/[^0-9.-]+/g,"");
-             const creditAmount = parseFloat(creditStr);
-             const debitAmount = parseFloat(debitStr);
-             
-             if (isNaN(creditAmount) || isNaN(debitAmount)) return null;
+        if (isNaN(creditAmount) || isNaN(debitAmount)) return null;
 
-             if(creditAmount > 0 && debitAmount === 0) {
-                 amountVal = creditAmount;
-                 type = 'income';
-             } else if (debitAmount > 0 && creditAmount === 0) {
-                 amountVal = debitAmount;
-                 type = 'expense';
-             } else {
-                return null;
-             }
+        if (creditAmount > 0 && debitAmount === 0) {
+            type = 'income';
+            amountVal = creditAmount;
+        } else if (debitAmount > 0 && creditAmount === 0) {
+            type = 'expense';
+            amountVal = debitAmount;
+        } else {
+            return null; // Skip if both are > 0 or both are 0
         }
         
         if (type === null || amountVal === null) return null;
@@ -241,8 +221,7 @@ export function ImportTransactionsDialog({
             <DialogHeader>
               <DialogTitle>Step 1: Upload CSV</DialogTitle>
               <DialogDescription>
-                Select a CSV file with your transactions. Make sure it has
-                columns for date, description, and amount.
+                Select a CSV file with your transactions. Make sure it has columns for date, description, credit (income), and debit (expense).
               </DialogDescription>
             </DialogHeader>
             <div className="py-4">
@@ -279,7 +258,7 @@ export function ImportTransactionsDialog({
             </DialogHeader>
             <div className="py-4 space-y-4">
                 <div className="grid grid-cols-2 gap-4">
-                     {REQUIRED_COLUMNS.map(col => (
+                     {['date', 'description'].map(col => (
                         <div key={col} className="space-y-2">
                             <Label className="capitalize">{col} <span className="text-destructive">*</span></Label>
                             <Select onValueChange={(value) => setMapping(prev => ({...prev, [col]: value}))}>
@@ -295,40 +274,33 @@ export function ImportTransactionsDialog({
                         </div>
                     ))}
                 </div>
-                <div>
-                    <p className="text-sm text-muted-foreground mb-2">
-                        For amounts, map a single column (positive for income, negative for expense) OR map separate credit/debit columns.
+                <div className="border p-4 rounded-md space-y-4">
+                    <p className="text-sm text-muted-foreground">
+                        Provide separate columns for your income (credit) and expenses (debit).
                     </p>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border p-4 rounded-md">
-                        {['amount'].map(col => (
-                            <div key={col} className="space-y-2">
-                                <Label className="capitalize">{col}</Label>
-                                <Select onValueChange={(value) => setMapping(prev => ({...prev, [col]: value, credit: '', debit: ''}))} disabled={!!(mapping.credit || mapping.debit)}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Select column" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {headers.map(header => (<SelectItem key={header} value={header}>{header}</SelectItem>))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                        ))}
-                        <div className="flex items-center justify-center text-muted-foreground text-sm">OR</div>
-                         <div className="grid grid-cols-2 gap-2 col-span-1">
-                             {['credit', 'debit'].map(col => (
-                                <div key={col} className="space-y-2">
-                                    <Label className="capitalize">{col}</Label>
-                                    <Select onValueChange={(value) => setMapping(prev => ({...prev, [col]: value, amount: ''}))} disabled={!!mapping.amount}>
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Select column" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {headers.map(header => (<SelectItem key={header} value={header}>{header}</SelectItem>))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            ))}
-                         </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                         <div className="space-y-2">
+                            <Label>Credit (Income) <span className="text-destructive">*</span></Label>
+                            <Select onValueChange={(value) => setMapping(prev => ({...prev, credit: value}))}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select credit column" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {headers.map(header => (<SelectItem key={header} value={header}>{header}</SelectItem>))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Debit (Expense) <span className="text-destructive">*</span></Label>
+                            <Select onValueChange={(value) => setMapping(prev => ({...prev, debit: value}))}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select debit column" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {headers.map(header => (<SelectItem key={header} value={header}>{header}</SelectItem>))}
+                                </SelectContent>
+                            </Select>
+                        </div>
                     </div>
                 </div>
                 <div>
@@ -432,3 +404,6 @@ export function ImportTransactionsDialog({
     </Dialog>
   );
 }
+
+    
+    
