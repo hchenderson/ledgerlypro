@@ -79,7 +79,8 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
       }
       return options;
     };
-    return flatten(categories.filter(c => c.type === 'expense'));
+    const expenseCats = categories.filter(c => c.type === 'expense');
+    return flatten(expenseCats);
   }, [categories]);
 
   return (
@@ -104,7 +105,7 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="Select an expense category" />
-                      </Trigger>
+                      </SelectTrigger>
                     </FormControl>
                     <SelectContent>
                         {expenseCategories.map(cat => (
@@ -308,3 +309,5 @@ export default function BudgetsPage() {
         </FeatureGate>
     )
 }
+
+    
