@@ -3,7 +3,7 @@
 
 import { useMemo } from 'react';
 import Link from 'next/link';
-import { type Budget, type Transaction, type Category } from '@/types';
+import { type Budget, type Transaction, type Category, SubCategory } from '@/types';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '../ui/button';
 import { Target, Star } from 'lucide-react';
@@ -15,40 +15,63 @@ interface BudgetProgressProps {
 }
 
 export function BudgetProgress({ budgets, transactions, categories }: BudgetProgressProps) {
-    const budgetDetails = useMemo(() => {
-        return budgets.map(budget => {
-            let categoryName = 'Unknown Category';
-            // Find if the budget is for a main category or a sub-category
-            const mainCategory = categories.find(c => c.id === budget.categoryId);
-            if (mainCategory) {
-                categoryName = mainCategory.name;
-            } else {
-                for (const cat of categories) {
-                    const subCategory = cat.subCategories?.find(sc => sc.id === budget.categoryId);
-                    if (subCategory) {
-                        categoryName = subCategory.name;
-                        break;
-                    }
-                }
-            }
 
-            const allCategoryNames = mainCategory ? [mainCategory.name, ...(mainCategory.subCategories?.map(sc => sc.name) || [])] : [categoryName];
+    const findCategoryById = (id: string, cats: (Category | SubCategory)[]): (Category | SubCategory | undefined) => {
+        for (const cat of cats) {
+            if (cat.id === id) return cat;
+            if (cat.subCategories) {
+                const found = findCategoryById(id, cat.subCategories);
+                if (found) return found;
+            }
+        }
+        return undefined;
+    }
+
+    const getAllSubCategoryNames = (category: Category | SubCategory): string[] => {
+        let names = [category.name];
+        if (category.subCategories) {
+            category.subCategories.forEach(sub => {
+                names = [...names, ...getAllSubCategoryNames(sub)];
+            });
+        }
+        return names;
+    }
+
+    const budgetDetails = useMemo(() => {
+        const currentMonth = new Date().getMonth();
+        const currentYear = new Date().getFullYear();
+
+        return budgets.map(budget => {
+            const category = findCategoryById(budget.categoryId, categories);
+            
+            let categoryName = "Unknown Category";
+            const targetCategoryNames: string[] = [];
+
+            if(category) {
+              categoryName = category.name;
+              const rootCategoryForBudget = findCategoryById(budget.categoryId, categories);
+              if (rootCategoryForBudget) {
+                targetCategoryNames.push(...getAllSubCategoryNames(rootCategoryForBudget));
+              }
+            }
 
             const spent = transactions
                 .filter(t =>
                     t.type === 'expense' &&
-                    allCategoryNames.includes(t.category) &&
-                    new Date(t.date).getMonth() === new Date().getMonth() &&
-                    new Date(t.date).getFullYear() === new Date().getFullYear()
+                    targetCategoryNames.some(catName => catName === t.category) &&
+                    new Date(t.date).getMonth() === currentMonth &&
+                    new Date(t.date).getFullYear() === currentYear
                 )
                 .reduce((sum, t) => sum + t.amount, 0);
 
-            const progress = Math.min((spent / budget.amount) * 100, 100);
+            const remaining = budget.amount - spent;
+            const progress = (spent / budget.amount) * 100;
 
             return {
                 ...budget,
                 categoryName,
                 spent,
+                remaining,
                 progress,
             };
         });
@@ -74,7 +97,15 @@ export function BudgetProgress({ budgets, transactions, categories }: BudgetProg
                              {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(budget.spent)} / {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(budget.amount)}
                         </span>
                     </div>
-                    <Progress value={budget.progress} />
+                    <Progress value={budget.progress} className={budget.progress > 100 ? '[&>div]:bg-destructive' : ''} />
+                     <div className="flex justify-between text-xs mt-1">
+                        <span className="font-medium text-muted-foreground">
+                            Spent
+                        </span>
+                        <span className={`font-medium ${budget.remaining < 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                          {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(budget.remaining)} {budget.remaining >= 0 ? 'left' : 'over'}
+                        </span>
+                    </div>
                 </div>
             ))}
         </div>
