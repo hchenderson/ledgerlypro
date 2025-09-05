@@ -57,7 +57,8 @@ export default function SignInPage() {
         setIsSubmitting(true);
         try {
             await signInWithEmail(email, password);
-            // The Auth layout will handle redirection for existing users
+            localStorage.setItem('onboardingComplete', 'true');
+            router.push("/dashboard");
         } catch (error: any) {
             console.error("Email Sign-in failed:", error)
             let description = "An unexpected error occurred. Please try again.";
@@ -84,6 +85,7 @@ export default function SignInPage() {
                 title: "Account Created",
                 description: "You have successfully signed up! Let's set up your profile.",
             });
+            router.push("/welcome");
         } catch (error: any) {
             console.error("Email Sign-up failed:", error)
             let description = "An unexpected error occurred. Please try again.";
