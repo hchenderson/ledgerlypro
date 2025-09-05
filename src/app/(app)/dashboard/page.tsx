@@ -150,13 +150,16 @@ export default function DashboardPage() {
     <div className="space-y-6">
       {showGuide && transactions.length > 0 && <GettingStartedGuide onClearData={handleClearData} onDismiss={handleDismissGuide} />}
       
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-1">
          <StatCard
           title="Current Balance"
           value={currentBalance}
           icon="Wallet"
           trendValue="Your real-time balance"
         />
+      </div>
+
+       <div className="grid gap-4 md:grid-cols-2">
         <StatCard
           title="Total Income"
           value={totalIncome}
