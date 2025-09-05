@@ -12,7 +12,6 @@ import { useUserData } from "@/hooks/use-user-data";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { FavoriteCategories } from "@/components/dashboard/favorite-categories";
 
 
 function DashboardSkeleton() {
@@ -146,6 +145,7 @@ export default function DashboardPage() {
 
   const savingsRate = totalIncome > 0 ? ((totalIncome - totalExpenses) / totalIncome) * 100 : 0;
   const currentMonthName = new Date().toLocaleString('default', { month: 'long' });
+  const favoritedBudgets = budgets.filter(b => b.isFavorite);
 
   return (
     <div className="space-y-6">
@@ -201,17 +201,7 @@ export default function DashboardPage() {
         />
       </div>
       
-       <Card>
-        <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Star className="text-yellow-400 fill-yellow-400" /> Favorite Categories</CardTitle>
-            <CardDescription>Your hand-picked categories for quick insights.</CardDescription>
-        </CardHeader>
-        <CardContent>
-            <FavoriteCategories categories={categories} transactions={transactions} />
-        </CardContent>
-      </Card>
-
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
         <Card className="lg:col-span-3">
           <CardHeader>
             <CardTitle>Income vs. Expense</CardTitle>
@@ -236,13 +226,14 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
        <Card>
         <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Target /> Budget Overview</CardTitle>
-            <CardDescription>How you&apos;re tracking against your monthly spending goals.</CardDescription>
+            <CardTitle className="flex items-center gap-2"><Star className="text-yellow-400 fill-yellow-400" /> Favorite Budgets</CardTitle>
+            <CardDescription>Your hand-picked budgets for quick insights.</CardDescription>
         </CardHeader>
         <CardContent>
-            <BudgetProgress budgets={budgets} transactions={transactions} categories={categories} />
+            <BudgetProgress budgets={favoritedBudgets} transactions={transactions} categories={categories} />
         </CardContent>
       </Card>
     </div>

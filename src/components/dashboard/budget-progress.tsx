@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { type Budget, type Transaction, type Category } from '@/types';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '../ui/button';
-import { Target } from 'lucide-react';
+import { Target, Star } from 'lucide-react';
 
 interface BudgetProgressProps {
     budgets: Budget[];
@@ -17,9 +17,22 @@ interface BudgetProgressProps {
 export function BudgetProgress({ budgets, transactions, categories }: BudgetProgressProps) {
     const budgetDetails = useMemo(() => {
         return budgets.map(budget => {
-            const category = categories.find(c => c.id === budget.categoryId);
-            const categoryName = category?.name || 'Unknown';
-            const allCategoryNames = category ? [category.name, ...(category.subCategories?.map(sc => sc.name) || [])] : [];
+            let categoryName = 'Unknown Category';
+            // Find if the budget is for a main category or a sub-category
+            const mainCategory = categories.find(c => c.id === budget.categoryId);
+            if (mainCategory) {
+                categoryName = mainCategory.name;
+            } else {
+                for (const cat of categories) {
+                    const subCategory = cat.subCategories?.find(sc => sc.id === budget.categoryId);
+                    if (subCategory) {
+                        categoryName = subCategory.name;
+                        break;
+                    }
+                }
+            }
+
+            const allCategoryNames = mainCategory ? [mainCategory.name, ...(mainCategory.subCategories?.map(sc => sc.name) || [])] : [categoryName];
 
             const spent = transactions
                 .filter(t =>
@@ -44,9 +57,9 @@ export function BudgetProgress({ budgets, transactions, categories }: BudgetProg
     if (budgets.length === 0) {
         return (
             <div className="text-center text-muted-foreground py-8">
-                <Target className="mx-auto h-8 w-8 mb-2"/>
-                <p>No budgets set for this month.</p>
-                <Button variant="link" asChild><Link href="/budgets">Create a budget</Link></Button>
+                <Star className="mx-auto h-8 w-8 mb-2 text-yellow-400"/>
+                <p>No favorited budgets to display.</p>
+                <Button variant="link" asChild><Link href="/budgets">Favorite a budget</Link></Button>
             </div>
         )
     }

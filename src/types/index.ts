@@ -29,7 +29,6 @@ export type Category = {
     name: string;
     type: "income" | "expense";
     icon: LucideIcon;
-    isFavorite?: boolean;
     subCategories?: SubCategory[];
 };
 
@@ -38,6 +37,7 @@ export type Budget = {
   categoryId: string;
   amount: number;
   period: "monthly"; // Can be expanded later
+  isFavorite?: boolean;
 };
 
 export type RecurringTransaction = {

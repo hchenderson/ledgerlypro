@@ -20,12 +20,12 @@ interface UserDataContextType {
   addSubCategory: (parentId: string, subCategory: SubCategory) => void;
   updateCategory: (id: string, newName: string) => void;
   deleteCategory: (id: string) => void;
-  toggleFavoriteCategory: (id: string) => void;
   updateSubCategory: (parentId: string, subCategoryId: string, newName: string) => void;
   deleteSubCategory: (parentId: string, subCategoryId: string) => void;
   addBudget: (budget: Budget) => void;
   updateBudget: (id: string, values: Partial<Omit<Budget, 'id'>>) => void;
   deleteBudget: (id: string) => void;
+  toggleFavoriteBudget: (id: string) => void;
   addRecurringTransaction: (transaction: RecurringTransaction) => void;
   updateRecurringTransaction: (id: string, values: Partial<Omit<RecurringTransaction, 'id'>>) => void;
   deleteRecurringTransaction: (id: string) => void;
@@ -132,10 +132,6 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setCategories(prev => prev.filter(c => c.id !== id));
   }
 
-  const toggleFavoriteCategory = (id: string) => {
-    setCategories(prev => prev.map(c => c.id === id ? { ...c, isFavorite: !c.isFavorite } : c));
-  }
-
   const addSubCategory = (parentId: string, subCategory: SubCategory) => {
     setCategories(prev => prev.map(cat => {
         if (cat.id === parentId) {
@@ -182,6 +178,10 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const deleteBudget = (id: string) => {
     setBudgets(prev => prev.filter(b => b.id !== id));
+  };
+
+  const toggleFavoriteBudget = (id: string) => {
+    setBudgets(prev => prev.map(b => (b.id === id ? { ...b, isFavorite: !b.isFavorite } : b)));
   };
   
   const addRecurringTransaction = (transaction: RecurringTransaction) => {
@@ -270,12 +270,12 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         addSubCategory,
         updateCategory,
         deleteCategory,
-        toggleFavoriteCategory,
         updateSubCategory,
         deleteSubCategory,
         addBudget,
         updateBudget,
         deleteBudget,
+        toggleFavoriteBudget,
         addRecurringTransaction,
         updateRecurringTransaction,
         deleteRecurringTransaction,

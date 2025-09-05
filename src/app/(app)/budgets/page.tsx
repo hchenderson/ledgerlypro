@@ -6,7 +6,7 @@ import { useUserData } from '@/hooks/use-user-data';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { PlusCircle, Target, Trash2, Edit } from 'lucide-react';
+import { PlusCircle, Target, Trash2, Edit, Star } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -33,6 +33,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrig
 import { useToast } from '@/hooks/use-toast';
 import type { Budget } from '@/types';
 import { FeatureGate } from '@/components/feature-gate';
+import { cn } from '@/lib/utils';
 
 
 const budgetFormSchema = z.object({
@@ -133,7 +134,7 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
 
 
 function BudgetsPageContent() {
-  const { budgets, transactions, categories, addBudget, updateBudget, deleteBudget, loading } = useUserData();
+  const { budgets, transactions, categories, addBudget, updateBudget, deleteBudget, toggleFavoriteBudget, loading } = useUserData();
 
   const handleSaveBudget = (values: BudgetFormValues, id?: string) => {
     if (id) {
@@ -143,6 +144,7 @@ function BudgetsPageContent() {
             id: `bud_${Date.now()}`,
             ...values,
             period: 'monthly',
+            isFavorite: false,
         };
         addBudget(newBudget);
     }
@@ -204,7 +206,7 @@ function BudgetsPageContent() {
             <Target/> Monthly Budgets
           </h2>
           <p className="text-muted-foreground">
-            Track your spending against monthly goals.
+            Track your spending against monthly goals. Use the star to feature a budget on your dashboard.
           </p>
         </div>
         <BudgetDialog onSave={handleSaveBudget}>
@@ -244,6 +246,9 @@ function BudgetsPageContent() {
                         </CardDescription>
                     </div>
                     <div className="flex gap-1">
+                        <Button variant="ghost" size="icon" onClick={() => toggleFavoriteBudget(budget.id)}>
+                            <Star className={cn("h-4 w-4", budget.isFavorite ? "text-yellow-400 fill-yellow-400" : "text-muted-foreground")}/>
+                        </Button>
                         <BudgetDialog budget={budget} onSave={handleSaveBudget}>
                              <Button variant="ghost" size="icon"><Edit className="h-4 w-4"/></Button>
                         </BudgetDialog>
