@@ -67,19 +67,18 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
   };
   
     const expenseCategories = useMemo(() => {
-        const flattenCategories = (categories: Category[] | SubCategory[], parentName?: string): { id: string; name: string }[] => {
-            let options: { id: string; name: string }[] = [];
-            categories.forEach(cat => {
-                const name = parentName ? `${parentName} -> ${cat.name}` : cat.name;
-                options.push({ id: cat.id, name: name });
-                if (cat.subCategories) {
-                    options = [...options, ...flattenCategories(cat.subCategories, name)];
-                }
-            });
-            return options;
-        };
-
-        return flattenCategories(categories.filter(c => c.type === 'expense'));
+    const flattenCategories = (categories: (Category | SubCategory)[], parentName?: string): { id: string; name: string }[] => {
+        let options: { id: string; name: string }[] = [];
+        categories.forEach(cat => {
+            const name = parentName ? `${parentName} -> ${cat.name}` : cat.name;
+            options.push({ id: cat.id, name: name });
+            if (cat.subCategories && Array.isArray(cat.subCategories)) {
+                options = [...options, ...flattenCategories(cat.subCategories, name)];
+            }
+        });
+        return options;
+    };
+    return flattenCategories(categories.filter(c => c.type === 'expense'));
   }, [categories]);
 
   return (
@@ -187,9 +186,17 @@ function BudgetsPageContent() {
   const budgetDetails = useMemo(() => {
     return budgets.map(budget => {
       const category = findCategoryById(budget.categoryId, categories);
-      const categoryName = category ? category.name : "Unknown Category";
       
-      const targetCategoryNames = category ? getAllSubCategoryNames(category) : [];
+      const targetCategoryNames: string[] = [];
+      if(category) {
+          const mainCategory = categories.find(c => c.id === category.id || c.subCategories?.some(sc => sc.id === category.id));
+          if(mainCategory) {
+              const rootCategoryForBudget = findCategoryById(budget.categoryId, categories);
+              if(rootCategoryForBudget) {
+                  targetCategoryNames.push(...getAllSubCategoryNames(rootCategoryForBudget));
+              }
+          }
+      }
 
       const spent = transactions
         .filter(t => 
