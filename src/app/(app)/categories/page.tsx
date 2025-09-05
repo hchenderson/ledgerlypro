@@ -101,7 +101,7 @@ function SubCategoryList({ items, parentId, parentPath = [] }: { items: SubCateg
                             <Sparkles className="h-5 w-5 text-muted-foreground" />
                             <span>{sub.name}</span>
                         </div>
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                              <EditCategoryDialog name={sub.name} onSave={(newName) => updateSubCategory(parentId, sub.id, newName, parentPath)}>
                                 <Button variant="ghost" size="icon"><Edit className="h-4 w-4"/></Button>
                             </EditCategoryDialog>
@@ -172,13 +172,15 @@ export default function CategoriesPage() {
          <Accordion type="multiple" className="w-full">
             {filteredCategories.map((category) => (
                 <AccordionItem value={category.id} key={category.id}>
-                    <AccordionTrigger className="hover:no-underline">
-                        <div className="flex items-center gap-4 flex-1">
-                            <Sparkles className="h-6 w-6 text-muted-foreground" />
-                            <span className="text-base font-medium">{category.name}</span>
-                             <Badge variant={category.type === 'income' ? 'default' : 'secondary'}>{category.type}</Badge>
-                        </div>
-                        <div className="flex items-center gap-1 mr-2" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-between group">
+                        <AccordionTrigger className="hover:no-underline flex-1">
+                            <div className="flex items-center gap-4 flex-1">
+                                <Sparkles className="h-6 w-6 text-muted-foreground" />
+                                <span className="text-base font-medium">{category.name}</span>
+                                <Badge variant={category.type === 'income' ? 'default' : 'secondary'}>{category.type}</Badge>
+                            </div>
+                        </AccordionTrigger>
+                        <div className="flex items-center gap-1 mr-2 opacity-0 group-hover:opacity-100 transition-opacity">
                             <EditCategoryDialog name={category.name} onSave={(newName) => updateCategory(category.id, newName)}>
                                 <Button variant="ghost" size="icon"><Edit className="h-4 w-4"/></Button>
                             </EditCategoryDialog>
@@ -200,7 +202,7 @@ export default function CategoriesPage() {
                                 </AlertDialogContent>
                             </AlertDialog>
                         </div>
-                    </AccordionTrigger>
+                    </div>
                     <AccordionContent>
                         <div className="pl-6 space-y-3">
                            <SubCategoryList items={category.subCategories || []} parentId={category.id} />
