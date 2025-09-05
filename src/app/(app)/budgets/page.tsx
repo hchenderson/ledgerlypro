@@ -6,7 +6,7 @@ import { useUserData } from '@/hooks/use-user-data';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { PlusCircle, Target, Trash2, Edit, Star } from 'lucide-react';
+import { PlusCircle, Target, Trash2, Edit, Star, ChevronLeft, ChevronRight } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -34,6 +34,7 @@ import { useToast } from '@/hooks/use-toast';
 import type { Budget, Category, SubCategory } from '@/types';
 import { FeatureGate } from '@/components/feature-gate';
 import { cn } from '@/lib/utils';
+import { addMonths, subMonths, format } from 'date-fns';
 
 
 const budgetFormSchema = z.object({
@@ -66,22 +67,23 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
     form.reset();
   };
   
-  const expenseCategories = useMemo(() => {
-    const flatten = (cats: (Category | SubCategory)[], parentName?: string): { id: string; name: string }[] => {
-      let options: { id: string; name: string }[] = [];
-      for (const cat of cats) {
-        const name = parentName ? `${parentName} -> ${cat.name}` : cat.name;
-        options.push({ id: cat.id, name });
+    const expenseCategories = useMemo(() => {
+        const flatten = (cats: (Category | SubCategory)[], parentName?: string): { id: string; name: string }[] => {
+            let options: { id: string; name: string }[] = [];
+            for (const cat of cats) {
+                const name = parentName ? `${parentName} -> ${cat.name}` : cat.name;
+                options.push({ id: cat.id, name });
 
-        if (cat.subCategories && Array.isArray(cat.subCategories)) {
-          options = [...options, ...flatten(cat.subCategories, name)];
-        }
-      }
-      return options;
-    };
-    const expenseCats = categories.filter(c => c.type === 'expense');
-    return flatten(expenseCats);
-  }, [categories]);
+                if (cat.subCategories && Array.isArray(cat.subCategories)) {
+                    options = [...options, ...flatten(cat.subCategories, name)];
+                }
+            }
+            return options;
+        };
+
+        const expenseCats = categories.filter(c => c.type === 'expense');
+        return flatten(expenseCats);
+    }, [categories]);
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -144,6 +146,7 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
 
 function BudgetsPageContent() {
   const { budgets, transactions, categories, addBudget, updateBudget, deleteBudget, toggleFavoriteBudget, loading } = useUserData();
+  const [selectedDate, setSelectedDate] = useState(new Date());
 
   const handleSaveBudget = (values: BudgetFormValues, id?: string) => {
     if (id) {
@@ -201,8 +204,8 @@ function BudgetsPageContent() {
         .filter(t => 
             t.type === 'expense' && 
             targetCategoryNames.some(catName => catName === t.category) &&
-            new Date(t.date).getMonth() === new Date().getMonth() &&
-            new Date(t.date).getFullYear() === new Date().getFullYear()
+            new Date(t.date).getMonth() === selectedDate.getMonth() &&
+            new Date(t.date).getFullYear() === selectedDate.getFullYear()
         )
         .reduce((sum, t) => sum + t.amount, 0);
 
@@ -217,7 +220,15 @@ function BudgetsPageContent() {
         progress,
       };
     });
-  }, [budgets, transactions, categories]);
+  }, [budgets, transactions, categories, selectedDate]);
+
+  const handlePrevMonth = () => {
+    setSelectedDate(prev => subMonths(prev, 1));
+  }
+  
+  const handleNextMonth = () => {
+    setSelectedDate(prev => addMonths(prev, 1));
+  }
   
   if (loading) return <div>Loading...</div>
 
@@ -239,6 +250,21 @@ function BudgetsPageContent() {
             </Button>
         </BudgetDialog>
       </div>
+
+       <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle>Viewing Budgets For</CardTitle>
+                <div className="flex items-center gap-2">
+                    <Button variant="outline" size="icon" onClick={handlePrevMonth}>
+                        <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <span className="font-semibold text-lg w-36 text-center">{format(selectedDate, "MMMM yyyy")}</span>
+                    <Button variant="outline" size="icon" onClick={handleNextMonth}>
+                        <ChevronRight className="h-4 w-4" />
+                    </Button>
+                </div>
+            </CardHeader>
+       </Card>
 
       {budgetDetails.length === 0 ? (
         <Card className="flex flex-col items-center justify-center py-12">
@@ -309,5 +335,3 @@ export default function BudgetsPage() {
         </FeatureGate>
     )
 }
-
-    
