@@ -1,12 +1,12 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
-import { MoreHorizontal, Upload } from "lucide-react";
+import { MoreHorizontal, Upload, Calendar as CalendarIcon, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { NewTransactionSheet } from "@/components/new-transaction-sheet";
@@ -18,6 +18,11 @@ import { useUserData } from "@/hooks/use-user-data";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/use-auth";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { DateRange } from "react-day-picker";
+import { cn } from "@/lib/utils";
 
 
 function TransactionsSkeleton() {
@@ -47,8 +52,41 @@ export default function TransactionsPage() {
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const { toast } = useToast();
   const { plan } = useAuth();
+
+  const [descriptionFilter, setDescriptionFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
+  const [minAmount, setMinAmount] = useState('');
+  const [maxAmount, setMaxAmount] = useState('');
   
   const isPro = plan === 'pro';
+
+  const allCategories = useMemo(() => [...new Set(transactions.map(t => t.category))], [transactions]);
+
+  const filteredTransactions = useMemo(() => {
+    return transactions.filter(t => {
+      const transactionDate = new Date(t.date);
+      const amount = t.amount;
+
+      const descriptionMatch = descriptionFilter ? t.description.toLowerCase().includes(descriptionFilter.toLowerCase()) : true;
+      const categoryMatch = categoryFilter === 'all' || t.category === categoryFilter;
+      const dateMatch = dateRange?.from ? (
+          transactionDate >= dateRange.from && (dateRange.to ? transactionDate <= dateRange.to : true)
+      ) : true;
+      const minAmountMatch = minAmount ? amount >= parseFloat(minAmount) : true;
+      const maxAmountMatch = maxAmount ? amount <= parseFloat(maxAmount) : true;
+
+      return descriptionMatch && categoryMatch && dateMatch && minAmountMatch && maxAmountMatch;
+    }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [transactions, descriptionFilter, categoryFilter, dateRange, minAmount, maxAmount]);
+
+  const resetFilters = () => {
+    setDescriptionFilter('');
+    setCategoryFilter('all');
+    setDateRange(undefined);
+    setMinAmount('');
+    setMaxAmount('');
+  }
 
   const handleEdit = (transaction: Transaction) => {
     setSelectedTransaction(transaction);
@@ -85,7 +123,7 @@ export default function TransactionsPage() {
   
   const handleExport = () => {
     if (!isPro) return;
-    const csv = Papa.unparse(transactions);
+    const csv = Papa.unparse(filteredTransactions);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
@@ -104,12 +142,92 @@ export default function TransactionsPage() {
   if (loading) return <TransactionsSkeleton />;
 
   return (
-    <>
+    <div className="space-y-6">
+    <Card>
+      <CardHeader>
+        <CardTitle>Filters</CardTitle>
+      </CardHeader>
+       <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+        <Input 
+          placeholder="Filter by description..."
+          value={descriptionFilter}
+          onChange={(e) => setDescriptionFilter(e.target.value)}
+        />
+        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+            <SelectTrigger>
+                <SelectValue placeholder="Filter by category" />
+            </SelectTrigger>
+            <SelectContent>
+                <SelectItem value="all">All Categories</SelectItem>
+                {allCategories.map(cat => (
+                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                ))}
+            </SelectContent>
+        </Select>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              id="date"
+              variant={"outline"}
+              className={cn(
+                "justify-start text-left font-normal",
+                !dateRange && "text-muted-foreground"
+              )}
+            >
+              <CalendarIcon className="mr-2 h-4 w-4" />
+              {dateRange?.from ? (
+                dateRange.to ? (
+                  <>
+                    {format(dateRange.from, "LLL dd, y")} -{" "}
+                    {format(dateRange.to, "LLL dd, y")}
+                  </>
+                ) : (
+                  format(dateRange.from, "LLL dd, y")
+                )
+              ) : (
+                <span>Pick a date range</span>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar
+              initialFocus
+              mode="range"
+              defaultMonth={dateRange?.from}
+              selected={dateRange}
+              onSelect={setDateRange}
+              numberOfMonths={2}
+            />
+          </PopoverContent>
+        </Popover>
+        <div className="flex items-center gap-2">
+            <Input 
+              type="number"
+              placeholder="Min amount"
+              value={minAmount}
+              onChange={e => setMinAmount(e.target.value)}
+            />
+             <Input 
+              type="number"
+              placeholder="Max amount"
+              value={maxAmount}
+              onChange={e => setMaxAmount(e.target.value)}
+            />
+        </div>
+        <Button onClick={resetFilters} variant="ghost">
+            <X className="mr-2 h-4 w-4"/>
+            Reset
+        </Button>
+       </CardContent>
+    </Card>
+
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <div>
             <CardTitle>Transactions</CardTitle>
-            <CardDescription>A list of your recent financial activities.</CardDescription>
+            <CardDescription>
+                Showing {filteredTransactions.length} of {transactions.length} transactions.
+            </CardDescription>
         </div>
          <Tooltip>
             <TooltipTrigger asChild>
@@ -141,7 +259,7 @@ export default function TransactionsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map((transaction) => (
+            {filteredTransactions.map((transaction) => (
               <TableRow key={transaction.id}>
                 <TableCell className="font-medium">{transaction.description}</TableCell>
                 <TableCell>
@@ -191,6 +309,13 @@ export default function TransactionsPage() {
                 </TableCell>
               </TableRow>
             ))}
+             {filteredTransactions.length === 0 && (
+                <TableRow>
+                    <TableCell colSpan={5} className="h-24 text-center">
+                        No transactions found matching your filters.
+                    </TableCell>
+                </TableRow>
+            )}
           </TableBody>
         </Table>
       </CardContent>
@@ -203,6 +328,6 @@ export default function TransactionsPage() {
         onTransactionUpdated={handleTransactionUpdated}
         categories={categories}
      />
-    </>
+    </div>
   );
 }
