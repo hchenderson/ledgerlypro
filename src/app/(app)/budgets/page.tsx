@@ -67,11 +67,12 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
   };
   
   const expenseCategories = useMemo(() => {
-    const flattenCategories = (categories: (Category | SubCategory)[], parentName?: string): { id: string; name: string }[] => {
+    const flattenCategories = (cats: (Category | SubCategory)[], parentName?: string): { id: string; name: string }[] => {
       let options: { id: string; name: string }[] = [];
-      categories.forEach(cat => {
+      cats.forEach(cat => {
         const name = parentName ? `${parentName} -> ${cat.name}` : cat.name;
         options.push({ id: cat.id, name });
+
         if (cat.subCategories && Array.isArray(cat.subCategories)) {
           options = [...options, ...flattenCategories(cat.subCategories, name)];
         }
@@ -189,19 +190,16 @@ function BudgetsPageContent() {
       
       const targetCategoryNames: string[] = [];
       if(category) {
-          const mainCategory = categories.find(c => c.id === category.id || c.subCategories?.some(sc => sc.id === category.id));
-          if(mainCategory) {
-              const rootCategoryForBudget = findCategoryById(budget.categoryId, categories);
-              if(rootCategoryForBudget) {
-                  targetCategoryNames.push(...getAllSubCategoryNames(rootCategoryForBudget));
-              }
+          const rootCategoryForBudget = findCategoryById(budget.categoryId, categories);
+          if (rootCategoryForBudget) {
+            targetCategoryNames.push(...getAllSubCategoryNames(rootCategoryForBudget));
           }
       }
 
       const spent = transactions
         .filter(t => 
             t.type === 'expense' && 
-            targetCategoryNames.includes(t.category) &&
+            targetCategoryNames.some(catName => catName === t.category) &&
             new Date(t.date).getMonth() === new Date().getMonth() &&
             new Date(t.date).getFullYear() === new Date().getFullYear()
         )
@@ -310,3 +308,5 @@ export default function BudgetsPage() {
         </FeatureGate>
     )
 }
+
+    
