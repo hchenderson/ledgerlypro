@@ -26,7 +26,7 @@ import {
 import { Label } from "./ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { cn } from "@/lib/utils";
-import type { Transaction } from "@/types";
+import type { Transaction, Category, SubCategory } from "@/types";
 import { Badge } from "./ui/badge";
 import { useUserData } from "@/hooks/use-user-data";
 
@@ -125,7 +125,21 @@ export function ImportTransactionsDialog({
   
   const canProceedToReview = useMemo(() => {
     return REQUIRED_COLUMNS.every(col => mapping[col] && headers.includes(mapping[col]));
-  }, [mapping, headers])
+  }, [mapping, headers]);
+
+  const allCategoryNames = useMemo(() => {
+      const names = new Set<string>();
+      const recursiveAdd = (cats: (Category | SubCategory)[]) => {
+          cats.forEach(cat => {
+              names.add(cat.name);
+              if (cat.subCategories) {
+                  recursiveAdd(cat.subCategories);
+              }
+          })
+      }
+      recursiveAdd(categories);
+      return names;
+  }, [categories]);
 
   useEffect(() => {
     if (step !== "review") return;
@@ -165,6 +179,9 @@ export function ImportTransactionsDialog({
         if (isNaN(date.getTime())) {
           return null;
         }
+        
+        const importedCategory = row[mapping.category] || "";
+        const finalCategory = allCategoryNames.has(importedCategory) ? importedCategory : "";
 
         return {
           transaction: {
@@ -172,7 +189,7 @@ export function ImportTransactionsDialog({
             date: date.toISOString(),
             description: descriptionStr,
             type: type,
-            category: row[mapping.category] || "Imported",
+            category: finalCategory,
           },
         };
       })
@@ -180,16 +197,17 @@ export function ImportTransactionsDialog({
 
       setProcessedTransactions(transactions);
 
-  }, [step, parsedData, mapping]);
+  }, [step, parsedData, mapping, allCategoryNames]);
 
 
   const handleImport = () => {
-    if(processedTransactions.length === 0) {
-        toast({ variant: "destructive", title: "No valid transactions to import." });
+    const transactionsWithCategory = processedTransactions.filter(item => item.transaction.category);
+    if(transactionsWithCategory.length === 0) {
+        toast({ variant: "destructive", title: "No valid transactions to import.", description: "Please ensure at least one transaction has a category selected." });
         return;
     }
     
-    const transactionsToImport = processedTransactions.map(item => item.transaction as Omit<Transaction, 'id'>);
+    const transactionsToImport = transactionsWithCategory.map(item => item.transaction as Omit<Transaction, 'id'>);
     onTransactionsImported(transactionsToImport);
     
     toast({
@@ -208,9 +226,21 @@ export function ImportTransactionsDialog({
   }
   
   const availableCategories = useMemo(() => {
-    const incomeCategories = categories.filter(c => c.type === 'income').flatMap(c => c.subCategories ? c.subCategories.map(s => s.name) : c.name);
-    const expenseCategories = categories.filter(c => c.type === 'expense').flatMap(c => c.subCategories ? c.subCategories.map(s => s.name) : c.name);
-    return { income: incomeCategories, expense: expenseCategories };
+    const incomeCats = new Set<string>();
+    const expenseCats = new Set<string>();
+    const processCats = (cats: (Category | SubCategory)[], type: 'income' | 'expense') => {
+        cats.forEach(c => {
+            const targetSet = (c as Category).type === 'income' || type === 'income' ? incomeCats : expenseCats;
+            targetSet.add(c.name);
+            if (c.subCategories) {
+                processCats(c.subCategories, (c as Category).type || type);
+            }
+        });
+    };
+    processCats(categories.filter(c => c.type === 'income'), 'income');
+    processCats(categories.filter(c => c.type === 'expense'), 'expense');
+
+    return { income: Array.from(incomeCats), expense: Array.from(expenseCats) };
   }, [categories]);
 
   const renderContent = () => {
@@ -364,7 +394,6 @@ export function ImportTransactionsDialog({
                                     {(item.transaction.type === 'income' ? availableCategories.income : availableCategories.expense).map(cat => (
                                         <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                                     ))}
-                                    <SelectItem value="Imported">Imported</SelectItem>
                                 </SelectContent>
                             </Select>
                          </TableCell>
@@ -386,7 +415,7 @@ export function ImportTransactionsDialog({
             </div>
             <DialogFooter>
                  <Button variant="outline" onClick={() => setStep('mapping')}>Back</Button>
-                 <Button onClick={handleImport} disabled={processedTransactions.length === 0}>
+                 <Button onClick={handleImport} disabled={processedTransactions.filter(item => item.transaction.category).length === 0}>
                     Confirm & Import
                  </Button>
             </DialogFooter>
@@ -404,6 +433,3 @@ export function ImportTransactionsDialog({
     </Dialog>
   );
 }
-
-    
-    
