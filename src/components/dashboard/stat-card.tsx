@@ -1,8 +1,9 @@
+
 "use client";
 
 import { useEffect, useState, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { LucideIcon, Wallet, TrendingUp, TrendingDown, DollarSign } from "lucide-react";
+import { LucideIcon, Wallet, TrendingUp, TrendingDown, DollarSign, CalendarClock } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const icons = {
@@ -10,6 +11,7 @@ const icons = {
   TrendingUp,
   TrendingDown,
   DollarSign,
+  CalendarClock,
 };
 
 

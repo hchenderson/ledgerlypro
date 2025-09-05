@@ -1,7 +1,7 @@
 
 "use client";
 
-import { DollarSign, TrendingUp, TrendingDown, Wallet, X, CheckCircle, Target } from "lucide-react";
+import { DollarSign, TrendingUp, TrendingDown, Wallet, X, CheckCircle, Target, CalendarClock } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { OverviewChart } from "@/components/dashboard/overview-chart";
@@ -73,7 +73,18 @@ export default function DashboardPage() {
     }
   }, []);
 
-  const { totalIncome, totalExpenses, currentBalance, overviewData } = useMemo(() => {
+  const { 
+      totalIncome, 
+      totalExpenses, 
+      currentBalance, 
+      overviewData,
+      currentMonthIncome,
+      currentMonthExpenses
+    } = useMemo(() => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
     const totalIncome = transactions
       .filter(t => t.type === 'income')
       .reduce((sum, t) => sum + t.amount, 0);
@@ -82,6 +93,20 @@ export default function DashboardPage() {
       .filter(t => t.type === 'expense')
       .reduce((sum, t) => sum + t.amount, 0);
       
+    const currentMonthIncome = transactions
+      .filter(t => {
+          const transactionDate = new Date(t.date);
+          return t.type === 'income' && transactionDate.getMonth() === currentMonth && transactionDate.getFullYear() === currentYear
+      })
+      .reduce((sum, t) => sum + t.amount, 0);
+      
+    const currentMonthExpenses = transactions
+      .filter(t => {
+          const transactionDate = new Date(t.date);
+          return t.type === 'expense' && transactionDate.getMonth() === currentMonth && transactionDate.getFullYear() === currentYear
+      })
+      .reduce((sum, t) => sum + t.amount, 0);
+
     const currentBalance = startingBalance + totalIncome - totalExpenses;
     
     // Generate data for overview chart
@@ -101,7 +126,7 @@ export default function DashboardPage() {
     })).reverse();
 
 
-    return { totalIncome, totalExpenses, currentBalance, overviewData };
+    return { totalIncome, totalExpenses, currentBalance, overviewData, currentMonthIncome, currentMonthExpenses };
   }, [transactions, startingBalance]);
 
   const handleClearData = () => {
@@ -119,12 +144,14 @@ export default function DashboardPage() {
   }
 
   const savingsRate = totalIncome > 0 ? ((totalIncome - totalExpenses) / totalIncome) * 100 : 0;
+  const currentMonthName = new Date().toLocaleString('default', { month: 'long' });
 
   return (
     <div className="space-y-6">
       {showGuide && transactions.length > 0 && <GettingStartedGuide onClearData={handleClearData} onDismiss={handleDismissGuide} />}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <StatCard
+      
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+         <StatCard
           title="Current Balance"
           value={currentBalance}
           icon="Wallet"
@@ -144,6 +171,23 @@ export default function DashboardPage() {
           trendValue="All-time expenses"
           variant="danger"
         />
+      </div>
+
+       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <StatCard
+          title={`${currentMonthName} Income`}
+          value={currentMonthIncome}
+          icon="CalendarClock"
+          trendValue="Income this month"
+          variant="success"
+        />
+        <StatCard
+          title={`${currentMonthName} Expenses`}
+          value={currentMonthExpenses}
+          icon="CalendarClock"
+          trendValue="Expenses this month"
+          variant="danger"
+        />
         <StatCard
           title="Savings Rate"
           value={savingsRate}
@@ -152,6 +196,7 @@ export default function DashboardPage() {
           isPercentage
         />
       </div>
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
         <Card className="lg:col-span-3">
           <CardHeader>
