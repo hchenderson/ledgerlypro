@@ -66,17 +66,17 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
     form.reset();
   };
   
-    const expenseCategories = useMemo(() => {
+  const expenseCategories = useMemo(() => {
     const flattenCategories = (categories: (Category | SubCategory)[], parentName?: string): { id: string; name: string }[] => {
-        let options: { id: string; name: string }[] = [];
-        categories.forEach(cat => {
-            const name = parentName ? `${parentName} -> ${cat.name}` : cat.name;
-            options.push({ id: cat.id, name: name });
-            if (cat.subCategories && Array.isArray(cat.subCategories)) {
-                options = [...options, ...flattenCategories(cat.subCategories, name)];
-            }
-        });
-        return options;
+      let options: { id: string; name: string }[] = [];
+      categories.forEach(cat => {
+        const name = parentName ? `${parentName} -> ${cat.name}` : cat.name;
+        options.push({ id: cat.id, name });
+        if (cat.subCategories && Array.isArray(cat.subCategories)) {
+          options = [...options, ...flattenCategories(cat.subCategories, name)];
+        }
+      });
+      return options;
     };
     return flattenCategories(categories.filter(c => c.type === 'expense'));
   }, [categories]);
