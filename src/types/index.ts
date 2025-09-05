@@ -22,6 +22,7 @@ export type SubCategory = {
     id: string;
     name: string;
     icon: LucideIcon;
+    subCategories?: SubCategory[]; // Make sub-categories recursive
 };
 
 export type Category = {

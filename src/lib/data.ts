@@ -4,15 +4,18 @@ import { Utensils, Car, Home, ShoppingBag, HeartPulse, Sparkles, HandCoins, Buil
 
 
 export const defaultCategories: Category[] = [
-    { id: "cat_1", name: "Food", type: "expense", icon: Utensils, isFavorite: true, subCategories: [
+    { id: "cat_1", name: "Food", type: "expense", icon: Utensils, subCategories: [
         { id: "sub_1", name: "Groceries", icon: ShoppingBag },
-        { id: "sub_2", name: "Restaurants", icon: Pizza },
+        { id: "sub_2", name: "Restaurants", icon: Pizza, subCategories: [
+            { id: "sub_11", name: "Fast Food", icon: Pizza },
+            { id: "sub_12", name: "Sit Down", icon: Utensils },
+        ] },
     ]},
     { id: "cat_2", name: "Transport", type: "expense", icon: Car, subCategories: [
         { id: "sub_3", name: "Gas", icon: Car },
         { id: "sub_4", name: "Public Transit", icon: Car },
     ] },
-    { id: "cat_3", name: "Housing", type: "expense", icon: Home, isFavorite: true, subCategories: [
+    { id: "cat_3", name: "Housing", type: "expense", icon: Home, subCategories: [
         { id: "sub_5", name: "Rent", icon: Home },
         { id: "sub_6", name: "Utilities", icon: Home },
     ]},
@@ -21,7 +24,7 @@ export const defaultCategories: Category[] = [
         { id: "sub_8", name: "Electronics", icon: Sparkles },
     ]},
     { id: "cat_5", name: "Health", type: "expense", icon: HeartPulse },
-    { id: "cat_6", name: "Salary", type: "income", icon: HandCoins, isFavorite: true },
+    { id: "cat_6", name: "Salary", type: "income", icon: HandCoins },
     { id: "cat_7", name: "Business", type: "expense", icon: Building, subCategories: [
         { id: "sub_9", name: "Travel", icon: Plane },
         { id: "sub_10", name: "Software", icon: Sparkles },
@@ -80,7 +83,7 @@ export const defaultTransactions: Transaction[] = [
     description: "Dinner with friends",
     amount: 85.5,
     type: "expense",
-    category: "Restaurants",
+    category: "Sit Down",
   },
   {
     id: "txn_7",
@@ -110,7 +113,7 @@ export const defaultTransactions: Transaction[] = [
 
 
 export const defaultBudgets: Budget[] = [
-    { id: 'bud_1', categoryId: 'cat_1', amount: 500, period: 'monthly' }, // Food
+    { id: 'bud_1', categoryId: 'cat_1', amount: 500, period: 'monthly', isFavorite: true }, // Food
     { id: 'bud_2', categoryId: 'cat_4', amount: 250, period: 'monthly' }, // Shopping
 ];
 

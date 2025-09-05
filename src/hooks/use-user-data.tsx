@@ -17,11 +17,11 @@ interface UserDataContextType {
   updateTransaction: (id: string, values: Partial<Omit<Transaction, 'id'>>) => void;
   deleteTransaction: (id: string) => void;
   addCategory: (category: Category) => void;
-  addSubCategory: (parentId: string, subCategory: SubCategory) => void;
+  addSubCategory: (parentId: string, subCategory: SubCategory, parentPath?: string[]) => void;
   updateCategory: (id: string, newName: string) => void;
   deleteCategory: (id: string) => void;
-  updateSubCategory: (parentId: string, subCategoryId: string, newName: string) => void;
-  deleteSubCategory: (parentId: string, subCategoryId: string) => void;
+  updateSubCategory: (categoryId: string, subCategoryId: string, newName: string, parentPath?: string[]) => void;
+  deleteSubCategory: (categoryId: string, subCategoryId: string, parentPath?: string[]) => void;
   addBudget: (budget: Budget) => void;
   updateBudget: (id: string, values: Partial<Omit<Budget, 'id'>>) => void;
   deleteBudget: (id: string) => void;
@@ -35,6 +35,49 @@ interface UserDataContextType {
 }
 
 const UserDataContext = createContext<UserDataContextType | undefined>(undefined);
+
+const updateNestedCategory = (categories: SubCategory[], path: string[], newName: string): SubCategory[] => {
+    const [currentId, ...restPath] = path;
+    return categories.map(cat => {
+        if (cat.id === currentId) {
+            if (restPath.length === 0) {
+                return { ...cat, name: newName };
+            }
+            return { ...cat, subCategories: updateNestedCategory(cat.subCategories || [], restPath, newName) };
+        }
+        return cat;
+    });
+};
+
+const deleteNestedCategory = (categories: SubCategory[], path: string[]): SubCategory[] => {
+    const [currentId, ...restPath] = path;
+    if (restPath.length === 0) {
+        return categories.filter(cat => cat.id !== currentId);
+    }
+    return categories.map(cat => {
+        if (cat.id === currentId) {
+            return { ...cat, subCategories: deleteNestedCategory(cat.subCategories || [], restPath) };
+        }
+        return cat;
+    });
+}
+
+const addNestedCategory = (categories: SubCategory[], path: string[], newCategory: SubCategory): SubCategory[] => {
+    const [currentId, ...restPath] = path;
+     if (path.length === 0) {
+        return [...categories, newCategory];
+    }
+    return categories.map(cat => {
+        if (cat.id === currentId) {
+             if (restPath.length === 0) {
+                return { ...cat, subCategories: [...(cat.subCategories || []), newCategory] };
+            }
+            return { ...cat, subCategories: addNestedCategory(cat.subCategories || [], restPath, newCategory) };
+        }
+        return cat;
+    });
+}
+
 
 export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
@@ -132,37 +175,30 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setCategories(prev => prev.filter(c => c.id !== id));
   }
 
-  const addSubCategory = (parentId: string, subCategory: SubCategory) => {
+  const addSubCategory = (parentId: string, subCategory: SubCategory, parentPath: string[] = []) => {
     setCategories(prev => prev.map(cat => {
         if (cat.id === parentId) {
-            return {
-                ...cat,
-                subCategories: [...(cat.subCategories || []), subCategory]
-            };
+            return { ...cat, subCategories: addNestedCategory(cat.subCategories || [], parentPath, subCategory) };
         }
         return cat;
     }));
   };
   
-  const updateSubCategory = (parentId: string, subCategoryId: string, newName: string) => {
+  const updateSubCategory = (categoryId: string, subCategoryId: string, newName: string, parentPath: string[] = []) => {
       setCategories(prev => prev.map(cat => {
-          if(cat.id === parentId) {
-              const newSubCategories = cat.subCategories?.map(sub => {
-                  if(sub.id === subCategoryId) {
-                      return {...sub, name: newName};
-                  }
-                  return sub;
-              });
+          if(cat.id === categoryId) {
+              const newSubCategories = updateNestedCategory(cat.subCategories || [], [...parentPath, subCategoryId], newName);
               return {...cat, subCategories: newSubCategories};
           }
           return cat;
       }))
   }
 
-  const deleteSubCategory = (parentId: string, subCategoryId: string) => {
+  const deleteSubCategory = (categoryId: string, subCategoryId: string, parentPath: string[] = []) => {
         setCategories(prev => prev.map(cat => {
-            if(cat.id === parentId) {
-                return {...cat, subCategories: cat.subCategories?.filter(sub => sub.id !== subCategoryId)};
+            if(cat.id === categoryId) {
+                const newSubCategories = deleteNestedCategory(cat.subCategories || [], [...parentPath, subCategoryId]);
+                return {...cat, subCategories: newSubCategories};
             }
             return cat;
         }))

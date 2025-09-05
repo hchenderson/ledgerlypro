@@ -31,7 +31,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import type { Budget } from '@/types';
+import type { Budget, Category, SubCategory } from '@/types';
 import { FeatureGate } from '@/components/feature-gate';
 import { cn } from '@/lib/utils';
 
@@ -66,7 +66,21 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
     form.reset();
   };
   
-  const expenseCategories = categories.filter(c => c.type === 'expense');
+    const expenseCategories = useMemo(() => {
+        const flattenCategories = (categories: Category[] | SubCategory[], parentName?: string): { id: string; name: string }[] => {
+            let options: { id: string; name: string }[] = [];
+            categories.forEach(cat => {
+                const name = parentName ? `${parentName} -> ${cat.name}` : cat.name;
+                options.push({ id: cat.id, name: name });
+                if (cat.subCategories) {
+                    options = [...options, ...flattenCategories(cat.subCategories, name)];
+                }
+            });
+            return options;
+        };
+
+        return flattenCategories(categories.filter(c => c.type === 'expense'));
+  }, [categories]);
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -90,18 +104,12 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="Select an expense category" />
-                      </SelectTrigger>
+                      </Trigger>
                     </FormControl>
                     <SelectContent>
-                      {expenseCategories.map(cat => (
-                        <SelectGroup key={cat.id}>
-                          <SelectLabel>{cat.name}</SelectLabel>
-                          <SelectItem value={cat.id}>{cat.name} (Main Category)</SelectItem>
-                           {cat.subCategories?.map(sub => (
-                            <SelectItem key={sub.id} value={sub.id}>{sub.name}</SelectItem>
-                          ))}
-                        </SelectGroup>
-                      ))}
+                        {expenseCategories.map(cat => (
+                            <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
                   <FormMessage />
@@ -149,30 +157,39 @@ function BudgetsPageContent() {
         addBudget(newBudget);
     }
   };
+  
+    const findCategoryById = (id: string, cats: (Category | SubCategory)[]): (Category | SubCategory | undefined) => {
+        for (const cat of cats) {
+            if (cat.id === id) return cat;
+            if (cat.subCategories) {
+                const found = findCategoryById(id, cat.subCategories);
+                if (found) return found;
+            }
+        }
+        return undefined;
+    }
+
+    const getCategoryName = (id: string, cats: Category[]): string => {
+        const category = findCategoryById(id, cats);
+        return category ? category.name : "Unknown Category";
+    }
+
+    const getAllSubCategoryNames = (category: Category | SubCategory): string[] => {
+        let names = [category.name];
+        if (category.subCategories) {
+            category.subCategories.forEach(sub => {
+                names = [...names, ...getAllSubCategoryNames(sub)];
+            });
+        }
+        return names;
+    }
 
   const budgetDetails = useMemo(() => {
     return budgets.map(budget => {
-      let categoryName = 'Unknown Category';
-      let targetCategoryNames: string[] = [];
-
-      // Find if the budget is for a main category or a sub-category
-      const mainCategory = categories.find(c => c.id === budget.categoryId);
-      if (mainCategory) {
-        categoryName = mainCategory.name;
-        // If it's a main category, include all its sub-categories for spending calculation
-        targetCategoryNames = [mainCategory.name, ...(mainCategory.subCategories?.map(sc => sc.name) || [])];
-      } else {
-        // If not a main category, search in sub-categories
-        for (const cat of categories) {
-          const subCategory = cat.subCategories?.find(sc => sc.id === budget.categoryId);
-          if (subCategory) {
-            categoryName = subCategory.name;
-            // If it's a sub-category, only track spending for that specific sub-category
-            targetCategoryNames = [subCategory.name];
-            break;
-          }
-        }
-      }
+      const category = findCategoryById(budget.categoryId, categories);
+      const categoryName = category ? category.name : "Unknown Category";
+      
+      const targetCategoryNames = category ? getAllSubCategoryNames(category) : [];
 
       const spent = transactions
         .filter(t => 
@@ -188,7 +205,7 @@ function BudgetsPageContent() {
 
       return {
         ...budget,
-        categoryName,
+        categoryName: getCategoryName(budget.categoryId, categories),
         spent,
         remaining,
         progress,

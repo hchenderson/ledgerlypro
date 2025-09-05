@@ -1,7 +1,7 @@
 
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { z } from "zod"
 import { useForm, useWatch } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -38,6 +38,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  SelectGroup
 } from "@/components/ui/select"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { useToast } from "@/hooks/use-toast"
@@ -84,21 +85,39 @@ interface NewTransactionSheetProps {
     categories: Category[];
 }
 
-const AddCategoryDialog = ({ onCategoryAdded, type, categories }: { onCategoryAdded: (newCategoryName: string, parentId: string) => void, type: 'income' | 'expense', categories: Category[] }) => {
+const AddCategoryDialog = ({ onCategoryAdded, type, categories }: { onCategoryAdded: (newCategoryName: string, parentId: string, parentPath: string[]) => void, type: 'income' | 'expense', categories: Category[] }) => {
     const [name, setName] = useState('');
     const [parent, setParent] = useState('');
     const [isOpen, setIsOpen] = useState(false);
 
     const mainCategories = categories.filter(c => c.type === type);
+    
+    const parentId = parent.split(':')[0];
+    const parentPath = parent.split(':').slice(1);
 
     const handleSubmit = () => {
         if (!name || !parent) return;
         
-        onCategoryAdded(name, parent);
+        onCategoryAdded(name, parentId, parentPath);
         setIsOpen(false);
         setName('');
         setParent('');
     }
+    
+     const flattenCategories = (categories: Category[] | SubCategory[], parentName?: string, path: string[] = []) => {
+        let options: { label: string; value: string; }[] = [];
+        categories.forEach(cat => {
+            const currentPath = [...path, cat.id];
+            const label = parentName ? `${parentName} -> ${cat.name}` : cat.name;
+            options.push({ label: cat.name, value: currentPath.join(':') });
+            if (cat.subCategories) {
+                options = [...options, ...flattenCategories(cat.subCategories, cat.name, currentPath)];
+            }
+        });
+        return options;
+    };
+    
+    const availableParents = flattenCategories(mainCategories);
 
     return (
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -115,15 +134,15 @@ const AddCategoryDialog = ({ onCategoryAdded, type, categories }: { onCategoryAd
                 </DialogHeader>
                 <div className="space-y-4">
                     <div className="space-y-2">
-                        <Label>Main Category</Label>
+                        <Label>Parent Category</Label>
                         <Select onValueChange={setParent} value={parent}>
                             <SelectTrigger>
                                 <SelectValue placeholder={`Select a parent ${type} category`} />
                             </SelectTrigger>
                             <SelectContent>
-                                {mainCategories.map(cat => (
-                                    <SelectItem key={cat.id} value={cat.id}>
-                                        {cat.name}
+                                {availableParents.map(opt => (
+                                    <SelectItem key={opt.value} value={opt.value}>
+                                        {opt.label}
                                     </SelectItem>
                                 ))}
                             </SelectContent>
@@ -202,13 +221,13 @@ export function NewTransactionSheet({
     form.reset()
   }
 
-  const handleCategoryAdded = (newCategoryName: string, parentId: string) => {
+  const handleCategoryAdded = (newCategoryName: string, parentId: string, parentPath: string[]) => {
     const newSubCategory: SubCategory = {
       id: `sub_${Date.now()}`,
       name: newCategoryName,
       icon: Sparkles,
     };
-    addSubCategory(parentId, newSubCategory);
+    addSubCategory(parentId, newSubCategory, parentPath);
     form.setValue('category', newCategoryName, { shouldValidate: true });
     toast({
       title: "Category Added",
@@ -223,9 +242,37 @@ export function NewTransactionSheet({
     : "Add a new income or expense record. Click save when you're done.";
   const buttonText = isEditing ? "Save Changes" : "Create Transaction";
 
-  const availableCategories = categories
-    .filter(cat => cat.type === transactionType)
-    .flatMap(cat => cat.subCategories ? cat.subCategories.map(sub => ({...sub, parent: cat.name})) : [{ id: cat.id, name: cat.name, icon: cat.icon, parent: 'Main Categories' }])
+  const availableCategories = useMemo(() => {
+      const filtered = categories.filter(c => c.type === transactionType);
+      
+      const groupedCategories: Record<string, {name: string, id: string}[]> = {};
+
+      const processCategories = (cats: Category[] | SubCategory[], groupName: string) => {
+          cats.forEach(c => {
+              if (c.subCategories && c.subCategories.length > 0) {
+                  processCategories(c.subCategories, c.name);
+              } else {
+                  if (!groupedCategories[groupName]) {
+                      groupedCategories[groupName] = [];
+                  }
+                   groupedCategories[groupName].push({ name: c.name, id: c.id });
+              }
+          })
+      }
+
+      filtered.forEach(c => {
+          if (c.subCategories && c.subCategories.length > 0) {
+              processCategories(c.subCategories, c.name);
+          } else {
+               if (!groupedCategories['Main Categories']) {
+                    groupedCategories['Main Categories'] = [];
+                }
+                groupedCategories['Main Categories'].push({ name: c.name, id: c.id });
+          }
+      })
+
+      return groupedCategories;
+  }, [categories, transactionType]);
 
 
   const sheetContent = (
@@ -308,12 +355,17 @@ export function NewTransactionSheet({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {availableCategories.map(cat => (
-                        <SelectItem key={cat.id} value={cat.name}>
-                          {cat.name} <span className="text-muted-foreground/80 ml-2">({cat.parent})</span>
-                        </SelectItem>
+                      {Object.entries(availableCategories).map(([groupName, groupCategories]) => (
+                        <SelectGroup key={groupName}>
+                            <Label className="px-2 text-xs text-muted-foreground">{groupName}</Label>
+                            {groupCategories.map(cat => (
+                                <SelectItem key={cat.id} value={cat.name}>
+                                    {cat.name}
+                                </SelectItem>
+                            ))}
+                        </SelectGroup>
                       ))}
-                      <AddCategoryDialog onCategoryAdded={handleCategoryAdded} type={transactionType} categories={categories}/>
+                      <AddCategoryDialog onCategoryAdded={handleCategoryAdded} type={transactionType || 'expense'} categories={categories}/>
                     </SelectContent>
                   </Select>
                   <FormMessage />
