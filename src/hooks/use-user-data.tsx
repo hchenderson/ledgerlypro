@@ -5,7 +5,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import type { Transaction, Category, SubCategory, Budget, RecurringTransaction } from '@/types';
 import { defaultTransactions, defaultCategories, defaultBudgets, defaultRecurringTransactions } from '@/lib/data';
 import { useAuth } from './use-auth';
-import { isSameDay, isSameWeek, isSameMonth, isSameYear, parseISO, isBefore, startOfDay } from 'date-fns';
+import { addDays, addWeeks, addMonths, addYears, isBefore, startOfDay, parseISO } from 'date-fns';
 
 interface UserDataContextType {
   transactions: Transaction[];
@@ -97,7 +97,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (user) {
       setLoading(true);
       
-      const keys = ['transactions', 'categories', 'budgets', 'recurringTransactions'];
+      const keys = ['transactions', 'categories', 'budgets', 'recurringTransactions', 'lastRecurringCheck'];
       const setters = {
           'transactions': setTransactions,
           'categories': setCategories,
@@ -116,8 +116,10 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         if (storageKey) {
             const storedValue = localStorage.getItem(storageKey);
             if (storedValue) {
-                setters[key as keyof typeof setters](JSON.parse(storedValue));
-            } else {
+                if (key in setters) {
+                    setters[key as keyof typeof setters](JSON.parse(storedValue));
+                }
+            } else if (key in defaults) {
                  setters[key as keyof typeof setters](defaults[key as keyof typeof defaults]);
             }
         }
@@ -234,52 +236,55 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   
   const processRecurringTransactions = useCallback(() => {
     const today = startOfDay(new Date());
-    let newTransactions: Transaction[] = [];
+    let allNewTransactions: Transaction[] = [];
+    const storageKey = getStorageKey('lastRecurringCheck');
+    if (!storageKey) return;
+    
+    const lastCheckDate = parseISO(localStorage.getItem(storageKey) || new Date(0).toISOString());
+
     const updatedRecurring = recurringTransactions.map(rt => {
       const startDate = parseISO(rt.startDate);
-      let lastAdded = rt.lastAddedDate ? parseISO(rt.lastAddedDate) : startDate;
-      
-      let shouldAdd = false;
-      switch(rt.frequency) {
-        case 'daily':
-          if (isBefore(lastAdded, today)) shouldAdd = true;
-          break;
-        case 'weekly':
-          if (!isSameWeek(lastAdded, today, { weekStartsOn: 1 })) shouldAdd = true;
-          break;
-        case 'monthly':
-          if (!isSameMonth(lastAdded, today)) shouldAdd = true;
-          break;
-        case 'yearly':
-          if (!isSameYear(lastAdded, today)) shouldAdd = true;
-          break;
-      }
-      
-      if (isBefore(startDate, today) && shouldAdd) {
-        newTransactions.push({
-          id: `txn_${Date.now()}_${Math.random()}`,
-          date: today.toISOString(),
-          description: `(Recurring) ${rt.description}`,
-          amount: rt.amount,
-          type: rt.type,
-          category: rt.category
-        });
-        return {...rt, lastAddedDate: today.toISOString()};
+      let nextDate = rt.lastAddedDate ? parseISO(rt.lastAddedDate) : startDate;
+
+      while (isBefore(nextDate, today)) {
+        switch(rt.frequency) {
+          case 'daily': nextDate = addDays(nextDate, 1); break;
+          case 'weekly': nextDate = addWeeks(nextDate, 1); break;
+          case 'monthly': nextDate = addMonths(nextDate, 1); break;
+          case 'yearly': nextDate = addYears(nextDate, 1); break;
+        }
+
+        if (isBefore(nextDate, today) || nextDate.getTime() === today.getTime()) {
+           if (isBefore(lastCheckDate, nextDate)) {
+             allNewTransactions.push({
+                id: `txn_${Date.now()}_${Math.random()}`,
+                date: nextDate.toISOString(),
+                description: `(Recurring) ${rt.description}`,
+                amount: rt.amount,
+                type: rt.type,
+                category: rt.category
+            });
+             rt.lastAddedDate = nextDate.toISOString();
+           }
+        }
       }
       return rt;
     });
 
-    if (newTransactions.length > 0) {
-      setTransactions(prev => [...newTransactions, ...prev]);
+    if (allNewTransactions.length > 0) {
+      setTransactions(prev => [...allNewTransactions, ...prev]);
       setRecurringTransactions(updatedRecurring);
     }
-  }, [recurringTransactions]);
+    
+    localStorage.setItem(storageKey, today.toISOString());
+  }, [recurringTransactions, getStorageKey]);
 
   useEffect(() => {
     if (user && !loading) {
       processRecurringTransactions();
     }
-  }, [user, loading, processRecurringTransactions]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, loading]);
 
   const clearTransactions = () => {
     setTransactions([]);
