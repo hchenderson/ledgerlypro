@@ -123,8 +123,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const collRef: any = getCollectionRef(name);
         data.forEach((item) => {
             const docRef = doc(collRef, item.id);
-            const { icon, ...rest } = item as any;
-            batch.set(docRef, rest);
+            batch.set(docRef, item);
         });
     }
 
@@ -431,3 +430,5 @@ export const useUserData = () => {
   }
   return context;
 };
+
+    
