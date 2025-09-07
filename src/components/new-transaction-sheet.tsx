@@ -275,8 +275,10 @@ export function NewTransactionSheet({
   }, [categories, transactionType]);
 
 
-  const sheetContent = (
-      <>
+  return (
+    <Sheet open={isOpen} onOpenChange={onOpenChange}>
+      {children && <SheetTrigger asChild>{children}</SheetTrigger>}
+      <SheetContent>
         <SheetHeader>
           <SheetTitle>{sheetTitle}</SheetTitle>
           <SheetDescription>{sheetDescription}</SheetDescription>
@@ -421,26 +423,6 @@ export function NewTransactionSheet({
             </SheetFooter>
           </form>
         </Form>
-      </>
-  )
-
-  if (children) {
-    return (
-        <Sheet open={isOpen} onOpenChange={onOpenChange}>
-            <SheetTrigger asChild>
-                {children}
-            </SheetTrigger>
-            <SheetContent>
-                {sheetContent}
-            </SheetContent>
-        </Sheet>
-    )
-  }
-
-  return (
-    <Sheet open={isOpen} onOpenChange={onOpenChange}>
-      <SheetContent>
-        {sheetContent}
       </SheetContent>
     </Sheet>
   )
