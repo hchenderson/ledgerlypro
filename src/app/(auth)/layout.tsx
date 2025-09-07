@@ -10,13 +10,12 @@ export default function AuthLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { user, loading } = useAuth();
+  const { user, loading, onboardingComplete } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
   useEffect(() => {
     if (!loading && user) {
-        const onboardingComplete = localStorage.getItem('onboardingComplete');
         // If user is authenticated and onboarding is complete, redirect to dashboard
         if (onboardingComplete) {
             router.push('/dashboard');
@@ -27,10 +26,10 @@ export default function AuthLayout({
             router.push('/welcome');
         }
     }
-  }, [user, loading, router, pathname]);
+  }, [user, loading, router, pathname, onboardingComplete]);
 
   // Show a loading spinner while checking auth state or if we are about to redirect.
-  if (loading || (user && !localStorage.getItem('onboardingComplete') && pathname !== '/welcome')) {
+  if (loading || (user && !onboardingComplete && pathname !== '/welcome')) {
     return (
         <div className="flex min-h-screen items-center justify-center">
             <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />

@@ -12,6 +12,9 @@ import { useUserData } from "@/hooks/use-user-data";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/use-auth";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 
 function DashboardSkeleton() {
@@ -58,20 +61,29 @@ function GettingStartedGuide({ onClearData, onDismiss }: { onClearData: () => vo
 }
 
 export default function DashboardPage() {
-  const { transactions, loading, clearTransactions, budgets, categories } = useUserData();
+  const { transactions, loading, clearAllData, budgets, categories } = useUserData();
+  const { user } = useAuth();
   const [startingBalance, setStartingBalance] = useState(0);
   const [showGuide, setShowGuide] = useState(false);
+  const [guideDismissed, setGuideDismissed] = useState(true);
 
   useEffect(() => {
-    const storedBalance = localStorage.getItem('startingBalance');
-    if (storedBalance) {
-      setStartingBalance(parseFloat(storedBalance));
+    if (user) {
+        const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'main');
+        getDoc(settingsDocRef).then(docSnap => {
+            if (docSnap.exists()) {
+                setStartingBalance(docSnap.data().startingBalance || 0);
+                 if (docSnap.data().guideDismissed) {
+                    setGuideDismissed(true);
+                } else {
+                    setGuideDismissed(false);
+                }
+            } else {
+                 setGuideDismissed(false);
+            }
+        });
     }
-    const guideDismissed = localStorage.getItem('guideDismissed');
-    if (!guideDismissed) {
-      setShowGuide(true);
-    }
-  }, []);
+  }, [user]);
 
   const { 
       totalIncome, 
@@ -129,14 +141,16 @@ export default function DashboardPage() {
     return { totalIncome, totalExpenses, currentBalance, overviewData, currentMonthIncome, currentMonthExpenses };
   }, [transactions, startingBalance]);
 
-  const handleClearData = () => {
-    clearTransactions();
-    handleDismissGuide();
+  const handleClearData = async () => {
+    await clearAllData();
+    await handleDismissGuide();
   }
 
-  const handleDismissGuide = () => {
-    setShowGuide(false);
-    localStorage.setItem('guideDismissed', 'true');
+  const handleDismissGuide = async () => {
+    if(!user) return;
+    setGuideDismissed(true);
+    const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'main');
+    await setDoc(settingsDocRef, { guideDismissed: true }, { merge: true });
   }
 
   if (loading) {
@@ -149,7 +163,7 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      {showGuide && transactions.length > 0 && <GettingStartedGuide onClearData={handleClearData} onDismiss={handleDismissGuide} />}
+      {!guideDismissed && transactions.length > 0 && <GettingStartedGuide onClearData={handleClearData} onDismiss={handleDismissGuide} />}
       
       <div className="grid gap-4 md:grid-cols-1">
          <StatCard

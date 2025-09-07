@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { getAdditionalUserInfo } from "firebase/auth";
+import { useAuth } from "@/hooks/use-auth";
 
 const GoogleIcon = () => (
     <svg className="size-4" viewBox="0 0 48 48">
@@ -25,6 +26,7 @@ const GoogleIcon = () => (
 export default function SignInPage() {
     const router = useRouter();
     const { toast } = useToast();
+    const { setOnboardingComplete } = useAuth();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -37,7 +39,7 @@ export default function SignInPage() {
             if(additionalInfo?.isNewUser) {
                 router.push("/welcome");
             } else {
-                localStorage.setItem('onboardingComplete', 'true'); // For existing users
+                setOnboardingComplete(true);
                 router.push("/dashboard");
             }
         } catch (error) {
@@ -57,7 +59,7 @@ export default function SignInPage() {
         setIsSubmitting(true);
         try {
             await signInWithEmail(email, password);
-            localStorage.setItem('onboardingComplete', 'true');
+            setOnboardingComplete(true);
             router.push("/dashboard");
         } catch (error: any) {
             console.error("Email Sign-in failed:", error)
@@ -80,7 +82,6 @@ export default function SignInPage() {
         setIsSubmitting(true);
         try {
             await signUpWithEmail(email, password);
-            // The Auth layout will handle redirection to the welcome page for new users
             toast({
                 title: "Account Created",
                 description: "You have successfully signed up! Let's set up your profile.",

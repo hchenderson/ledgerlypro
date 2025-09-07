@@ -13,16 +13,18 @@ import { Check, User, Wallet, CreditCard, ArrowRight, ArrowLeft, Loader2, Sparkl
 import { updateProfile } from 'firebase/auth';
 import { cn } from '@/lib/utils';
 import { Progress } from '@/components/ui/progress';
+import { doc, setDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 
 export default function WelcomePage() {
-    const { user, setPlan } = useAuth();
+    const { user, setPlan, setOnboardingComplete } = useAuth();
     const router = useRouter();
     const { toast } = useToast();
     const [step, setStep] = useState(1);
     const [name, setName] = useState('');
     const [startingBalance, setStartingBalance] = useState('');
-    const [subscription, setSubscription] = useState<'free' | 'monthly' | 'yearly'>('free');
+    const [subscription, setSubscription] = useState<'free' | 'pro'>('free');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
@@ -49,21 +51,17 @@ export default function WelcomePage() {
         setIsSubmitting(true);
         try {
             await updateProfile(user, { displayName: name });
+            
+            const settingsRef = doc(db, 'users', user.uid, 'settings', 'main');
+            
+            await setPlan(subscription);
 
             const balance = parseFloat(startingBalance);
-            if (!isNaN(balance)) {
-                localStorage.setItem('startingBalance', balance.toString());
-            } else {
-                 localStorage.setItem('startingBalance', '0');
-            }
+             await setDoc(settingsRef, { 
+                startingBalance: isNaN(balance) ? 0 : balance,
+            }, { merge: true });
             
-            if (subscription === 'monthly' || subscription === 'yearly') {
-                setPlan('pro');
-            } else {
-                setPlan('free');
-            }
-
-            localStorage.setItem('onboardingComplete', 'true');
+            await setOnboardingComplete(true);
 
             toast({ title: 'Setup Complete!', description: 'Welcome to Ledgerly. Redirecting you to the dashboard...' });
             router.push('/dashboard');
@@ -126,18 +124,18 @@ export default function WelcomePage() {
                                     <p className="text-xs text-muted-foreground mt-2">Basic features</p>
                                     {subscription === 'free' && <Check className="absolute top-2 right-2 h-5 w-5 text-primary" />}
                                 </button>
-                                <button onClick={() => setSubscription('monthly')} className={cn("rounded-lg border p-4 text-left transition-all relative", subscription === 'monthly' && 'ring-2 ring-primary border-primary')}>
-                                     <h4 className="font-semibold">Pro Monthly</h4>
+                                <button onClick={() => setSubscription('pro')} className={cn("rounded-lg border p-4 text-left transition-all relative", subscription === 'pro' && 'ring-2 ring-primary border-primary')}>
+                                     <h4 className="font-semibold">Pro</h4>
                                     <p className="text-sm text-muted-foreground">$4.99 / month</p>
                                     <p className="text-xs text-muted-foreground mt-2">All pro features</p>
-                                    {subscription === 'monthly' && <Check className="absolute top-2 right-2 h-5 w-5 text-primary" />}
+                                    {subscription === 'pro' && <Check className="absolute top-2 right-2 h-5 w-5 text-primary" />}
                                 </button>
-                                <button onClick={() => setSubscription('yearly')} className={cn("rounded-lg border p-4 text-left transition-all relative", subscription === 'yearly' && 'ring-2 ring-primary border-primary')}>
+                                 <button onClick={() => setSubscription('pro')} className={cn("rounded-lg border p-4 text-left transition-all relative", subscription === 'pro' && 'ring-2 ring-primary border-primary')}>
                                     <Sparkles className="absolute top-2 left-2 size-4 text-primary" />
                                     <h4 className="font-semibold">Pro Yearly</h4>
                                     <p className="text-sm text-muted-foreground">$39.99 / year</p>
                                     <p className="text-xs font-bold text-primary">Save 30%</p>
-                                    {subscription === 'yearly' && <Check className="absolute top-2 right-2 h-5 w-5 text-primary" />}
+                                    {subscription === 'pro' && <Check className="absolute top-2 right-2 h-5 w-5 text-primary" />}
                                 </button>
                             </div>
                         </div>

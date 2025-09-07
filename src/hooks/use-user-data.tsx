@@ -2,9 +2,11 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { collection, doc, getDocs, onSnapshot, writeBatch, getDoc, setDoc, deleteDoc, query } from 'firebase/firestore';
 import type { Transaction, Category, SubCategory, Budget, RecurringTransaction } from '@/types';
 import { defaultTransactions, defaultCategories, defaultBudgets, defaultRecurringTransactions } from '@/lib/data';
 import { useAuth } from './use-auth';
+import { db } from '@/lib/firebase';
 import { addDays, addWeeks, addMonths, addYears, isBefore, startOfDay, parseISO } from 'date-fns';
 
 interface UserDataContextType {
@@ -13,70 +15,84 @@ interface UserDataContextType {
   budgets: Budget[];
   recurringTransactions: RecurringTransaction[];
   loading: boolean;
-  addTransaction: (transaction: Transaction) => void;
-  updateTransaction: (id: string, values: Partial<Omit<Transaction, 'id'>>) => void;
-  deleteTransaction: (id: string) => void;
-  addCategory: (category: Category) => void;
-  addSubCategory: (parentId: string, subCategory: SubCategory, parentPath?: string[]) => void;
-  updateCategory: (id: string, newName: string) => void;
-  deleteCategory: (id: string) => void;
-  updateSubCategory: (categoryId: string, subCategoryId: string, newName: string, parentPath?: string[]) => void;
-  deleteSubCategory: (categoryId: string, subCategoryId: string, parentPath?: string[]) => void;
-  addBudget: (budget: Budget) => void;
-  updateBudget: (id: string, values: Partial<Omit<Budget, 'id'>>) => void;
-  deleteBudget: (id: string) => void;
-  toggleFavoriteBudget: (id: string) => void;
-  addRecurringTransaction: (transaction: RecurringTransaction) => void;
-  updateRecurringTransaction: (id: string, values: Partial<Omit<RecurringTransaction, 'id'>>) => void;
-  deleteRecurringTransaction: (id: string) => void;
-  processRecurringTransactions: () => void;
-  clearTransactions: () => void;
-  clearAllData: () => void;
+  addTransaction: (transaction: Omit<Transaction, 'id'>) => Promise<void>;
+  updateTransaction: (id: string, values: Partial<Omit<Transaction, 'id'>>) => Promise<void>;
+  deleteTransaction: (id: string) => Promise<void>;
+  addCategory: (category: Omit<Category, 'id'>) => Promise<void>;
+  addSubCategory: (parentId: string, subCategory: Omit<SubCategory, 'id'>, parentPath?: string[]) => Promise<void>;
+  updateCategory: (id: string, newName: string) => Promise<void>;
+  deleteCategory: (id: string) => Promise<void>;
+  updateSubCategory: (categoryId: string, subCategoryId: string, newName: string, parentPath?: string[]) => Promise<void>;
+  deleteSubCategory: (categoryId: string, subCategoryId: string, parentPath?: string[]) => Promise<void>;
+  addBudget: (budget: Omit<Budget, 'id'>) => Promise<void>;
+  updateBudget: (id: string, values: Partial<Omit<Budget, 'id'>>) => Promise<void>;
+  deleteBudget: (id: string) => Promise<void>;
+  toggleFavoriteBudget: (id: string) => Promise<void>;
+  addRecurringTransaction: (transaction: Omit<RecurringTransaction, 'id'>) => Promise<void>;
+  updateRecurringTransaction: (id: string, values: Partial<Omit<RecurringTransaction, 'id'>>) => Promise<void>;
+  deleteRecurringTransaction: (id: string) => Promise<void>;
+  processRecurringTransactions: () => Promise<void>;
+  clearTransactions: () => Promise<void>;
+  clearAllData: () => Promise<void>;
 }
 
 const UserDataContext = createContext<UserDataContextType | undefined>(undefined);
 
-const updateNestedCategory = (categories: SubCategory[], path: string[], newName: string): SubCategory[] => {
-    const [currentId, ...restPath] = path;
-    return categories.map(cat => {
-        if (cat.id === currentId) {
-            if (restPath.length === 0) {
-                return { ...cat, name: newName };
-            }
-            return { ...cat, subCategories: updateNestedCategory(cat.subCategories || [], restPath, newName) };
+const updateNestedValue = async (
+    docRef: any, 
+    path: string[],
+    updateData: any,
+    operation: 'add' | 'update' | 'delete'
+) => {
+    const docSnap = await getDoc(docRef);
+    if (!docSnap.exists()) return;
+
+    let data = docSnap.data();
+    let currentLevel = data.subCategories || [];
+    let levels = [currentLevel];
+    
+    for (const id of path) {
+        const nextLevel = currentLevel.find((c: any) => c.id === id);
+        if (nextLevel && nextLevel.subCategories) {
+            currentLevel = nextLevel.subCategories;
+            levels.push(currentLevel);
+        } else {
+            break;
         }
-        return cat;
-    });
+    }
+
+    const applyOperation = (targetLevel: any[], targetId: string) => {
+        const itemIndex = targetLevel.findIndex((item: any) => item.id === targetId);
+
+        if (operation === 'add') {
+             if (!targetLevel.find((item: any) => item.id === updateData.id)) {
+                 targetLevel.push(updateData);
+             }
+        } else if (itemIndex !== -1) {
+            if (operation === 'update') {
+                targetLevel[itemIndex] = { ...targetLevel[itemIndex], ...updateData };
+            } else if (operation === 'delete') {
+                targetLevel.splice(itemIndex, 1);
+            }
+        }
+    };
+    
+    if (path.length > 0) {
+        const parentLevel = levels[levels.length - 2];
+        const targetLevel = levels[levels.length - 1];
+        const parentId = path[path.length - 1];
+        
+        const parentObject = parentLevel.find((c:any) => c.id === parentId);
+        if(parentObject) {
+             if(!parentObject.subCategories) parentObject.subCategories = [];
+             applyOperation(parentObject.subCategories, updateData.id || path[path.length]);
+        }
+    } else {
+        applyOperation(data.subCategories, updateData.id);
+    }
+
+    await setDoc(docRef, data, { merge: true });
 };
-
-const deleteNestedCategory = (categories: SubCategory[], path: string[]): SubCategory[] => {
-    const [currentId, ...restPath] = path;
-    if (restPath.length === 0) {
-        return categories.filter(cat => cat.id !== currentId);
-    }
-    return categories.map(cat => {
-        if (cat.id === currentId) {
-            return { ...cat, subCategories: deleteNestedCategory(cat.subCategories || [], restPath) };
-        }
-        return cat;
-    });
-}
-
-const addNestedCategory = (categories: SubCategory[], path: string[], newCategory: SubCategory): SubCategory[] => {
-    const [currentId, ...restPath] = path;
-     if (path.length === 0) {
-        return [...categories, newCategory];
-    }
-    return categories.map(cat => {
-        if (cat.id === currentId) {
-             if (restPath.length === 0) {
-                return { ...cat, subCategories: [...(cat.subCategories || []), newCategory] };
-            }
-            return { ...cat, subCategories: addNestedCategory(cat.subCategories || [], restPath, newCategory) };
-        }
-        return cat;
-    });
-}
 
 
 export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -87,218 +103,293 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [recurringTransactions, setRecurringTransactions] = useState<RecurringTransaction[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const getStorageKey = useCallback((key: string) => {
+  const getCollectionRef = useCallback((collectionName: string) => {
     if (!user) return null;
-    return `${key}_${user.uid}`;
+    return collection(db, 'users', user.uid, collectionName);
   }, [user]);
 
-  // Load data from localStorage
-  useEffect(() => {
-    if (user) {
-      setLoading(true);
-      
-      const keys = ['transactions', 'categories', 'budgets', 'recurringTransactions', 'lastRecurringCheck'];
-      const setters = {
-          'transactions': setTransactions,
-          'categories': setCategories,
-          'budgets': setBudgets,
-          'recurringTransactions': setRecurringTransactions
-      };
-       const defaults = {
-          'transactions': defaultTransactions,
-          'categories': defaultCategories,
-          'budgets': defaultBudgets,
-          'recurringTransactions': defaultRecurringTransactions
-      };
+  const seedDefaultData = useCallback(async () => {
+    if (!user) return;
+    const batch = writeBatch(db);
+    
+    const collections = {
+        transactions: defaultTransactions,
+        categories: defaultCategories,
+        budgets: defaultBudgets,
+        recurringTransactions: defaultRecurringTransactions
+    };
 
-      keys.forEach(key => {
-        const storageKey = getStorageKey(key);
-        if (storageKey) {
-            const storedValue = localStorage.getItem(storageKey);
-            if (storedValue) {
-                if (key in setters) {
-                    setters[key as keyof typeof setters](JSON.parse(storedValue));
-                }
-            } else if (key in defaults) {
-                 setters[key as keyof typeof setters](defaults[key as keyof typeof defaults]);
-            }
-        }
-      });
-      
+    for (const [name, data] of Object.entries(collections)) {
+        const collRef: any = getCollectionRef(name);
+        data.forEach((item) => {
+            const docRef = doc(collRef, item.id);
+            batch.set(docRef, item);
+        });
+    }
+
+    await batch.commit();
+  }, [user, getCollectionRef]);
+  
+  useEffect(() => {
+    if (!user) {
       setLoading(false);
-    } else {
-      // Clear data if user logs out
       setTransactions([]);
       setCategories([]);
       setBudgets([]);
       setRecurringTransactions([]);
+      return;
     }
-  }, [user, getStorageKey]);
 
-  // Save data to localStorage
-  useEffect(() => {
-    if (user && !loading) {
-        const dataToStore = {
-            transactions,
-            categories,
-            budgets,
-            recurringTransactions,
-        };
-        for (const [key, value] of Object.entries(dataToStore)) {
-            const storageKey = getStorageKey(key);
-            if (storageKey) {
-                localStorage.setItem(storageKey, JSON.stringify(value));
-            }
+    setLoading(true);
+
+    const checkAndSeedData = async () => {
+        const transactionsRef: any = getCollectionRef('transactions');
+        const snapshot = await getDocs(transactionsRef);
+        if (snapshot.empty) {
+            await seedDefaultData();
         }
-    }
-  }, [transactions, categories, budgets, recurringTransactions, user, getStorageKey, loading]);
+    };
 
-  const addTransaction = (transaction: Transaction) => {
-    setTransactions(prev => [transaction, ...prev]);
-  };
-  
-  const updateTransaction = (id: string, values: Partial<Omit<Transaction, 'id'>>) => {
-      setTransactions(prev => prev.map(t => t.id === id ? { ...t, ...values } : t));
-  }
+    checkAndSeedData();
 
-  const deleteTransaction = (id: string) => {
-    setTransactions(prev => prev.filter(t => t.id !== id));
-  };
-  
-  const addCategory = (category: Category) => {
-    setCategories(prev => [...prev, category]);
-  };
-  
-  const updateCategory = (id: string, newName: string) => {
-    setCategories(prev => prev.map(c => c.id === id ? {...c, name: newName} : c));
-  }
-
-  const deleteCategory = (id: string) => {
-      setCategories(prev => prev.filter(c => c.id !== id));
-  }
-
-  const addSubCategory = (parentId: string, subCategory: SubCategory, parentPath: string[] = []) => {
-    setCategories(prev => prev.map(cat => {
-        if (cat.id === parentId) {
-            return { ...cat, subCategories: addNestedCategory(cat.subCategories || [], parentPath, subCategory) };
+    const unsubscribers = ['transactions', 'categories', 'budgets', 'recurringTransactions'].map(name => {
+      const collRef: any = getCollectionRef(name);
+      return onSnapshot(query(collRef), (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        switch (name) {
+          case 'transactions': setTransactions(data as Transaction[]); break;
+          case 'categories': setCategories(data as Category[]); break;
+          case 'budgets': setBudgets(data as Budget[]); break;
+          case 'recurringTransactions': setRecurringTransactions(data as RecurringTransaction[]); break;
         }
-        return cat;
-    }));
-  };
-  
-  const updateSubCategory = (categoryId: string, subCategoryId: string, newName: string, parentPath: string[] = []) => {
-      setCategories(prev => prev.map(cat => {
-          if(cat.id === categoryId) {
-              const newSubCategories = updateNestedCategory(cat.subCategories || [], [...parentPath, subCategoryId], newName);
-              return {...cat, subCategories: newSubCategories};
-          }
-          return cat;
-      }))
-  }
-
-  const deleteSubCategory = (categoryId: string, subCategoryId: string, parentPath: string[] = []) => {
-        setCategories(prev => prev.map(cat => {
-            if(cat.id === categoryId) {
-                const newSubCategories = deleteNestedCategory(cat.subCategories || [], [...parentPath, subCategoryId]);
-                return {...cat, subCategories: newSubCategories};
-            }
-            return cat;
-        }))
-  }
-
-  const addBudget = (budget: Budget) => {
-    setBudgets(prev => [...prev, budget]);
-  };
-
-  const updateBudget = (id: string, values: Partial<Omit<Budget, 'id'>>) => {
-    setBudgets(prev => prev.map(b => (b.id === id ? { ...b, ...values } : b)));
-  };
-
-  const deleteBudget = (id: string) => {
-    setBudgets(prev => prev.filter(b => b.id !== id));
-  };
-
-  const toggleFavoriteBudget = (id: string) => {
-    setBudgets(prev => prev.map(b => (b.id === id ? { ...b, isFavorite: !b.isFavorite } : b)));
-  };
-  
-  const addRecurringTransaction = (transaction: RecurringTransaction) => {
-    setRecurringTransactions(prev => [...prev, transaction]);
-  };
-
-  const updateRecurringTransaction = (id: string, values: Partial<Omit<RecurringTransaction, 'id'>>) => {
-    setRecurringTransactions(prev => prev.map(rt => (rt.id === id ? { ...rt, ...values } : rt)));
-  };
-
-  const deleteRecurringTransaction = (id: string) => {
-    setRecurringTransactions(prev => prev.filter(rt => rt.id !== id));
-  };
-  
-  const processRecurringTransactions = useCallback(() => {
-    const today = startOfDay(new Date());
-    let allNewTransactions: Transaction[] = [];
-    const storageKey = getStorageKey('lastRecurringCheck');
-    if (!storageKey) return;
-    
-    const lastCheckDate = parseISO(localStorage.getItem(storageKey) || new Date(0).toISOString());
-
-    const updatedRecurring = recurringTransactions.map(rt => {
-      const startDate = parseISO(rt.startDate);
-      let nextDate = rt.lastAddedDate ? parseISO(rt.lastAddedDate) : startDate;
-
-      while (isBefore(nextDate, today)) {
-        switch(rt.frequency) {
-          case 'daily': nextDate = addDays(nextDate, 1); break;
-          case 'weekly': nextDate = addWeeks(nextDate, 1); break;
-          case 'monthly': nextDate = addMonths(nextDate, 1); break;
-          case 'yearly': nextDate = addYears(nextDate, 1); break;
-        }
-
-        if (isBefore(nextDate, today) || nextDate.getTime() === today.getTime()) {
-           if (isBefore(lastCheckDate, nextDate)) {
-             allNewTransactions.push({
-                id: `txn_${Date.now()}_${Math.random()}`,
-                date: nextDate.toISOString(),
-                description: `(Recurring) ${rt.description}`,
-                amount: rt.amount,
-                type: rt.type,
-                category: rt.category
-            });
-             rt.lastAddedDate = nextDate.toISOString();
-           }
-        }
-      }
-      return rt;
+      });
     });
 
-    if (allNewTransactions.length > 0) {
-      setTransactions(prev => [...allNewTransactions, ...prev]);
-      setRecurringTransactions(updatedRecurring);
+    setLoading(false);
+
+    return () => {
+      unsubscribers.forEach(unsub => unsub());
+    };
+  }, [user, getCollectionRef, seedDefaultData]);
+
+
+  const addTransaction = async (transaction: Omit<Transaction, 'id'>) => {
+    const collRef: any = getCollectionRef('transactions');
+    const newDocRef = doc(collRef);
+    await setDoc(newDocRef, { ...transaction, id: newDocRef.id });
+  };
+  
+  const updateTransaction = async (id: string, values: Partial<Omit<Transaction, 'id'>>) => {
+      const docRef: any = doc(getCollectionRef('transactions'), id);
+      await setDoc(docRef, values, { merge: true });
+  }
+
+  const deleteTransaction = async (id: string) => {
+    const docRef: any = doc(getCollectionRef('transactions'), id);
+    await deleteDoc(docRef);
+  };
+  
+  const addCategory = async (category: Omit<Category, 'id'>) => {
+    const collRef: any = getCollectionRef('categories');
+    const newDocRef = doc(collRef);
+    await setDoc(newDocRef, { ...category, id: newDocRef.id });
+  };
+  
+  const updateCategory = async (id: string, newName: string) => {
+    const docRef: any = doc(getCollectionRef('categories'), id);
+    await setDoc(docRef, { name: newName }, { merge: true });
+  }
+
+  const deleteCategory = async (id: string) => {
+    const docRef: any = doc(getCollectionRef('categories'), id);
+    await deleteDoc(docRef);
+  }
+
+  const addSubCategory = async (parentId: string, subCategory: Omit<SubCategory, 'id'>, parentPath: string[] = []) => {
+     const docRef: any = doc(getCollectionRef('categories'), parentId);
+     const newId = `sub_${Date.now()}`;
+     const newSubCategory = { ...subCategory, id: newId };
+
+     const parentDoc = await getDoc(docRef);
+     if(parentDoc.exists()){
+         let currentSubCategories = parentDoc.data().subCategories || [];
+         
+         const addNested = (items: SubCategory[], path: string[]): SubCategory[] => {
+             if (path.length === 0) {
+                 return [...items, newSubCategory];
+             }
+             const [currentId, ...restPath] = path;
+             return items.map(item => {
+                 if (item.id === currentId) {
+                     return { ...item, subCategories: addNested(item.subCategories || [], restPath)};
+                 }
+                 return item;
+             });
+         };
+         const updatedSubCategories = addNested(currentSubCategories, parentPath);
+         await setDoc(docRef, { subCategories: updatedSubCategories }, { merge: true });
+     }
+  };
+  
+  const updateSubCategory = async (categoryId: string, subCategoryId: string, newName: string, parentPath: string[] = []) => {
+      const docRef: any = doc(getCollectionRef('categories'), categoryId);
+      const parentDoc = await getDoc(docRef);
+       if(parentDoc.exists()){
+         let subCategories = parentDoc.data().subCategories || [];
+         
+         const updateNested = (items: SubCategory[], path: string[]): SubCategory[] => {
+             const [currentId, ...restPath] = path;
+             return items.map(item => {
+                 if(item.id === currentId) {
+                     if (restPath.length === 0) {
+                         return { ...item, name: newName };
+                     }
+                     return { ...item, subCategories: updateNested(item.subCategories || [], restPath) };
+                 }
+                 return item;
+             });
+         };
+         const updatedSubCategories = updateNested(subCategories, [...parentPath, subCategoryId]);
+         await setDoc(docRef, { subCategories: updatedSubCategories }, { merge: true });
+     }
+  }
+
+  const deleteSubCategory = async (categoryId: string, subCategoryId: string, parentPath: string[] = []) => {
+      const docRef: any = doc(getCollectionRef('categories'), categoryId);
+      const parentDoc = await getDoc(docRef);
+      if (parentDoc.exists()) {
+          let subCategories = parentDoc.data().subCategories || [];
+
+          const deleteNested = (items: SubCategory[], path: string[]): SubCategory[] => {
+              const [currentId, ...restPath] = path;
+              if (restPath.length === 0) {
+                  return items.filter(item => item.id !== currentId);
+              }
+              return items.map(item => {
+                  if (item.id === currentId) {
+                      return { ...item, subCategories: deleteNested(item.subCategories || [], restPath) };
+                  }
+                  return item;
+              });
+          };
+
+          const updatedSubCategories = deleteNested(subCategories, [...parentPath, subCategoryId]);
+          await setDoc(docRef, { subCategories: updatedSubCategories }, { merge: true });
+      }
+  }
+
+  const addBudget = async (budget: Omit<Budget, 'id'>) => {
+    const collRef: any = getCollectionRef('budgets');
+    const newDocRef = doc(collRef);
+    await setDoc(newDocRef, { ...budget, id: newDocRef.id });
+  };
+
+  const updateBudget = async (id: string, values: Partial<Omit<Budget, 'id'>>) => {
+    const docRef: any = doc(getCollectionRef('budgets'), id);
+    await setDoc(docRef, values, { merge: true });
+  };
+
+  const deleteBudget = async (id: string) => {
+    const docRef: any = doc(getCollectionRef('budgets'), id);
+    await deleteDoc(docRef);
+  };
+
+  const toggleFavoriteBudget = async (id: string) => {
+    const docRef: any = doc(getCollectionRef('budgets'), id);
+    const docSnap = await getDoc(docRef);
+    if(docSnap.exists()) {
+        await setDoc(docRef, { isFavorite: !docSnap.data().isFavorite }, { merge: true });
+    }
+  };
+  
+  const addRecurringTransaction = async (transaction: Omit<RecurringTransaction, 'id'>) => {
+    const collRef: any = getCollectionRef('recurringTransactions');
+    const newDocRef = doc(collRef);
+    await setDoc(newDocRef, { ...transaction, id: newDocRef.id });
+  };
+
+  const updateRecurringTransaction = async (id: string, values: Partial<Omit<RecurringTransaction, 'id'>>) => {
+    const docRef: any = doc(getCollectionRef('recurringTransactions'), id);
+    await setDoc(docRef, values, { merge: true });
+  };
+
+  const deleteRecurringTransaction = async (id: string) => {
+    const docRef: any = doc(getCollectionRef('recurringTransactions'), id);
+    await deleteDoc(docRef);
+  };
+  
+  const processRecurringTransactions = useCallback(async () => {
+    if(!user) return;
+    const today = startOfDay(new Date());
+    const settingsDocRef: any = doc(db, 'users', user.uid, 'settings', 'recurring');
+    const settingsDoc = await getDoc(settingsDocRef);
+    const lastCheckDate = settingsDoc.exists() ? parseISO(settingsDoc.data().lastCheck) : new Date(0);
+
+    const batch = writeBatch(db);
+    const transactionsCollRef: any = getCollectionRef('transactions');
+    const recurringCollRef: any = getCollectionRef('recurringTransactions');
+
+    for (const rt of recurringTransactions) {
+        let nextDate = rt.lastAddedDate ? parseISO(rt.lastAddedDate) : parseISO(rt.startDate);
+
+        while (isBefore(nextDate, today)) {
+             switch(rt.frequency) {
+                case 'daily': nextDate = addDays(nextDate, 1); break;
+                case 'weekly': nextDate = addWeeks(nextDate, 1); break;
+                case 'monthly': nextDate = addMonths(nextDate, 1); break;
+                case 'yearly': nextDate = addYears(nextDate, 1); break;
+            }
+
+            if ((isBefore(nextDate, today) || nextDate.getTime() === today.getTime()) && isBefore(lastCheckDate, nextDate)) {
+                 const newTransactionDoc = doc(transactionsCollRef);
+                 batch.set(newTransactionDoc, {
+                    date: nextDate.toISOString(),
+                    description: `(Recurring) ${rt.description}`,
+                    amount: rt.amount,
+                    type: rt.type,
+                    category: rt.category
+                 });
+                 
+                 const recurringDocToUpdate = doc(recurringCollRef, rt.id);
+                 batch.update(recurringDocToUpdate, { lastAddedDate: nextDate.toISOString() });
+            }
+        }
     }
     
-    localStorage.setItem(storageKey, today.toISOString());
-  }, [recurringTransactions, getStorageKey]);
+    await batch.commit();
+    await setDoc(settingsDocRef, { lastCheck: today.toISOString() });
+
+  }, [user, recurringTransactions, getCollectionRef]);
 
   useEffect(() => {
     if (user && !loading) {
       processRecurringTransactions();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, loading]);
+  }, [user, loading, processRecurringTransactions]);
 
-  const clearTransactions = () => {
-    setTransactions([]);
+ const clearCollection = async (collectionName: string) => {
+    const collRef: any = getCollectionRef(collectionName);
+    const snapshot = await getDocs(collRef);
+    const batch = writeBatch(db);
+    snapshot.docs.forEach(doc => batch.delete(doc.ref));
+    await batch.commit();
+ }
+
+  const clearTransactions = async () => {
+    await clearCollection('transactions');
   };
 
-  const clearAllData = () => {
-    setTransactions([]);
-    setCategories([]);
-    setBudgets([]);
-    setRecurringTransactions([]);
+  const clearAllData = async () => {
+    await Promise.all([
+        clearCollection('transactions'),
+        clearCollection('categories'),
+        clearCollection('budgets'),
+        clearCollection('recurringTransactions')
+    ]);
   }
 
-  return (
-    <UserDataContext.Provider value={{ 
+  const value = { 
         transactions, 
         categories, 
         budgets,
@@ -323,7 +414,10 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         processRecurringTransactions,
         clearTransactions,
         clearAllData,
-    }}>
+    };
+
+  return (
+    <UserDataContext.Provider value={value}>
       {children}
     </UserDataContext.Provider>
   );

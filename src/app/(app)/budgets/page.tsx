@@ -68,21 +68,16 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
   };
   
     const expenseCategories = useMemo(() => {
-        const flatten = (cats: (Category | SubCategory)[], parentName?: string): { id: string; name: string }[] => {
-            let options: { id: string; name: string }[] = [];
-            for (const cat of cats) {
-                const name = parentName ? `${parentName} -> ${cat.name}` : cat.name;
-                options.push({ id: cat.id, name });
-
-                if (cat.subCategories && Array.isArray(cat.subCategories)) {
-                    options = [...options, ...flatten(cat.subCategories, name)];
+        const flatten = (cats: (Category | SubCategory)[]): { id: string; name: string }[] => {
+            return cats.reduce<{ id: string; name: string }[]>((acc, cat) => {
+                acc.push({ id: cat.id, name: cat.name });
+                if (cat.subCategories) {
+                    acc.push(...flatten(cat.subCategories));
                 }
-            }
-            return options;
+                return acc;
+            }, []);
         };
-
-        const expenseCats = categories.filter(c => c.type === 'expense');
-        return flatten(expenseCats);
+        return flatten(categories.filter(c => c.type === 'expense'));
     }, [categories]);
 
   return (
@@ -152,13 +147,11 @@ function BudgetsPageContent() {
     if (id) {
         updateBudget(id, { ...values, period: 'monthly' });
     } else {
-        const newBudget: Budget = {
-            id: `bud_${Date.now()}`,
+        addBudget({
             ...values,
             period: 'monthly',
             isFavorite: false,
-        };
-        addBudget(newBudget);
+        });
     }
   };
   

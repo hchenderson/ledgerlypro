@@ -153,7 +153,7 @@ function RecurringPageContent() {
     if (id) {
         updateRecurringTransaction(id, data);
     } else {
-        addRecurringTransaction({ id: `rec_${Date.now()}`, ...data });
+        addRecurringTransaction(data);
     }
   };
 

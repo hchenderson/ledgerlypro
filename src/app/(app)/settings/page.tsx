@@ -13,6 +13,8 @@ import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
 import { useUserData } from '@/hooks/use-user-data';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 export default function SettingsPage() {
     const { toast } = useToast();
@@ -26,10 +28,13 @@ export default function SettingsPage() {
         if (user) {
             setName(user.displayName || '');
             setEmail(user.email || '');
-        }
-        const storedBalance = localStorage.getItem('startingBalance');
-        if (storedBalance) {
-            setStartingBalance(storedBalance);
+            
+            const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'main');
+            getDoc(settingsDocRef).then(docSnap => {
+                if (docSnap.exists()) {
+                    setStartingBalance(docSnap.data().startingBalance?.toString() || '0');
+                }
+            })
         }
     }, [user]);
 
@@ -51,10 +56,12 @@ export default function SettingsPage() {
         }
     };
     
-    const handleSaveStartingBalance = () => {
+    const handleSaveStartingBalance = async () => {
+        if (!user) return;
         const balance = parseFloat(startingBalance);
         if (!isNaN(balance)) {
-            localStorage.setItem('startingBalance', balance.toString());
+             const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'main');
+             await setDoc(settingsDocRef, { startingBalance: balance }, { merge: true });
             toast({
                 title: "Settings Saved",
                 description: "Your starting balance has been updated.",
@@ -68,16 +75,16 @@ export default function SettingsPage() {
         }
     };
 
-    const handleClearTransactions = () => {
-        clearTransactions();
+    const handleClearTransactions = async () => {
+        await clearTransactions();
         toast({
             title: "Transactions Cleared",
             description: "All transaction data has been successfully deleted.",
         });
     }
     
-    const handleClearAllData = () => {
-        clearAllData();
+    const handleClearAllData = async () => {
+        await clearAllData();
         toast({
             title: "All Data Cleared",
             description: "All transaction and category data has been reset.",
@@ -171,7 +178,7 @@ export default function SettingsPage() {
                               <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                               <AlertDialogDescription>
                                 This action cannot be undone. This will permanently delete all of your transaction data.
-                              </AlertDialogDescription>
+                              </Description>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
                               <AlertDialogCancel>Cancel</AlertDialogCancel>

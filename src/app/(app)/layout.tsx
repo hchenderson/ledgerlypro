@@ -60,26 +60,20 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
-  const { categories, addTransaction, transactions } = useUserData();
+  const { categories, addTransaction } = useUserData();
   const { plan } = useAuth();
 
   const handleTransactionsImported = (importedTransactions: Omit<Transaction, 'id'>[]) => {
       importedTransactions.forEach(t => {
-        const newTransaction: Transaction = {
-          id: `txn_${Date.now()}_${Math.random()}`,
-          ...t,
-        };
-        addTransaction(newTransaction);
+        addTransaction(t);
       })
   }
 
   const handleTransactionCreated = (values: Omit<Transaction, 'id' | 'type'> & { type: "income" | "expense" }) => {
-     const newTransaction: Transaction = {
-      id: `txn_${Date.now()}`,
+     addTransaction({
       ...values,
       date: values.date.toISOString()
-    };
-    addTransaction(newTransaction);
+    });
   }
 
   const getPageTitle = () => {
@@ -162,15 +156,18 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const { user, loading } = useAuth();
+  const { user, loading, onboardingComplete } = useAuth();
   
   useEffect(() => {
     if (!loading && !user) {
       router.push('/signin');
     }
-  }, [user, loading, router]);
+     if (!loading && user && !onboardingComplete) {
+       router.push('/welcome');
+    }
+  }, [user, loading, router, onboardingComplete]);
   
-  if (loading || !user) {
+  if (loading || !user || !onboardingComplete) {
     return <AppLayoutSkeleton />;
   }
   
