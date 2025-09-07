@@ -1,38 +1,36 @@
 
 import type { Transaction, Category, Budget, RecurringTransaction } from "@/types";
-import { Utensils, Car, Home, ShoppingBag, HeartPulse, Sparkles, HandCoins, Building, Shirt, Pizza, Plane } from "lucide-react";
 
-
-export const defaultCategories: Category[] = [
-    { id: "cat_1", name: "Food", type: "expense", icon: Utensils, subCategories: [
-        { id: "sub_1", name: "Groceries", icon: ShoppingBag },
-        { id: "sub_2", name: "Restaurants", icon: Pizza, subCategories: [
-            { id: "sub_11", name: "Fast Food", icon: Pizza },
-            { id: "sub_12", name: "Sit Down", icon: Utensils },
+export const defaultCategories: Omit<Category, 'icon'>[] = [
+    { id: "cat_1", name: "Food", type: "expense", subCategories: [
+        { id: "sub_1", name: "Groceries" },
+        { id: "sub_2", name: "Restaurants", subCategories: [
+            { id: "sub_11", name: "Fast Food" },
+            { id: "sub_12", name: "Sit Down" },
         ] },
     ]},
-    { id: "cat_2", name: "Transport", type: "expense", icon: Car, subCategories: [
-        { id: "sub_3", name: "Gas", icon: Car },
-        { id: "sub_4", name: "Public Transit", icon: Car },
+    { id: "cat_2", name: "Transport", type: "expense", subCategories: [
+        { id: "sub_3", name: "Gas" },
+        { id: "sub_4", name: "Public Transit" },
     ] },
-    { id: "cat_3", name: "Housing", type: "expense", icon: Home, subCategories: [
-        { id: "sub_5", name: "Rent", icon: Home },
-        { id: "sub_6", name: "Utilities", icon: Home },
+    { id: "cat_3", name: "Housing", type: "expense", subCategories: [
+        { id: "sub_5", name: "Rent" },
+        { id: "sub_6", name: "Utilities" },
     ]},
-    { id: "cat_4", name: "Shopping", type: "expense", icon: ShoppingBag, subCategories: [
-        { id: "sub_7", name: "Clothes", icon: Shirt },
-        { id: "sub_8", name: "Electronics", icon: Sparkles },
+    { id: "cat_4", name: "Shopping", type: "expense", subCategories: [
+        { id: "sub_7", name: "Clothes" },
+        { id: "sub_8", name: "Electronics" },
     ]},
-    { id: "cat_5", name: "Health", type: "expense", icon: HeartPulse },
-    { id: "cat_6", name: "Salary", type: "income", icon: HandCoins },
-    { id: "cat_7", name: "Business", type: "expense", icon: Building, subCategories: [
-        { id: "sub_9", name: "Travel", icon: Plane },
-        { id: "sub_10", name: "Software", icon: Sparkles },
+    { id: "cat_5", name: "Health", type: "expense" },
+    { id: "cat_6", name: "Salary", type: "income" },
+    { id: "cat_7", name: "Business", type: "expense", subCategories: [
+        { id: "sub_9", name: "Travel" },
+        { id: "sub_10", name: "Software" },
     ]},
-    { id: "cat_8", name: "Freelance", type: "income", icon: Sparkles },
-    { id: "cat_9", name: "Investments", type: "income", icon: Sparkles },
-    { id: "cat_10", name: "Other", type: "expense", icon: Sparkles },
-    { id: "cat_11", name: "Other", type: "income", icon: Sparkles },
+    { id: "cat_8", name: "Freelance", type: "income" },
+    { id: "cat_9", name: "Investments", type: "income" },
+    { id: "cat_10", name: "Other", type: "expense" },
+    { id: "cat_11", name: "Other", type: "income" },
 ]
 
 

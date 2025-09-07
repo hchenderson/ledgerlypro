@@ -6,7 +6,8 @@ import { z } from "zod"
 import { useForm, useWatch } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { format } from "date-fns"
-import { Calendar as CalendarIcon, PlusCircle, Sparkles } from "lucide-react"
+import * as icons from "lucide-react"
+import { Calendar as CalendarIcon, PlusCircle } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -222,10 +223,9 @@ export function NewTransactionSheet({
   }
 
   const handleCategoryAdded = (newCategoryName: string, parentId: string, parentPath: string[]) => {
-    const newSubCategory: SubCategory = {
-      id: `sub_${Date.now()}`,
+    const newSubCategory: Omit<SubCategory, 'id'> = {
       name: newCategoryName,
-      icon: Sparkles,
+      icon: 'Sparkles',
     };
     addSubCategory(parentId, newSubCategory, parentPath);
     form.setValue('category', newCategoryName, { shouldValidate: true });

@@ -123,7 +123,8 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const collRef: any = getCollectionRef(name);
         data.forEach((item) => {
             const docRef = doc(collRef, item.id);
-            batch.set(docRef, item);
+            const { icon, ...rest } = item as any;
+            batch.set(docRef, rest);
         });
     }
 
@@ -323,7 +324,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const today = startOfDay(new Date());
     const settingsDocRef: any = doc(db, 'users', user.uid, 'settings', 'recurring');
     const settingsDoc = await getDoc(settingsDocRef);
-    const lastCheckDate = settingsDoc.exists() ? parseISO(settingsDoc.data().lastCheck) : new Date(0);
+    const lastCheckDate = settingsDoc.exists() && settingsDoc.data().lastCheck ? parseISO(settingsDoc.data().lastCheck) : new Date(0);
 
     const batch = writeBatch(db);
     const transactionsCollRef: any = getCollectionRef('transactions');

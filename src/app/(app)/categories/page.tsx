@@ -2,6 +2,7 @@
 "use client";
 
 import { useState } from "react";
+import * as icons from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PlusCircle, Sparkles, Edit, Trash2 } from "lucide-react";
@@ -82,10 +83,9 @@ function SubCategoryList({ items, parentId, parentPath = [] }: { items: SubCateg
     const { addSubCategory, updateSubCategory, deleteSubCategory } = useUserData();
 
     const handleAddSubCategory = (parentId: string, subCategoryName: string, path: string[]) => {
-        const newSubCategory: SubCategory = {
-            id: `sub_${Date.now()}`,
+        const newSubCategory: Omit<SubCategory, 'id'> = {
             name: subCategoryName,
-            icon: Sparkles
+            icon: 'Sparkles'
         };
         addSubCategory(parentId, newSubCategory, path);
     }
@@ -94,54 +94,55 @@ function SubCategoryList({ items, parentId, parentPath = [] }: { items: SubCateg
 
     return (
         <div className="pl-6 border-l ml-6">
-            {items.map(sub => (
-                <div key={sub.id} className="py-2">
-                    <div className="flex items-center justify-between group">
-                        <div className="flex items-center gap-4">
-                            <Sparkles className="h-5 w-5 text-muted-foreground" />
-                            <span>{sub.name}</span>
+            {items.map(sub => {
+                const Icon = sub.icon ? (icons as any)[sub.icon] as icons.LucideIcon : Sparkles;
+                return (
+                    <div key={sub.id} className="py-2">
+                        <div className="flex items-center justify-between group">
+                            <div className="flex items-center gap-4">
+                                <Icon className="h-5 w-5 text-muted-foreground" />
+                                <span>{sub.name}</span>
+                            </div>
+                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <EditCategoryDialog name={sub.name} onSave={(newName) => updateSubCategory(parentId, sub.id, newName, parentPath)}>
+                                    <Button variant="ghost" size="icon"><Edit className="h-4 w-4"/></Button>
+                                </EditCategoryDialog>
+                                <AlertDialog>
+                                    <AlertDialogTrigger asChild>
+                                        <Button variant="ghost" size="icon"><Trash2 className="h-4 w-4 text-red-500"/></Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                        <AlertDialogHeader>
+                                            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                            <AlertDialogDescription>
+                                                This action cannot be undone. This will permanently delete the <strong>{sub.name}</strong> sub-category and any categories within it.
+                                            </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                            <AlertDialogAction onClick={() => deleteSubCategory(parentId, sub.id, parentPath)} className="bg-red-600 hover:bg-red-700">Delete</AlertDialogAction>
+                                        </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                </AlertDialog>
+                            </div>
                         </div>
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                             <EditCategoryDialog name={sub.name} onSave={(newName) => updateSubCategory(parentId, sub.id, newName, parentPath)}>
-                                <Button variant="ghost" size="icon"><Edit className="h-4 w-4"/></Button>
-                            </EditCategoryDialog>
-                             <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                    <Button variant="ghost" size="icon"><Trash2 className="h-4 w-4 text-red-500"/></Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                        <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                                        <AlertDialogDescription>
-                                            This action cannot be undone. This will permanently delete the <strong>{sub.name}</strong> sub-category and any categories within it.
-                                        </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                        <AlertDialogAction onClick={() => deleteSubCategory(parentId, sub.id, parentPath)} className="bg-red-600 hover:bg-red-700">Delete</AlertDialogAction>
-                                    </AlertDialogFooter>
-                                </AlertDialogContent>
-                            </AlertDialog>
-                        </div>
+                        <SubCategoryList items={sub.subCategories || []} parentId={parentId} parentPath={[...parentPath, sub.id]} />
+                        
+                        {parentPath.length < 1 && (
+                            <NewCategorySheet 
+                                onAddCategory={(name) => handleAddSubCategory(parentId, name, [...parentPath, sub.id])} 
+                                isSubCategory={true}
+                                parentCategoryName={sub.name}
+                            >
+                                <button className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors ml-9 mt-2">
+                                    <PlusCircle className="h-4 w-4"/>
+                                    Add Sub-category
+                                </button>
+                            </NewCategorySheet>
+                        )}
                     </div>
-                    {/* Recursive call for third-level categories */}
-                    <SubCategoryList items={sub.subCategories || []} parentId={parentId} parentPath={[...parentPath, sub.id]} />
-                    
-                    {/* Only allow adding to the second level for simplicity, can be changed */}
-                    {parentPath.length < 1 && (
-                         <NewCategorySheet 
-                            onAddCategory={(name) => handleAddSubCategory(parentId, name, [...parentPath, sub.id])} 
-                            isSubCategory={true}
-                            parentCategoryName={sub.name}
-                        >
-                            <button className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors ml-9 mt-2">
-                                <PlusCircle className="h-4 w-4"/>
-                                Add Sub-category
-                            </button>
-                         </NewCategorySheet>
-                    )}
-                </div>
-            ))}
+                )
+            })}
         </div>
     )
 }
@@ -150,76 +151,77 @@ export default function CategoriesPage() {
     const { categories, addCategory, addSubCategory, updateCategory, deleteCategory, loading } = useUserData();
 
     const handleAddCategory = (categoryName: string, type: 'income' | 'expense') => {
-        const newCategory: Category = { 
-            id: `cat_${Date.now()}`,
+        const newCategory: Omit<Category, 'id'> = { 
             name: categoryName, 
-            icon: Sparkles, // A real app would have an icon picker
+            icon: 'Sparkles',
             type: type,
         };
         addCategory(newCategory);
     };
     
     const handleAddSubCategory = (parentId: string, subCategoryName: string) => {
-        const newSubCategory: SubCategory = {
-            id: `sub_${Date.now()}`,
+        const newSubCategory: Omit<SubCategory, 'id'> = {
             name: subCategoryName,
-            icon: Sparkles
+            icon: 'Sparkles'
         };
         addSubCategory(parentId, newSubCategory);
     }
 
     const renderCategoryList = (filteredCategories: Category[]) => (
          <Accordion type="multiple" className="w-full">
-            {filteredCategories.map((category) => (
-                <AccordionItem value={category.id} key={category.id}>
-                    <div className="flex items-center justify-between group">
-                        <AccordionTrigger className="hover:no-underline flex-1">
-                            <div className="flex items-center gap-4 flex-1">
-                                <Sparkles className="h-6 w-6 text-muted-foreground" />
-                                <span className="text-base font-medium">{category.name}</span>
-                                <Badge variant={category.type === 'income' ? 'default' : 'secondary'}>{category.type}</Badge>
+            {filteredCategories.map((category) => {
+                const Icon = category.icon ? (icons as any)[category.icon] as icons.LucideIcon : Sparkles;
+                return (
+                    <AccordionItem value={category.id} key={category.id}>
+                        <div className="flex items-center justify-between group">
+                            <AccordionTrigger className="hover:no-underline flex-1">
+                                <div className="flex items-center gap-4 flex-1">
+                                    <Icon className="h-6 w-6 text-muted-foreground" />
+                                    <span className="text-base font-medium">{category.name}</span>
+                                    <Badge variant={category.type === 'income' ? 'default' : 'secondary'}>{category.type}</Badge>
+                                </div>
+                            </AccordionTrigger>
+                            <div className="flex items-center gap-1 mr-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <EditCategoryDialog name={category.name} onSave={(newName) => updateCategory(category.id, newName)}>
+                                    <Button variant="ghost" size="icon"><Edit className="h-4 w-4"/></Button>
+                                </EditCategoryDialog>
+                                <AlertDialog>
+                                    <AlertDialogTrigger asChild>
+                                        <Button variant="ghost" size="icon"><Trash2 className="h-4 w-4 text-red-500"/></Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                        <AlertDialogHeader>
+                                            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                            <AlertDialogDescription>
+                                                This action cannot be undone. This will permanently delete the <strong>{category.name}</strong> category and all its sub-categories.
+                                            </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                            <AlertDialogAction onClick={() => deleteCategory(category.id)} className="bg-red-600 hover:bg-red-700">Delete</AlertDialogAction>
+                                        </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                </AlertDialog>
                             </div>
-                        </AccordionTrigger>
-                        <div className="flex items-center gap-1 mr-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <EditCategoryDialog name={category.name} onSave={(newName) => updateCategory(category.id, newName)}>
-                                <Button variant="ghost" size="icon"><Edit className="h-4 w-4"/></Button>
-                            </EditCategoryDialog>
-                             <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                    <Button variant="ghost" size="icon"><Trash2 className="h-4 w-4 text-red-500"/></Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                        <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                                        <AlertDialogDescription>
-                                            This action cannot be undone. This will permanently delete the <strong>{category.name}</strong> category and all its sub-categories.
-                                        </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                        <AlertDialogAction onClick={() => deleteCategory(category.id)} className="bg-red-600 hover:bg-red-700">Delete</AlertDialogAction>
-                                    </AlertDialogFooter>
-                                </AlertDialogContent>
-                            </AlertDialog>
                         </div>
-                    </div>
-                    <AccordionContent>
-                        <div className="pl-6 space-y-3">
-                           <SubCategoryList items={category.subCategories || []} parentId={category.id} />
-                             <NewCategorySheet 
-                                onAddCategory={(name) => handleAddSubCategory(category.id, name)} 
-                                isSubCategory={true}
-                                parentCategoryName={category.name}
-                            >
-                                <button className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors">
-                                    <PlusCircle className="h-4 w-4"/>
-                                    Add Sub-category
-                                </button>
-                             </NewCategorySheet>
-                        </div>
-                    </AccordionContent>
-                </AccordionItem>
-            ))}
+                        <AccordionContent>
+                            <div className="pl-6 space-y-3">
+                            <SubCategoryList items={category.subCategories || []} parentId={category.id} />
+                                <NewCategorySheet 
+                                    onAddCategory={(name) => handleAddSubCategory(category.id, name)} 
+                                    isSubCategory={true}
+                                    parentCategoryName={category.name}
+                                >
+                                    <button className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors">
+                                        <PlusCircle className="h-4 w-4"/>
+                                        Add Sub-category
+                                    </button>
+                                </NewCategorySheet>
+                            </div>
+                        </AccordionContent>
+                    </AccordionItem>
+                )
+            })}
         </Accordion>
     )
 

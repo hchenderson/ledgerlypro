@@ -21,7 +21,7 @@ export type NavItem = {
 export type SubCategory = {
     id: string;
     name: string;
-    icon: LucideIcon;
+    icon?: string; // Storing icon name as string
     subCategories?: SubCategory[]; // Make sub-categories recursive
 };
 
@@ -29,7 +29,7 @@ export type Category = {
     id: string;
     name: string;
     type: "income" | "expense";
-    icon: LucideIcon;
+    icon?: string; // Storing icon name as string
     subCategories?: SubCategory[];
 };
 
