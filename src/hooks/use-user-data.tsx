@@ -38,63 +38,6 @@ interface UserDataContextType {
 
 const UserDataContext = createContext<UserDataContextType | undefined>(undefined);
 
-const updateNestedValue = async (
-    docRef: any, 
-    path: string[],
-    updateData: any,
-    operation: 'add' | 'update' | 'delete'
-) => {
-    const docSnap = await getDoc(docRef);
-    if (!docSnap.exists()) return;
-
-    let data = docSnap.data();
-    let currentLevel = data.subCategories || [];
-    let levels = [currentLevel];
-    
-    for (const id of path) {
-        const nextLevel = currentLevel.find((c: any) => c.id === id);
-        if (nextLevel && nextLevel.subCategories) {
-            currentLevel = nextLevel.subCategories;
-            levels.push(currentLevel);
-        } else {
-            break;
-        }
-    }
-
-    const applyOperation = (targetLevel: any[], targetId: string) => {
-        const itemIndex = targetLevel.findIndex((item: any) => item.id === targetId);
-
-        if (operation === 'add') {
-             if (!targetLevel.find((item: any) => item.id === updateData.id)) {
-                 targetLevel.push(updateData);
-             }
-        } else if (itemIndex !== -1) {
-            if (operation === 'update') {
-                targetLevel[itemIndex] = { ...targetLevel[itemIndex], ...updateData };
-            } else if (operation === 'delete') {
-                targetLevel.splice(itemIndex, 1);
-            }
-        }
-    };
-    
-    if (path.length > 0) {
-        const parentLevel = levels[levels.length - 2];
-        const targetLevel = levels[levels.length - 1];
-        const parentId = path[path.length - 1];
-        
-        const parentObject = parentLevel.find((c:any) => c.id === parentId);
-        if(parentObject) {
-             if(!parentObject.subCategories) parentObject.subCategories = [];
-             applyOperation(parentObject.subCategories, updateData.id || path[path.length]);
-        }
-    } else {
-        applyOperation(data.subCategories, updateData.id);
-    }
-
-    await setDoc(docRef, data, { merge: true });
-};
-
-
 export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -121,9 +64,10 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     for (const [name, data] of Object.entries(collections)) {
         const collRef: any = getCollectionRef(name);
-        data.forEach((item) => {
+        data.forEach((item: any) => {
             const docRef = doc(collRef, item.id);
-            batch.set(docRef, item);
+            const { icon, ...serializableItem } = item;
+            batch.set(docRef, serializableItem);
         });
     }
 
@@ -208,15 +152,15 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const addSubCategory = async (parentId: string, subCategory: Omit<SubCategory, 'id'>, parentPath: string[] = []) => {
      const docRef: any = doc(getCollectionRef('categories'), parentId);
      const newId = `sub_${Date.now()}`;
-     const newSubCategory = { ...subCategory, id: newId };
+     const newSubCategory = { ...subCategory, id: newId, subCategories: [] };
 
      const parentDoc = await getDoc(docRef);
      if(parentDoc.exists()){
-         let currentSubCategories = parentDoc.data().subCategories || [];
+         let data = parentDoc.data();
          
          const addNested = (items: SubCategory[], path: string[]): SubCategory[] => {
              if (path.length === 0) {
-                 return [...items, newSubCategory];
+                 return [...(items || []), newSubCategory];
              }
              const [currentId, ...restPath] = path;
              return items.map(item => {
@@ -226,8 +170,13 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                  return item;
              });
          };
-         const updatedSubCategories = addNested(currentSubCategories, parentPath);
-         await setDoc(docRef, { subCategories: updatedSubCategories }, { merge: true });
+         
+         if (parentPath.length > 0) {
+            data.subCategories = addNested(data.subCategories || [], parentPath);
+         } else {
+            data.subCategories = [...(data.subCategories || []), newSubCategory]
+         }
+         await setDoc(docRef, data, { merge: true });
      }
   };
   
@@ -343,6 +292,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             if ((isBefore(nextDate, today) || nextDate.getTime() === today.getTime()) && isBefore(lastCheckDate, nextDate)) {
                  const newTransactionDoc = doc(transactionsCollRef);
                  batch.set(newTransactionDoc, {
+                    id: newTransactionDoc.id,
                     date: nextDate.toISOString(),
                     description: `(Recurring) ${rt.description}`,
                     amount: rt.amount,
@@ -430,5 +380,3 @@ export const useUserData = () => {
   }
   return context;
 };
-
-    

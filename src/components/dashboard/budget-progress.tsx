@@ -7,6 +7,7 @@ import { type Budget, type Transaction, type Category, SubCategory } from '@/typ
 import { Progress } from '@/components/ui/progress';
 import { Button } from '../ui/button';
 import { Target, Star } from 'lucide-react';
+import { useUserData } from '@/hooks/use-user-data';
 
 interface BudgetProgressProps {
     budgets: Budget[];
@@ -45,27 +46,28 @@ export function BudgetProgress({ budgets, transactions, categories }: BudgetProg
             const category = findCategoryById(budget.categoryId, categories);
             
             let categoryName = "Unknown Category";
-            const targetCategoryNames: string[] = [];
+
+            const spent = transactions
+                .filter(t => {
+                    const transactionDate = new Date(t.date);
+                    const categoryMatch = findCategoryById(budget.categoryId, categories);
+                    if (!categoryMatch) return false;
+
+                    const allChildCategoryNames = getAllSubCategoryNames(categoryMatch);
+                    
+                    return t.type === 'expense' &&
+                           allChildCategoryNames.includes(t.category) &&
+                           transactionDate.getMonth() === currentMonth &&
+                           transactionDate.getFullYear() === currentYear;
+                })
+                .reduce((sum, t) => sum + t.amount, 0);
 
             if(category) {
               categoryName = category.name;
-              const rootCategoryForBudget = findCategoryById(budget.categoryId, categories);
-              if (rootCategoryForBudget) {
-                targetCategoryNames.push(...getAllSubCategoryNames(rootCategoryForBudget));
-              }
             }
 
-            const spent = transactions
-                .filter(t =>
-                    t.type === 'expense' &&
-                    targetCategoryNames.some(catName => catName === t.category) &&
-                    new Date(t.date).getMonth() === currentMonth &&
-                    new Date(t.date).getFullYear() === currentYear
-                )
-                .reduce((sum, t) => sum + t.amount, 0);
-
             const remaining = budget.amount - spent;
-            const progress = (spent / budget.amount) * 100;
+            const progress = budget.amount > 0 ? (spent / budget.amount) * 100 : 0;
 
             return {
                 ...budget,

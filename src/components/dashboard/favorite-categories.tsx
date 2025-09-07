@@ -17,7 +17,7 @@ interface FavoriteCategoriesProps {
 
 export function FavoriteCategories({ categories, transactions }: FavoriteCategoriesProps) {
     const favoriteCategories = useMemo(() => {
-        return categories.filter(c => c.isFavorite);
+        return categories.filter(c => (c as any).isFavorite); // Cast to any to check for property
     }, [categories]);
 
     const categoryDetails = useMemo(() => {

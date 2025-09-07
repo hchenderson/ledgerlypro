@@ -1,36 +1,36 @@
 
 import type { Transaction, Category, Budget, RecurringTransaction } from "@/types";
 
-export const defaultCategories: Omit<Category, 'icon'>[] = [
+export const defaultCategories: Category[] = [
     { id: "cat_1", name: "Food", type: "expense", subCategories: [
-        { id: "sub_1", name: "Groceries" },
+        { id: "sub_1", name: "Groceries", subCategories: [] },
         { id: "sub_2", name: "Restaurants", subCategories: [
-            { id: "sub_11", name: "Fast Food" },
-            { id: "sub_12", name: "Sit Down" },
+            { id: "sub_11", name: "Fast Food", subCategories: [] },
+            { id: "sub_12", name: "Sit Down", subCategories: [] },
         ] },
     ]},
     { id: "cat_2", name: "Transport", type: "expense", subCategories: [
-        { id: "sub_3", name: "Gas" },
-        { id: "sub_4", name: "Public Transit" },
+        { id: "sub_3", name: "Gas", subCategories: [] },
+        { id: "sub_4", name: "Public Transit", subCategories: [] },
     ] },
     { id: "cat_3", name: "Housing", type: "expense", subCategories: [
-        { id: "sub_5", name: "Rent" },
-        { id: "sub_6", name: "Utilities" },
+        { id: "sub_5", name: "Rent", subCategories: [] },
+        { id: "sub_6", name: "Utilities", subCategories: [] },
     ]},
     { id: "cat_4", name: "Shopping", type: "expense", subCategories: [
-        { id: "sub_7", name: "Clothes" },
-        { id: "sub_8", name: "Electronics" },
+        { id: "sub_7", name: "Clothes", subCategories: [] },
+        { id: "sub_8", name: "Electronics", subCategories: [] },
     ]},
-    { id: "cat_5", name: "Health", type: "expense" },
-    { id: "cat_6", name: "Salary", type: "income" },
+    { id: "cat_5", name: "Health", type: "expense", subCategories: [] },
+    { id: "cat_6", name: "Salary", type: "income", subCategories: [] },
     { id: "cat_7", name: "Business", type: "expense", subCategories: [
-        { id: "sub_9", name: "Travel" },
-        { id: "sub_10", name: "Software" },
+        { id: "sub_9", name: "Travel", subCategories: [] },
+        { id: "sub_10", name: "Software", subCategories: [] },
     ]},
-    { id: "cat_8", name: "Freelance", type: "income" },
-    { id: "cat_9", name: "Investments", type: "income" },
-    { id: "cat_10", name: "Other", type: "expense" },
-    { id: "cat_11", name: "Other", type: "income" },
+    { id: "cat_8", name: "Freelance", type: "income", subCategories: [] },
+    { id: "cat_9", name: "Investments", type: "income", subCategories: [] },
+    { id: "cat_10", name: "Other", type: "expense", subCategories: [] },
+    { id: "cat_11", name: "Other", type: "income", subCategories: [] },
 ]
 
 
@@ -112,7 +112,7 @@ export const defaultTransactions: Transaction[] = [
 
 export const defaultBudgets: Budget[] = [
     { id: 'bud_1', categoryId: 'cat_1', amount: 500, period: 'monthly', isFavorite: true }, // Food
-    { id: 'bud_2', categoryId: 'cat_4', amount: 250, period: 'monthly' }, // Shopping
+    { id: 'bud_2', categoryId: 'cat_4', amount: 250, period: 'monthly', isFavorite: false }, // Shopping
 ];
 
 export const defaultRecurringTransactions: RecurringTransaction[] = [

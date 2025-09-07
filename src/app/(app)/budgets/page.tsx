@@ -46,7 +46,7 @@ type BudgetFormValues = z.infer<typeof budgetFormSchema>;
 
 function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (values: BudgetFormValues, id?: string) => void, children: React.ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);
-  const { categories } = useUserData();
+  const { categories, budgets } = useUserData();
   const { toast } = useToast();
 
   const form = useForm<BudgetFormValues>({
@@ -68,9 +68,11 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
   };
   
     const expenseCategories = useMemo(() => {
-        const flatten = (cats: (Category | SubCategory)[]): { id: string; name: string }[] => {
-            return cats.reduce<{ id: string; name: string }[]>((acc, cat) => {
-                acc.push({ id: cat.id, name: cat.name });
+        const budgetedCategoryIds = new Set(budgets.map(b => b.categoryId));
+        const flatten = (cats: (Category | SubCategory)[]): { id: string; name: string, disabled: boolean }[] => {
+            return cats.reduce<{ id: string; name: string, disabled: boolean }[]>((acc, cat) => {
+                const isDisabled = budgetedCategoryIds.has(cat.id);
+                acc.push({ id: cat.id, name: cat.name, disabled: isDisabled });
                 if (cat.subCategories) {
                     acc.push(...flatten(cat.subCategories));
                 }
@@ -78,7 +80,7 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
             }, []);
         };
         return flatten(categories.filter(c => c.type === 'expense'));
-    }, [categories]);
+    }, [categories, budgets]);
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -106,7 +108,7 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
                     </FormControl>
                     <SelectContent>
                         {expenseCategories.map(cat => (
-                            <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                            <SelectItem key={cat.id} value={cat.id} disabled={cat.disabled}>{cat.name}</SelectItem>
                         ))}
                     </SelectContent>
                   </Select>
@@ -166,8 +168,8 @@ function BudgetsPageContent() {
         return undefined;
     }
 
-    const getCategoryName = (id: string, cats: Category[]): string => {
-        const category = findCategoryById(id, cats);
+    const getCategoryName = (id: string): string => {
+        const category = findCategoryById(id, categories);
         return category ? category.name : "Unknown Category";
     }
 
@@ -194,20 +196,26 @@ function BudgetsPageContent() {
       }
 
       const spent = transactions
-        .filter(t => 
-            t.type === 'expense' && 
-            targetCategoryNames.some(catName => catName === t.category) &&
-            new Date(t.date).getMonth() === selectedDate.getMonth() &&
-            new Date(t.date).getFullYear() === selectedDate.getFullYear()
-        )
+        .filter(t => {
+            const transactionDate = new Date(t.date);
+            const categoryMatch = findCategoryById(budget.categoryId, categories);
+            if (!categoryMatch) return false;
+
+            const allChildCategoryNames = getAllSubCategoryNames(categoryMatch);
+            
+            return t.type === 'expense' &&
+                   allChildCategoryNames.includes(t.category) &&
+                   transactionDate.getMonth() === selectedDate.getMonth() &&
+                   transactionDate.getFullYear() === selectedDate.getFullYear();
+        })
         .reduce((sum, t) => sum + t.amount, 0);
 
       const remaining = budget.amount - spent;
-      const progress = (spent / budget.amount) * 100;
+      const progress = budget.amount > 0 ? (spent / budget.amount) * 100 : 0;
 
       return {
         ...budget,
-        categoryName: getCategoryName(budget.categoryId, categories),
+        categoryName: getCategoryName(budget.categoryId),
         spent,
         remaining,
         progress,
