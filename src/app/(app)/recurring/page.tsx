@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useUserData } from '@/hooks/use-user-data';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -68,11 +68,10 @@ function RecurringDialog({ transaction, onSave, children }: { transaction?: Recu
       startDate: transaction ? new Date(transaction.startDate) : new Date(),
     }
   });
-  
-  // This useEffect will reset the form whenever the dialog is opened.
-  // It handles both editing an existing transaction and creating a new one.
-  React.useEffect(() => {
-    if (isOpen) {
+
+  const handleOpenChange = (open: boolean) => {
+    setIsOpen(open);
+    if (open) {
       if (transaction) {
         form.reset({
           description: transaction.description,
@@ -93,7 +92,7 @@ function RecurringDialog({ transaction, onSave, children }: { transaction?: Recu
         });
       }
     }
-  }, [isOpen, transaction, form]);
+  }
 
 
   const onSubmit = (data: RecurringFormValues) => {
@@ -110,7 +109,7 @@ function RecurringDialog({ transaction, onSave, children }: { transaction?: Recu
   const availableCategories = categories.filter(c => c.type === type).flatMap(c => c.subCategories ? c.subCategories.map(s => s.name) : c.name);
 
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
@@ -229,6 +228,7 @@ function RecurringPageContent() {
   };
   
   const sortedRecurringTransactions = useMemo(() => {
+      if (!recurringTransactions) return [];
       return [...recurringTransactions].sort((a,b) => {
           const nextA = calculateNextOccurrence(a);
           const nextB = calculateNextOccurrence(b);
