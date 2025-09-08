@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { NewTransactionSheet } from "@/components/new-transaction-sheet";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import type { Transaction } from "@/types";
+import type { Transaction, Category, SubCategory } from "@/types";
 import { useToast } from "@/hooks/use-toast";
 import Papa from "papaparse";
 import { useUserData } from "@/hooks/use-user-data";
@@ -61,15 +61,55 @@ export default function TransactionsPage() {
   
   const isPro = plan === 'pro';
 
-  const allCategories = useMemo(() => [...new Set(transactions.map(t => t.category))], [transactions]);
+  const allCategories = useMemo(() => {
+    const flattenCategories = (cats: Category[] | SubCategory[]): string[] => {
+      let names: string[] = [];
+      for (const cat of cats) {
+        names.push(cat.name);
+        if (cat.subCategories) {
+          names = names.concat(flattenCategories(cat.subCategories));
+        }
+      }
+      return names;
+    };
+    return Array.from(new Set(flattenCategories(categories)));
+  }, [categories]);
+
+  const getAllCategoryAndSubCategoryNames = (selectedCategoryName: string): string[] => {
+      const findCategory = (name: string, cats: (Category | SubCategory)[]): Category | SubCategory | null => {
+        for (const cat of cats) {
+            if (cat.name === name) return cat;
+            if (cat.subCategories) {
+                const found = findCategory(name, cat.subCategories);
+                if (found) return found;
+            }
+        }
+        return null;
+    };
+
+    const getSubCategoryNames = (category: Category | SubCategory): string[] => {
+        let names = [category.name];
+        if (category.subCategories) {
+            category.subCategories.forEach(sub => {
+                names = [...names, ...getSubCategoryNames(sub)];
+            });
+        }
+        return names;
+    }
+
+    const foundCategory = findCategory(selectedCategoryName, categories);
+    return foundCategory ? getSubCategoryNames(foundCategory) : [selectedCategoryName];
+  };
 
   const filteredTransactions = useMemo(() => {
+    const categoriesToFilter = categoryFilter === 'all' ? [] : getAllCategoryAndSubCategoryNames(categoryFilter);
+
     return transactions.filter(t => {
       const transactionDate = new Date(t.date);
       const amount = t.amount;
 
       const descriptionMatch = descriptionFilter ? t.description.toLowerCase().includes(descriptionFilter.toLowerCase()) : true;
-      const categoryMatch = categoryFilter === 'all' || t.category === categoryFilter;
+      const categoryMatch = categoryFilter === 'all' || categoriesToFilter.includes(t.category);
       const dateMatch = dateRange?.from ? (
           transactionDate >= dateRange.from && (dateRange.to ? transactionDate <= dateRange.to : true)
       ) : true;
@@ -78,7 +118,7 @@ export default function TransactionsPage() {
 
       return descriptionMatch && categoryMatch && dateMatch && minAmountMatch && maxAmountMatch;
     }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [transactions, descriptionFilter, categoryFilter, dateRange, minAmount, maxAmount]);
+  }, [transactions, descriptionFilter, categoryFilter, dateRange, minAmount, maxAmount, categories]);
 
   const resetFilters = () => {
     setDescriptionFilter('');
@@ -101,12 +141,10 @@ export default function TransactionsPage() {
   }
   
   const handleTransactionCreated = (values: Omit<Transaction, 'id' | 'type'> & { type: "income" | "expense" }) => {
-     const newTransaction: Transaction = {
-      id: `txn_${Date.now()}`,
+     addTransaction({
       ...values,
       date: values.date.toISOString()
-    };
-    addTransaction(newTransaction);
+    });
   }
 
   const handleTransactionUpdated = (id: string, values: Omit<Transaction, 'id' | 'type'> & { type: "income" | "expense" }) => {
@@ -159,7 +197,7 @@ export default function TransactionsPage() {
             </SelectTrigger>
             <SelectContent>
                 <SelectItem value="all">All Categories</SelectItem>
-                {allCategories.map(cat => (
+                {allCategories.sort().map(cat => (
                     <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                 ))}
             </SelectContent>
@@ -331,3 +369,5 @@ export default function TransactionsPage() {
     </div>
   );
 }
+
+    
