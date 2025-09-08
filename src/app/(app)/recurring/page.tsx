@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useState, useMemo } from 'react';
@@ -69,6 +68,33 @@ function RecurringDialog({ transaction, onSave, children }: { transaction?: Recu
       startDate: transaction ? new Date(transaction.startDate) : new Date(),
     }
   });
+  
+  // This useEffect will reset the form whenever the dialog is opened.
+  // It handles both editing an existing transaction and creating a new one.
+  React.useEffect(() => {
+    if (isOpen) {
+      if (transaction) {
+        form.reset({
+          description: transaction.description,
+          amount: transaction.amount,
+          type: transaction.type,
+          category: transaction.category,
+          frequency: transaction.frequency,
+          startDate: new Date(transaction.startDate),
+        });
+      } else {
+        form.reset({
+          description: '',
+          amount: 0,
+          type: 'expense',
+          category: '',
+          frequency: 'monthly',
+          startDate: new Date(),
+        });
+      }
+    }
+  }, [isOpen, transaction, form]);
+
 
   const onSubmit = (data: RecurringFormValues) => {
     onSave(data, transaction?.id);
@@ -122,7 +148,7 @@ function RecurringDialog({ transaction, onSave, children }: { transaction?: Recu
                     </SelectContent>
                 </Select><FormMessage /></FormItem>
             )}/>
-            <FormField
+             <FormField
               control={form.control}
               name="startDate"
               render={({ field }) => (
@@ -171,6 +197,25 @@ function RecurringDialog({ transaction, onSave, children }: { transaction?: Recu
   )
 }
 
+function calculateNextOccurrence(rt: RecurringTransaction): Date {
+    const today = startOfToday();
+    let nextDate = parseISO(rt.startDate);
+
+    if (isBefore(nextDate, today)) {
+        const lastAdded = rt.lastAddedDate ? parseISO(rt.lastAddedDate) : nextDate;
+        nextDate = lastAdded;
+        while(isBefore(nextDate, today)) {
+          switch(rt.frequency) {
+              case 'daily': nextDate = addDays(nextDate, 1); break;
+              case 'weekly': nextDate = addWeeks(nextDate, 1); break;
+              case 'monthly': nextDate = addMonths(nextDate, 1); break;
+              case 'yearly': nextDate = addYears(nextDate, 1); break;
+          }
+        }
+    }
+    return nextDate;
+}
+
 function RecurringPageContent() {
   const { recurringTransactions, addRecurringTransaction, updateRecurringTransaction, deleteRecurringTransaction, loading } = useUserData();
 
@@ -182,25 +227,6 @@ function RecurringPageContent() {
         addRecurringTransaction(data);
     }
   };
-
-  const calculateNextOccurrence = (rt: RecurringTransaction): Date => {
-      const today = startOfToday();
-      let nextDate = parseISO(rt.startDate);
-
-      if (isBefore(nextDate, today)) {
-          const lastAdded = rt.lastAddedDate ? parseISO(rt.lastAddedDate) : nextDate;
-          nextDate = lastAdded;
-          while(isBefore(nextDate, today)) {
-            switch(rt.frequency) {
-                case 'daily': nextDate = addDays(nextDate, 1); break;
-                case 'weekly': nextDate = addWeeks(nextDate, 1); break;
-                case 'monthly': nextDate = addMonths(nextDate, 1); break;
-                case 'yearly': nextDate = addYears(nextDate, 1); break;
-            }
-          }
-      }
-      return nextDate;
-  }
   
   const sortedRecurringTransactions = useMemo(() => {
       return [...recurringTransactions].sort((a,b) => {
@@ -287,3 +313,5 @@ export default function RecurringPage() {
         </FeatureGate>
     )
 }
+
+    
