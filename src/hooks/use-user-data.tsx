@@ -65,13 +65,19 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     for (const [name, data] of Object.entries(collections)) {
         const collRef: any = getCollectionRef(name);
         data.forEach((item: any) => {
-            const docRef = doc(collRef, item.id);
+            const docRef = doc(collRef);
+            // Ensure no non-serializable data is passed
             const { icon, ...serializableItem } = item;
-            batch.set(docRef, serializableItem);
+            batch.set(docRef, { ...serializableItem, id: docRef.id });
         });
     }
 
     await batch.commit();
+
+    // Set the dataSeeded flag
+    const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'main');
+    await setDoc(settingsDocRef, { dataSeeded: true }, { merge: true });
+
   }, [user, getCollectionRef]);
   
   useEffect(() => {
@@ -87,34 +93,36 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setLoading(true);
 
     const checkAndSeedData = async () => {
-        const transactionsRef: any = getCollectionRef('transactions');
-        const snapshot = await getDocs(transactionsRef);
-        if (snapshot.empty) {
+        const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'main');
+        const docSnap = await getDoc(settingsDocRef);
+        if (!docSnap.exists() || !docSnap.data()?.dataSeeded) {
             await seedDefaultData();
         }
     };
 
-    checkAndSeedData();
+    checkAndSeedData().then(() => {
+        const unsubscribers = ['transactions', 'categories', 'budgets', 'recurringTransactions'].map(name => {
+          const collRef: any = getCollectionRef(name);
+          return onSnapshot(query(collRef), (snapshot) => {
+            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            switch (name) {
+              case 'transactions': setTransactions(data as Transaction[]); break;
+              case 'categories': setCategories(data as Category[]); break;
+              case 'budgets': setBudgets(data as Budget[]); break;
+              case 'recurringTransactions': setRecurringTransactions(data as RecurringTransaction[]); break;
+            }
+          });
+        });
 
-    const unsubscribers = ['transactions', 'categories', 'budgets', 'recurringTransactions'].map(name => {
-      const collRef: any = getCollectionRef(name);
-      return onSnapshot(query(collRef), (snapshot) => {
-        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        switch (name) {
-          case 'transactions': setTransactions(data as Transaction[]); break;
-          case 'categories': setCategories(data as Category[]); break;
-          case 'budgets': setBudgets(data as Budget[]); break;
-          case 'recurringTransactions': setRecurringTransactions(data as RecurringTransaction[]); break;
-        }
-      });
+        setLoading(false);
+
+        return () => {
+          unsubscribers.forEach(unsub => unsub());
+        };
     });
-
-    setLoading(false);
-
-    return () => {
-      unsubscribers.forEach(unsub => unsub());
-    };
-  }, [user, getCollectionRef, seedDefaultData]);
+  // The dependency array is intentionally structured this way to run once on user change.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
 
   const addTransaction = async (transaction: Omit<Transaction, 'id'>) => {
@@ -136,7 +144,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const addCategory = async (category: Omit<Category, 'id'>) => {
     const collRef: any = getCollectionRef('categories');
     const newDocRef = doc(collRef);
-    await setDoc(newDocRef, { ...category, id: newDocRef.id });
+    await setDoc(newDocRef, { ...category, id: newDocRef.id, subCategories: [] });
   };
   
   const updateCategory = async (id: string, newName: string) => {
@@ -171,8 +179,10 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
              });
          };
          
-         if (parentPath.length > 0) {
-            data.subCategories = addNested(data.subCategories || [], parentPath);
+         const targetPath = parentPath[0] === parentId ? parentPath.slice(1) : parentPath;
+
+         if (targetPath.length > 0) {
+            data.subCategories = addNested(data.subCategories || [], targetPath);
          } else {
             data.subCategories = [...(data.subCategories || []), newSubCategory]
          }
@@ -187,18 +197,20 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
          let subCategories = parentDoc.data().subCategories || [];
          
          const updateNested = (items: SubCategory[], path: string[]): SubCategory[] => {
+             if (path.length === 0) return items;
              const [currentId, ...restPath] = path;
              return items.map(item => {
                  if(item.id === currentId) {
-                     if (restPath.length === 0) {
-                         return { ...item, name: newName };
-                     }
-                     return { ...item, subCategories: updateNested(item.subCategories || [], restPath) };
+                     return { ...item, name: newName };
+                 }
+                 if (item.subCategories && item.subCategories.length > 0) {
+                    return { ...item, subCategories: updateNested(item.subCategories, path) };
                  }
                  return item;
              });
          };
-         const updatedSubCategories = updateNested(subCategories, [...parentPath, subCategoryId]);
+         const fullPath = [...parentPath, subCategoryId];
+         const updatedSubCategories = updateNested(subCategories, fullPath);
          await setDoc(docRef, { subCategories: updatedSubCategories }, { merge: true });
      }
   }
@@ -222,7 +234,8 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               });
           };
 
-          const updatedSubCategories = deleteNested(subCategories, [...parentPath, subCategoryId]);
+          const fullPath = [...parentPath, subCategoryId];
+          const updatedSubCategories = deleteNested(subCategories, fullPath);
           await setDoc(docRef, { subCategories: updatedSubCategories }, { merge: true });
       }
   }
@@ -279,17 +292,10 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const recurringCollRef: any = getCollectionRef('recurringTransactions');
 
     for (const rt of recurringTransactions) {
-        let nextDate = rt.lastAddedDate ? parseISO(rt.lastAddedDate) : parseISO(rt.startDate);
+        let nextDate = rt.lastAddedDate ? addDays(parseISO(rt.lastAddedDate), 1) : parseISO(rt.startDate);
 
-        while (isBefore(nextDate, today)) {
-             switch(rt.frequency) {
-                case 'daily': nextDate = addDays(nextDate, 1); break;
-                case 'weekly': nextDate = addWeeks(nextDate, 1); break;
-                case 'monthly': nextDate = addMonths(nextDate, 1); break;
-                case 'yearly': nextDate = addYears(nextDate, 1); break;
-            }
-
-            if ((isBefore(nextDate, today) || nextDate.getTime() === today.getTime()) && isBefore(lastCheckDate, nextDate)) {
+        while (isBefore(nextDate, today) || nextDate.getTime() === today.getTime()) {
+             if (isBefore(lastCheckDate, nextDate)) {
                  const newTransactionDoc = doc(transactionsCollRef);
                  batch.set(newTransactionDoc, {
                     id: newTransactionDoc.id,
@@ -302,21 +308,29 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                  
                  const recurringDocToUpdate = doc(recurringCollRef, rt.id);
                  batch.update(recurringDocToUpdate, { lastAddedDate: nextDate.toISOString() });
+             }
+
+             switch(rt.frequency) {
+                case 'daily': nextDate = addDays(nextDate, 1); break;
+                case 'weekly': nextDate = addWeeks(nextDate, 1); break;
+                case 'monthly': nextDate = addMonths(nextDate, 1); break;
+                case 'yearly': nextDate = addYears(nextDate, 1); break;
             }
         }
     }
     
-    await batch.commit();
-    await setDoc(settingsDocRef, { lastCheck: today.toISOString() });
+    if (batch.length > 0) {
+        await batch.commit();
+    }
+    await setDoc(settingsDocRef, { lastCheck: today.toISOString() }, { merge: true });
 
   }, [user, recurringTransactions, getCollectionRef]);
 
   useEffect(() => {
-    if (user && !loading) {
+    if (user && !loading && recurringTransactions.length > 0) {
       processRecurringTransactions();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, loading, processRecurringTransactions]);
+  }, [user, loading, recurringTransactions, processRecurringTransactions]);
 
  const clearCollection = async (collectionName: string) => {
     const collRef: any = getCollectionRef(collectionName);
@@ -337,6 +351,10 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         clearCollection('budgets'),
         clearCollection('recurringTransactions')
     ]);
+     if (user) {
+        const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'main');
+        await setDoc(settingsDocRef, { dataSeeded: false }, { merge: true });
+    }
   }
 
   const value = { 
@@ -380,3 +398,5 @@ export const useUserData = () => {
   }
   return context;
 };
+
+    
