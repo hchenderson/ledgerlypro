@@ -108,7 +108,7 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
                     </FormControl>
                     <SelectContent>
                         {expenseCategories.map(cat => (
-                            <SelectItem key={cat.id} value={cat.id} disabled={cat.disabled}>{cat.name}</SelectItem>
+                            <SelectItem key={cat.id} value={cat.id} disabled={cat.disabled && cat.id !== budget?.categoryId}>{cat.name}</SelectItem>
                         ))}
                     </SelectContent>
                   </Select>
@@ -275,5 +275,3 @@ export default function BudgetsPage() {
         </FeatureGate>
     )
 }
-
-    
