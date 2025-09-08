@@ -86,39 +86,54 @@ interface NewTransactionSheetProps {
     categories: Category[];
 }
 
-const AddCategoryDialog = ({ onCategoryAdded, type, categories }: { onCategoryAdded: (newCategoryName: string, parentId: string, parentPath: string[]) => void, type: 'income' | 'expense', categories: Category[] }) => {
+const AddCategoryDialog = ({ 
+    type, 
+    categories,
+    onCategoryAdded
+}: { 
+    type: 'income' | 'expense', 
+    categories: Category[],
+    onCategoryAdded: (newCategoryName: string) => void
+}) => {
     const [name, setName] = useState('');
     const [parent, setParent] = useState('');
     const [isOpen, setIsOpen] = useState(false);
+    const { addCategory, addSubCategory } = useUserData();
 
     const mainCategories = categories.filter(c => c.type === type);
     
-    const parentId = parent.split(':')[0];
-    const parentPath = parent.split(':').slice(1);
-
-    const handleSubmit = () => {
-        if (!name || !parent) return;
+    const handleSubmit = async () => {
+        if (!name) return;
         
-        onCategoryAdded(name, parentId, parentPath);
+        if(parent) {
+            const parentId = parent.split(':')[0];
+            const parentPath = parent.split(':').slice(1);
+            const newSubCategory: Omit<SubCategory, 'id'> = { name, icon: 'Sparkles' };
+            await addSubCategory(parentId, newSubCategory, parentPath);
+        } else {
+            const newCategory: Omit<Category, 'id'> = { name, type, icon: 'Sparkles', subCategories: [] };
+            await addCategory(newCategory);
+        }
+
+        onCategoryAdded(name);
         setIsOpen(false);
         setName('');
         setParent('');
     }
     
-     const flattenCategories = (categories: Category[] | SubCategory[], parentName?: string, path: string[] = []) => {
+     const flattenCategoriesForSelect = (categories: Category[] | SubCategory[], path: string[] = []) => {
         let options: { label: string; value: string; }[] = [];
         categories.forEach(cat => {
             const currentPath = [...path, cat.id];
-            const label = parentName ? `${parentName} -> ${cat.name}` : cat.name;
             options.push({ label: cat.name, value: currentPath.join(':') });
             if (cat.subCategories) {
-                options = [...options, ...flattenCategories(cat.subCategories, cat.name, currentPath)];
+                options = [...options, ...flattenCategoriesForSelect(cat.subCategories, currentPath)];
             }
         });
         return options;
     };
     
-    const availableParents = flattenCategories(mainCategories);
+    const availableParents = flattenCategoriesForSelect(mainCategories);
 
     return (
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -131,11 +146,15 @@ const AddCategoryDialog = ({ onCategoryAdded, type, categories }: { onCategoryAd
             <DialogContent>
                 <DialogHeader>
                     <DialogTitle>Add a New Category</DialogTitle>
-                    <DialogDescription>Create a new sub-category to organize your transaction.</DialogDescription>
+                    <DialogDescription>Create a new category for your transaction. Select a parent to make it a sub-category.</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
+                     <div className="space-y-2">
+                        <Label htmlFor="category-name">New Category Name</Label>
+                        <Input id="category-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Coffee" />
+                    </div>
                     <div className="space-y-2">
-                        <Label>Parent Category</Label>
+                        <Label>Parent Category (Optional)</Label>
                         <Select onValueChange={setParent} value={parent}>
                             <SelectTrigger>
                                 <SelectValue placeholder={`Select a parent ${type} category`} />
@@ -148,10 +167,6 @@ const AddCategoryDialog = ({ onCategoryAdded, type, categories }: { onCategoryAd
                                 ))}
                             </SelectContent>
                         </Select>
-                    </div>
-                     <div className="space-y-2">
-                        <Label htmlFor="category-name">New Sub-Category Name</Label>
-                        <Input id="category-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Coffee" />
                     </div>
                 </div>
                 <DialogFooter>
@@ -174,7 +189,6 @@ export function NewTransactionSheet({
     categories,
 }: NewTransactionSheetProps) {
   const { toast } = useToast()
-  const { addSubCategory } = useUserData();
   
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -222,12 +236,7 @@ export function NewTransactionSheet({
     form.reset()
   }
 
-  const handleCategoryAdded = (newCategoryName: string, parentId: string, parentPath: string[]) => {
-    const newSubCategory: Omit<SubCategory, 'id'> = {
-      name: newCategoryName,
-      icon: 'Sparkles',
-    };
-    addSubCategory(parentId, newSubCategory, parentPath);
+  const handleCategoryAdded = (newCategoryName: string) => {
     form.setValue('category', newCategoryName, { shouldValidate: true });
     toast({
       title: "Category Added",
@@ -251,24 +260,22 @@ export function NewTransactionSheet({
           cats.forEach(c => {
               if (c.subCategories && c.subCategories.length > 0) {
                   processCategories(c.subCategories, c.name);
-              } else {
-                  if (!groupedCategories[groupName]) {
-                      groupedCategories[groupName] = [];
-                  }
-                   groupedCategories[groupName].push({ name: c.name, id: c.id });
+              } 
+              if (!groupedCategories[groupName]) {
+                  groupedCategories[groupName] = [];
               }
+               groupedCategories[groupName].push({ name: c.name, id: c.id });
           })
       }
 
       filtered.forEach(c => {
           if (c.subCategories && c.subCategories.length > 0) {
               processCategories(c.subCategories, c.name);
-          } else {
-               if (!groupedCategories['Main Categories']) {
-                    groupedCategories['Main Categories'] = [];
-                }
-                groupedCategories['Main Categories'].push({ name: c.name, id: c.id });
           }
+          if (!groupedCategories['Main Categories']) {
+              groupedCategories['Main Categories'] = [];
+          }
+          groupedCategories['Main Categories'].push({ name: c.name, id: c.id });
       })
 
       return groupedCategories;
@@ -277,7 +284,7 @@ export function NewTransactionSheet({
 
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
-      {children && <SheetTrigger asChild>{children}</SheetTrigger>}
+      <SheetTrigger asChild>{children}</SheetTrigger>
       <SheetContent>
         <SheetHeader>
           <SheetTitle>{sheetTitle}</SheetTitle>

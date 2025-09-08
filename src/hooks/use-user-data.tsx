@@ -31,8 +31,6 @@ interface UserDataContextType {
   updateRecurringTransaction: (id: string, values: Partial<Omit<RecurringTransaction, 'id'>>) => Promise<void>;
   deleteRecurringTransaction: (id: string) => Promise<void>;
   processRecurringTransactions: () => Promise<void>;
-  clearTransactions: () => Promise<void>;
-  clearAllData: () => Promise<void>;
 }
 
 const UserDataContext = createContext<UserDataContextType | undefined>(undefined);
@@ -112,7 +110,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const collRef = getCollectionRef('categories');
     if (!collRef) return;
     const newDocRef = doc(collRef);
-    await setDoc(newDocRef, { ...category, id: newDocRef.id, subCategories: [] });
+    await setDoc(newDocRef, { ...category, id: newDocRef.id });
   };
   
   const updateCategory = async (id: string, newName: string) => {
@@ -173,14 +171,13 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
          let subCategories = parentDoc.data().subCategories || [];
          
          const updateNested = (items: SubCategory[], path: string[]): SubCategory[] => {
-             if (path.length === 0) return items;
              const [currentId, ...restPath] = path;
+             if (restPath.length === 0) {
+                return items.map(item => item.id === currentId ? { ...item, name: newName } : item);
+             }
              return items.map(item => {
                  if(item.id === currentId) {
-                     return { ...item, name: newName };
-                 }
-                 if (item.subCategories && item.subCategories.length > 0) {
-                    return { ...item, subCategories: updateNested(item.subCategories, path) };
+                     return { ...item, subCategories: updateNested(item.subCategories || [], restPath) };
                  }
                  return item;
              });
@@ -322,32 +319,6 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [user, loading, recurringTransactions, processRecurringTransactions]);
 
- const clearCollection = async (collectionName: string) => {
-    const collRef = getCollectionRef(collectionName);
-    if (!collRef) return;
-    const snapshot = await getDocs(collRef);
-    const batch = writeBatch(db);
-    snapshot.docs.forEach(doc => batch.delete(doc.ref));
-    await batch.commit();
- }
-
-  const clearTransactions = async () => {
-    await clearCollection('transactions');
-  };
-
-  const clearAllData = async () => {
-    await Promise.all([
-        clearCollection('transactions'),
-        clearCollection('categories'),
-        clearCollection('budgets'),
-        clearCollection('recurringTransactions')
-    ]);
-     if (user) {
-        const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'main');
-        await setDoc(settingsDocRef, { dataSeeded: false }, { merge: true });
-    }
-  }
-
   const value = { 
         transactions, 
         categories, 
@@ -371,8 +342,6 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         updateRecurringTransaction,
         deleteRecurringTransaction,
         processRecurringTransactions,
-        clearTransactions,
-        clearAllData,
     };
 
   return (
@@ -389,5 +358,3 @@ export const useUserData = () => {
   }
   return context;
 };
-
-    
