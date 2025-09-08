@@ -55,13 +55,13 @@ type RecurringFormValues = z.infer<typeof recurringFormSchema>;
 function RecurringForm({ transaction, onSave, categories, closeDialog }: { transaction?: RecurringTransaction, onSave: (values: RecurringFormValues, id?: string) => void, categories: Category[], closeDialog: () => void }) {
   const form = useForm<RecurringFormValues>({
     resolver: zodResolver(recurringFormSchema),
-    defaultValues: {
-      description: transaction?.description || '',
-      amount: transaction?.amount || 0,
-      type: transaction?.type || 'expense',
-      category: transaction?.category || '',
-      frequency: transaction?.frequency || 'monthly',
-      startDate: transaction ? new Date(transaction.startDate) : new Date(),
+    defaultValues: transaction ? { ...transaction, startDate: new Date(transaction.startDate) } : {
+      description: '',
+      amount: 0,
+      type: 'expense',
+      category: '',
+      frequency: 'monthly',
+      startDate: new Date(),
     }
   });
 
@@ -168,7 +168,7 @@ function RecurringDialog({ transaction, onSave, children }: { transaction?: Recu
     });
     setIsOpen(false);
   };
-
+  
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>{children}</DialogTrigger>
