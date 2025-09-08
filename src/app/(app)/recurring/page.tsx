@@ -1,7 +1,8 @@
 
+
 "use client";
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useUserData } from '@/hooks/use-user-data';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -35,7 +36,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { CalendarIcon } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
-import { format } from 'date-fns';
+import { format, addDays, addWeeks, addMonths, addYears, parseISO, isBefore, startOfToday } from 'date-fns';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -157,6 +158,33 @@ function RecurringPageContent() {
     }
   };
 
+  const calculateNextOccurrence = (rt: RecurringTransaction): Date => {
+      const today = startOfToday();
+      let nextDate = parseISO(rt.startDate);
+
+      if (isBefore(nextDate, today)) {
+          const lastAdded = rt.lastAddedDate ? parseISO(rt.lastAddedDate) : nextDate;
+          nextDate = lastAdded;
+          while(isBefore(nextDate, today)) {
+            switch(rt.frequency) {
+                case 'daily': nextDate = addDays(nextDate, 1); break;
+                case 'weekly': nextDate = addWeeks(nextDate, 1); break;
+                case 'monthly': nextDate = addMonths(nextDate, 1); break;
+                case 'yearly': nextDate = addYears(nextDate, 1); break;
+            }
+          }
+      }
+      return nextDate;
+  }
+  
+  const sortedRecurringTransactions = useMemo(() => {
+      return [...recurringTransactions].sort((a,b) => {
+          const nextA = calculateNextOccurrence(a);
+          const nextB = calculateNextOccurrence(b);
+          return nextA.getTime() - nextB.getTime();
+      })
+  }, [recurringTransactions]);
+
   if (loading) return <div>Loading...</div>;
 
   return (
@@ -191,8 +219,8 @@ function RecurringPageContent() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {recurringTransactions.length > 0 ? (
-                recurringTransactions.map(rt => (
+              {sortedRecurringTransactions.length > 0 ? (
+                sortedRecurringTransactions.map(rt => (
                   <TableRow key={rt.id}>
                     <TableCell className="font-medium">{rt.description}</TableCell>
                     <TableCell className={rt.type === 'income' ? 'text-emerald-500' : 'text-red-500'}>
@@ -200,11 +228,11 @@ function RecurringPageContent() {
                     </TableCell>
                     <TableCell><Badge variant="outline">{rt.category}</Badge></TableCell>
                     <TableCell className="capitalize">{rt.frequency}</TableCell>
-                    <TableCell>{format(new Date(rt.startDate), "MMM d, yyyy")}</TableCell>
+                    <TableCell>{format(calculateNextOccurrence(rt), "MMM d, yyyy")}</TableCell>
                     <TableCell className="text-right">
                          <RecurringDialog transaction={rt} onSave={handleSave}>
                              <Button variant="ghost" size="icon"><Edit className="h-4 w-4"/></Button>
-                        </RecurringDialog>
+                        </Dialog>
                          <Button variant="ghost" size="icon" onClick={() => deleteRecurringTransaction(rt.id)}>
                             <Trash2 className="h-4 w-4 text-red-500"/>
                         </Button>

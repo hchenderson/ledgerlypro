@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
@@ -6,7 +7,7 @@ import { collection, doc, getDocs, onSnapshot, writeBatch, getDoc, setDoc, delet
 import type { Transaction, Category, SubCategory, Budget, RecurringTransaction } from '@/types';
 import { useAuth } from './use-auth';
 import { db } from '@/lib/firebase';
-import { addDays, addWeeks, addMonths, addYears, isBefore, startOfDay, parseISO } from 'date-fns';
+import { addDays, addWeeks, addMonths, addYears, isBefore, startOfDay, parseISO, isToday } from 'date-fns';
 
 interface UserDataContextType {
   transactions: Transaction[];
@@ -17,7 +18,7 @@ interface UserDataContextType {
   addTransaction: (transaction: Omit<Transaction, 'id'>) => Promise<void>;
   updateTransaction: (id: string, values: Partial<Omit<Transaction, 'id'>>) => Promise<void>;
   deleteTransaction: (id: string) => Promise<void>;
-  addCategory: (category: Omit<Category, 'id'>, parentId?: string, parentPath?: string[]) => Promise<void>;
+  addCategory: (category: Omit<Category, 'id'>) => Promise<void>;
   addSubCategory: (parentId: string, subCategory: Omit<SubCategory, 'id'>, parentPath?: string[]) => Promise<void>;
   updateCategory: (id: string, newName: string) => Promise<void>;
   deleteCategory: (id: string) => Promise<void>;
@@ -30,7 +31,6 @@ interface UserDataContextType {
   addRecurringTransaction: (transaction: Omit<RecurringTransaction, 'id'>) => Promise<void>;
   updateRecurringTransaction: (id: string, values: Partial<Omit<RecurringTransaction, 'id'>>) => Promise<void>;
   deleteRecurringTransaction: (id: string) => Promise<void>;
-  processRecurringTransactions: () => Promise<void>;
   getBudgetDetails: (forDate?: Date) => any[];
 }
 
@@ -48,6 +48,97 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!user) return null;
     return collection(db, 'users', user.uid, collectionName);
   }, [user]);
+
+  const processRecurringTransactions = useCallback(async () => {
+    if (!user || recurringTransactions.length === 0) return;
+  
+    const today = startOfDay(new Date());
+    const batch = writeBatch(db);
+    const transactionsCollRef = getCollectionRef('transactions');
+    const recurringCollRef = getCollectionRef('recurringTransactions');
+  
+    if (!transactionsCollRef || !recurringCollRef) return;
+  
+    for (const rt of recurringTransactions) {
+      let lastProcessedDate = rt.lastAddedDate ? parseISO(rt.lastAddedDate) : startOfDay(parseISO(rt.startDate));
+      
+      // If the start date is in the future, skip it
+      if (isBefore(today, lastProcessedDate)) {
+        continue;
+      }
+
+      // If the last processed date is today, skip it
+      if (isToday(lastProcessedDate) && rt.lastAddedDate) {
+          continue;
+      }
+      
+      let nextDate = lastProcessedDate;
+
+       if (!rt.lastAddedDate) { // First run for this item
+           if (isBefore(nextDate, today) || isToday(nextDate)) {
+               const newTransactionDoc = doc(transactionsCollRef);
+                 batch.set(newTransactionDoc, {
+                    id: newTransactionDoc.id,
+                    date: nextDate.toISOString(),
+                    description: `(Recurring) ${rt.description}`,
+                    amount: rt.amount,
+                    type: rt.type,
+                    category: rt.category
+                 });
+                 const recurringDocToUpdate = doc(recurringCollRef, rt.id);
+                 batch.update(recurringDocToUpdate, { lastAddedDate: nextDate.toISOString() });
+           }
+      }
+
+      // Calculate next occurrence from the last added date
+      if (rt.lastAddedDate) {
+         switch(rt.frequency) {
+            case 'daily': nextDate = addDays(nextDate, 1); break;
+            case 'weekly': nextDate = addWeeks(nextDate, 1); break;
+            case 'monthly': nextDate = addMonths(nextDate, 1); break;
+            case 'yearly': nextDate = addYears(nextDate, 1); break;
+         }
+      }
+  
+      // Catch up on missed transactions
+      while (isBefore(nextDate, today) || isToday(nextDate)) {
+        const newTransactionDoc = doc(transactionsCollRef);
+        batch.set(newTransactionDoc, {
+          id: newTransactionDoc.id,
+          date: nextDate.toISOString(),
+          description: `(Recurring) ${rt.description}`,
+          amount: rt.amount,
+          type: rt.type,
+          category: rt.category
+        });
+  
+        const recurringDocToUpdate = doc(recurringCollRef, rt.id);
+        batch.update(recurringDocToUpdate, { lastAddedDate: nextDate.toISOString() });
+  
+        switch(rt.frequency) {
+          case 'daily': nextDate = addDays(nextDate, 1); break;
+          case 'weekly': nextDate = addWeeks(nextDate, 1); break;
+          case 'monthly': nextDate = addMonths(nextDate, 1); break;
+          case 'yearly': nextDate = addYears(nextDate, 1); break;
+        }
+      }
+    }
+  
+    try {
+        await batch.commit();
+    } catch(e) {
+        console.error("Error processing recurring transactions batch: ", e)
+    }
+
+  }, [user, recurringTransactions, getCollectionRef]);
+  
+  useEffect(() => {
+    if (user && !loading && recurringTransactions.length > 0) {
+      processRecurringTransactions();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, loading, recurringTransactions]);
+
 
   useEffect(() => {
     if (!user) {
@@ -71,7 +162,9 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           case 'transactions': setTransactions(data as Transaction[]); break;
           case 'categories': setCategories(data as Category[]); break;
           case 'budgets': setBudgets(data as Budget[]); break;
-          case 'recurringTransactions': setRecurringTransactions(data as RecurringTransaction[]); break;
+          case 'recurringTransactions': 
+            setRecurringTransactions(data as RecurringTransaction[]);
+            break;
         }
       }, (error) => {
         console.error(`Error fetching ${name}:`, error);
@@ -107,15 +200,11 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     await deleteDoc(docRef);
   };
   
-  const addCategory = async (category: Omit<Category, 'id'>, parentId?: string, parentPath: string[] = []) => {
-    if (parentId) {
-      await addSubCategory(parentId, category, parentPath);
-    } else {
-      const collRef = getCollectionRef('categories');
-      if (!collRef) return;
-      const newDocRef = doc(collRef);
-      await setDoc(newDocRef, { ...category, id: newDocRef.id });
-    }
+  const addCategory = async (category: Omit<Category, 'id'>) => {
+    const collRef = getCollectionRef('categories');
+    if (!collRef) return;
+    const newDocRef = doc(collRef);
+    await setDoc(newDocRef, { ...category, id: newDocRef.id });
   };
   
   const updateCategory = async (id: string, newName: string) => {
@@ -255,7 +344,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const collRef = getCollectionRef('recurringTransactions');
     if (!collRef) return;
     const newDocRef = doc(collRef);
-    await setDoc(newDocRef, { ...transaction, id: newDocRef.id });
+    await setDoc(newDocRef, { ...transaction, id: newDocRef.id, lastAddedDate: null });
   };
 
   const updateRecurringTransaction = async (id: string, values: Partial<Omit<RecurringTransaction, 'id'>>) => {
@@ -272,58 +361,6 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     await deleteDoc(docRef);
   };
   
-  const processRecurringTransactions = useCallback(async () => {
-    if(!user) return;
-    const today = startOfDay(new Date());
-    const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'recurring');
-    const settingsDoc = await getDoc(settingsDocRef);
-    const lastCheckDate = settingsDoc.exists() && settingsDoc.data().lastCheck ? parseISO(settingsDoc.data().lastCheck) : new Date(0);
-
-    const batch = writeBatch(db);
-    const transactionsCollRef = getCollectionRef('transactions');
-    if (!transactionsCollRef) return;
-    const recurringCollRef = getCollectionRef('recurringTransactions');
-    if (!recurringCollRef) return;
-
-    for (const rt of recurringTransactions) {
-        let nextDate = rt.lastAddedDate ? addDays(parseISO(rt.lastAddedDate), 1) : parseISO(rt.startDate);
-
-        while (isBefore(nextDate, today) || nextDate.getTime() === today.getTime()) {
-             if (isBefore(lastCheckDate, nextDate)) {
-                 const newTransactionDoc = doc(transactionsCollRef);
-                 batch.set(newTransactionDoc, {
-                    id: newTransactionDoc.id,
-                    date: nextDate.toISOString(),
-                    description: `(Recurring) ${rt.description}`,
-                    amount: rt.amount,
-                    type: rt.type,
-                    category: rt.category
-                 });
-                 
-                 const recurringDocToUpdate = doc(recurringCollRef, rt.id);
-                 batch.update(recurringDocToUpdate, { lastAddedDate: nextDate.toISOString() });
-             }
-
-             switch(rt.frequency) {
-                case 'daily': nextDate = addDays(nextDate, 1); break;
-                case 'weekly': nextDate = addWeeks(nextDate, 1); break;
-                case 'monthly': nextDate = addMonths(nextDate, 1); break;
-                case 'yearly': nextDate = addYears(nextDate, 1); break;
-            }
-        }
-    }
-    
-    await batch.commit();
-    await setDoc(settingsDocRef, { lastCheck: today.toISOString() }, { merge: true });
-
-  }, [user, recurringTransactions, getCollectionRef]);
-
-  useEffect(() => {
-    if (user && !loading && recurringTransactions.length > 0) {
-      processRecurringTransactions();
-    }
-  }, [user, loading, recurringTransactions, processRecurringTransactions]);
-
   const getBudgetDetails = useCallback((forDate: Date = new Date()) => {
     const findCategoryById = (id: string, cats: (Category | SubCategory)[]): (Category | SubCategory | undefined) => {
         for (const cat of cats) {
@@ -403,7 +440,6 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         addRecurringTransaction,
         updateRecurringTransaction,
         deleteRecurringTransaction,
-        processRecurringTransactions,
         getBudgetDetails,
     };
 
@@ -421,5 +457,3 @@ export const useUserData = () => {
   }
   return context;
 };
-
-    
