@@ -168,11 +168,6 @@ function BudgetsPageContent() {
         return undefined;
     }
 
-    const getCategoryName = (id: string): string => {
-        const category = findCategoryById(id, categories);
-        return category ? category.name : "Unknown Category";
-    }
-
     const getAllSubCategoryNames = (category: Category | SubCategory): string[] => {
         let names = [category.name];
         if (category.subCategories) {
@@ -187,24 +182,19 @@ function BudgetsPageContent() {
     return budgets.map(budget => {
       const category = findCategoryById(budget.categoryId, categories);
       
-      const targetCategoryNames: string[] = [];
-      if(category) {
-          const rootCategoryForBudget = findCategoryById(budget.categoryId, categories);
-          if (rootCategoryForBudget) {
-            targetCategoryNames.push(...getAllSubCategoryNames(rootCategoryForBudget));
-          }
-      }
+      let categoryName = "Unknown Category";
+      let allCategoryNamesForBudget: string[] = [];
 
+      if (category) {
+        categoryName = category.name;
+        allCategoryNamesForBudget = getAllSubCategoryNames(category);
+      }
+      
       const spent = transactions
         .filter(t => {
             const transactionDate = new Date(t.date);
-            const categoryMatch = findCategoryById(budget.categoryId, categories);
-            if (!categoryMatch) return false;
-
-            const allChildCategoryNames = getAllSubCategoryNames(categoryMatch);
-            
             return t.type === 'expense' &&
-                   allChildCategoryNames.includes(t.category) &&
+                   allCategoryNamesForBudget.includes(t.category) &&
                    transactionDate.getMonth() === selectedDate.getMonth() &&
                    transactionDate.getFullYear() === selectedDate.getFullYear();
         })
@@ -215,7 +205,7 @@ function BudgetsPageContent() {
 
       return {
         ...budget,
-        categoryName: getCategoryName(budget.categoryId),
+        categoryName,
         spent,
         remaining,
         progress,
