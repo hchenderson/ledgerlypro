@@ -17,7 +17,7 @@ interface UserDataContextType {
   addTransaction: (transaction: Omit<Transaction, 'id'>) => Promise<void>;
   updateTransaction: (id: string, values: Partial<Omit<Transaction, 'id'>>) => Promise<void>;
   deleteTransaction: (id: string) => Promise<void>;
-  addCategory: (category: Omit<Category, 'id'>) => Promise<void>;
+  addCategory: (category: Omit<Category, 'id'>, parentId?: string, parentPath?: string[]) => Promise<void>;
   addSubCategory: (parentId: string, subCategory: Omit<SubCategory, 'id'>, parentPath?: string[]) => Promise<void>;
   updateCategory: (id: string, newName: string) => Promise<void>;
   deleteCategory: (id: string) => Promise<void>;
@@ -31,6 +31,7 @@ interface UserDataContextType {
   updateRecurringTransaction: (id: string, values: Partial<Omit<RecurringTransaction, 'id'>>) => Promise<void>;
   deleteRecurringTransaction: (id: string) => Promise<void>;
   processRecurringTransactions: () => Promise<void>;
+  getBudgetDetails: (forDate?: Date) => any[];
 }
 
 const UserDataContext = createContext<UserDataContextType | undefined>(undefined);
@@ -106,11 +107,15 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     await deleteDoc(docRef);
   };
   
-  const addCategory = async (category: Omit<Category, 'id'>) => {
-    const collRef = getCollectionRef('categories');
-    if (!collRef) return;
-    const newDocRef = doc(collRef);
-    await setDoc(newDocRef, { ...category, id: newDocRef.id });
+  const addCategory = async (category: Omit<Category, 'id'>, parentId?: string, parentPath: string[] = []) => {
+    if (parentId) {
+      await addSubCategory(parentId, category, parentPath);
+    } else {
+      const collRef = getCollectionRef('categories');
+      if (!collRef) return;
+      const newDocRef = doc(collRef);
+      await setDoc(newDocRef, { ...category, id: newDocRef.id });
+    }
   };
   
   const updateCategory = async (id: string, newName: string) => {
@@ -319,6 +324,63 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [user, loading, recurringTransactions, processRecurringTransactions]);
 
+  const getBudgetDetails = useCallback((forDate: Date = new Date()) => {
+    const findCategoryById = (id: string, cats: (Category | SubCategory)[]): (Category | SubCategory | undefined) => {
+        for (const cat of cats) {
+            if (cat.id === id) return cat;
+            if (cat.subCategories) {
+                const found = findCategoryById(id, cat.subCategories);
+                if (found) return found;
+            }
+        }
+        return undefined;
+    }
+
+    const getAllSubCategoryNames = (category: Category | SubCategory): string[] => {
+        let names = [category.name];
+        if (category.subCategories) {
+            category.subCategories.forEach(sub => {
+                names = [...names, ...getAllSubCategoryNames(sub)];
+            });
+        }
+        return names;
+    }
+
+    return budgets.map(budget => {
+      const category = findCategoryById(budget.categoryId, categories);
+      
+      let categoryName = "Unknown Category";
+      let allCategoryNamesForBudget: string[] = [];
+
+      if (category) {
+        categoryName = category.name;
+        allCategoryNamesForBudget = getAllSubCategoryNames(category);
+      }
+      
+      const spent = transactions
+        .filter(t => {
+            const transactionDate = new Date(t.date);
+            return t.type === 'expense' &&
+                   allCategoryNamesForBudget.includes(t.category) &&
+                   transactionDate.getMonth() === forDate.getMonth() &&
+                   transactionDate.getFullYear() === forDate.getFullYear();
+        })
+        .reduce((sum, t) => sum + t.amount, 0);
+
+      const remaining = budget.amount - spent;
+      const progress = budget.amount > 0 ? (spent / budget.amount) * 100 : 0;
+
+      return {
+        ...budget,
+        categoryName,
+        spent,
+        remaining,
+        progress,
+      };
+    });
+  }, [budgets, transactions, categories]);
+
+
   const value = { 
         transactions, 
         categories, 
@@ -342,6 +404,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         updateRecurringTransaction,
         deleteRecurringTransaction,
         processRecurringTransactions,
+        getBudgetDetails,
     };
 
   return (
@@ -358,3 +421,5 @@ export const useUserData = () => {
   }
   return context;
 };
+
+    

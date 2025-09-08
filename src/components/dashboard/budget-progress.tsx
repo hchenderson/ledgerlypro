@@ -1,84 +1,16 @@
 
 "use client";
 
-import { useMemo } from 'react';
 import Link from 'next/link';
-import { type Budget, type Transaction, type Category, SubCategory } from '@/types';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '../ui/button';
-import { Target, Star } from 'lucide-react';
-import { useUserData } from '@/hooks/use-user-data';
+import { Star } from 'lucide-react';
 
 interface BudgetProgressProps {
-    budgets: Budget[];
-    transactions: Transaction[];
-    categories: Category[];
+    budgets: any[];
 }
 
-export function BudgetProgress({ budgets, transactions, categories }: BudgetProgressProps) {
-
-    const findCategoryById = (id: string, cats: (Category | SubCategory)[]): (Category | SubCategory | undefined) => {
-        for (const cat of cats) {
-            if (cat.id === id) return cat;
-            if (cat.subCategories) {
-                const found = findCategoryById(id, cat.subCategories);
-                if (found) return found;
-            }
-        }
-        return undefined;
-    }
-
-    const getAllSubCategoryNames = (category: Category | SubCategory): string[] => {
-        let names = [category.name];
-        if (category.subCategories) {
-            category.subCategories.forEach(sub => {
-                names = [...names, ...getAllSubCategoryNames(sub)];
-            });
-        }
-        return names;
-    }
-
-    const budgetDetails = useMemo(() => {
-        const currentMonth = new Date().getMonth();
-        const currentYear = new Date().getFullYear();
-
-        return budgets.map(budget => {
-            const category = findCategoryById(budget.categoryId, categories);
-            
-            let categoryName = "Unknown Category";
-
-            const spent = transactions
-                .filter(t => {
-                    const transactionDate = new Date(t.date);
-                    const categoryMatch = findCategoryById(budget.categoryId, categories);
-                    if (!categoryMatch) return false;
-
-                    const allChildCategoryNames = getAllSubCategoryNames(categoryMatch);
-                    
-                    return t.type === 'expense' &&
-                           allChildCategoryNames.includes(t.category) &&
-                           transactionDate.getMonth() === currentMonth &&
-                           transactionDate.getFullYear() === currentYear;
-                })
-                .reduce((sum, t) => sum + t.amount, 0);
-
-            if(category) {
-              categoryName = category.name;
-            }
-
-            const remaining = budget.amount - spent;
-            const progress = budget.amount > 0 ? (spent / budget.amount) * 100 : 0;
-
-            return {
-                ...budget,
-                categoryName,
-                spent,
-                remaining,
-                progress,
-            };
-        });
-    }, [budgets, transactions, categories]);
-
+export function BudgetProgress({ budgets }: BudgetProgressProps) {
     if (budgets.length === 0) {
         return (
             <div className="text-center text-muted-foreground py-8">
@@ -91,7 +23,7 @@ export function BudgetProgress({ budgets, transactions, categories }: BudgetProg
 
     return (
         <div className="space-y-4">
-            {budgetDetails.map(budget => (
+            {budgets.map(budget => (
                 <div key={budget.id}>
                     <div className="flex justify-between items-center mb-1 text-sm">
                         <span className="font-medium">{budget.categoryName}</span>
@@ -113,3 +45,5 @@ export function BudgetProgress({ budgets, transactions, categories }: BudgetProg
         </div>
     );
 }
+
+    

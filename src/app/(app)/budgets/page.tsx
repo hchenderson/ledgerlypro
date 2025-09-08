@@ -142,7 +142,7 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
 
 
 function BudgetsPageContent() {
-  const { budgets, transactions, categories, addBudget, updateBudget, deleteBudget, toggleFavoriteBudget, loading } = useUserData();
+  const { budgets, addBudget, updateBudget, deleteBudget, toggleFavoriteBudget, loading, getBudgetDetails } = useUserData();
   const [selectedDate, setSelectedDate] = useState(new Date());
 
   const handleSaveBudget = (values: BudgetFormValues, id?: string) => {
@@ -156,62 +156,11 @@ function BudgetsPageContent() {
         });
     }
   };
-  
-    const findCategoryById = (id: string, cats: (Category | SubCategory)[]): (Category | SubCategory | undefined) => {
-        for (const cat of cats) {
-            if (cat.id === id) return cat;
-            if (cat.subCategories) {
-                const found = findCategoryById(id, cat.subCategories);
-                if (found) return found;
-            }
-        }
-        return undefined;
-    }
-
-    const getAllSubCategoryNames = (category: Category | SubCategory): string[] => {
-        let names = [category.name];
-        if (category.subCategories) {
-            category.subCategories.forEach(sub => {
-                names = [...names, ...getAllSubCategoryNames(sub)];
-            });
-        }
-        return names;
-    }
 
   const budgetDetails = useMemo(() => {
-    return budgets.map(budget => {
-      const category = findCategoryById(budget.categoryId, categories);
-      
-      let categoryName = "Unknown Category";
-      let allCategoryNamesForBudget: string[] = [];
+    return getBudgetDetails(selectedDate);
+  }, [getBudgetDetails, selectedDate]);
 
-      if (category) {
-        categoryName = category.name;
-        allCategoryNamesForBudget = getAllSubCategoryNames(category);
-      }
-      
-      const spent = transactions
-        .filter(t => {
-            const transactionDate = new Date(t.date);
-            return t.type === 'expense' &&
-                   allCategoryNamesForBudget.includes(t.category) &&
-                   transactionDate.getMonth() === selectedDate.getMonth() &&
-                   transactionDate.getFullYear() === selectedDate.getFullYear();
-        })
-        .reduce((sum, t) => sum + t.amount, 0);
-
-      const remaining = budget.amount - spent;
-      const progress = budget.amount > 0 ? (spent / budget.amount) * 100 : 0;
-
-      return {
-        ...budget,
-        categoryName,
-        spent,
-        remaining,
-        progress,
-      };
-    });
-  }, [budgets, transactions, categories, selectedDate]);
 
   const handlePrevMonth = () => {
     setSelectedDate(prev => subMonths(prev, 1));
@@ -326,3 +275,5 @@ export default function BudgetsPage() {
         </FeatureGate>
     )
 }
+
+    

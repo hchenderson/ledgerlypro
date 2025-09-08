@@ -37,7 +37,7 @@ function DashboardSkeleton() {
   )
 }
 
-function GettingStartedGuide({ onClearData, onDismiss }: { onClearData: () => void, onDismiss: () => void }) {
+function GettingStartedGuide({ onDismiss }: { onDismiss: () => void }) {
     return (
         <Alert className="mb-6 bg-primary/5 border-primary/20 relative pr-10">
             <Button variant="ghost" size="icon" className="absolute top-2 right-2 h-6 w-6" onClick={onDismiss}>
@@ -53,18 +53,16 @@ function GettingStartedGuide({ onClearData, onDismiss }: { onClearData: () => vo
                     <li><strong>View Transactions:</strong> Head to the "Transactions" page to see the sample data.</li>
                     <li><strong>Add a New Transaction:</strong> Click the "New Transaction" button in the header.</li>
                 </ol>
-                <p className="font-semibold">Ready to start with your own data?</p>
-                <Button onClick={onClearData} size="sm" className="mt-2">Clear Sample Data & Start Fresh</Button>
+                <p>You can clear this sample data and start with your own from the **Settings** page.</p>
             </AlertDescription>
         </Alert>
     )
 }
 
 export default function DashboardPage() {
-  const { transactions, loading, clearAllData, budgets, categories } = useUserData();
+  const { transactions, loading, getBudgetDetails } = useUserData();
   const { user } = useAuth();
   const [startingBalance, setStartingBalance] = useState(0);
-  const [showGuide, setShowGuide] = useState(false);
   const [guideDismissed, setGuideDismissed] = useState(true);
 
   useEffect(() => {
@@ -84,6 +82,10 @@ export default function DashboardPage() {
         });
     }
   }, [user]);
+
+  const favoritedBudgets = useMemo(() => {
+    return getBudgetDetails().filter(b => b.isFavorite);
+  }, [getBudgetDetails]);
 
   const { 
       totalIncome, 
@@ -141,11 +143,6 @@ export default function DashboardPage() {
     return { totalIncome, totalExpenses, currentBalance, overviewData, currentMonthIncome, currentMonthExpenses };
   }, [transactions, startingBalance]);
 
-  const handleClearData = async () => {
-    await clearAllData();
-    await handleDismissGuide();
-  }
-
   const handleDismissGuide = async () => {
     if(!user) return;
     setGuideDismissed(true);
@@ -159,11 +156,10 @@ export default function DashboardPage() {
 
   const savingsRate = totalIncome > 0 ? ((totalIncome - totalExpenses) / totalIncome) * 100 : 0;
   const currentMonthName = new Date().toLocaleString('default', { month: 'long' });
-  const favoritedBudgets = budgets.filter(b => b.isFavorite);
 
   return (
     <div className="space-y-6">
-      {!guideDismissed && transactions.length > 0 && <GettingStartedGuide onClearData={handleClearData} onDismiss={handleDismissGuide} />}
+      {!guideDismissed && transactions.length > 0 && <GettingStartedGuide onDismiss={handleDismissGuide} />}
       
       <div className="grid gap-4 md:grid-cols-1">
          <StatCard
@@ -247,9 +243,11 @@ export default function DashboardPage() {
             <CardDescription>Your hand-picked budgets for quick insights.</CardDescription>
         </CardHeader>
         <CardContent>
-            <BudgetProgress budgets={favoritedBudgets} transactions={transactions} categories={categories} />
+            <BudgetProgress budgets={favoritedBudgets} />
         </CardContent>
       </Card>
     </div>
   );
 }
+
+    
