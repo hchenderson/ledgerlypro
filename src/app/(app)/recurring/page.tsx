@@ -52,7 +52,6 @@ const recurringFormSchema = z.object({
 
 type RecurringFormValues = z.infer<typeof recurringFormSchema>;
 
-
 function RecurringForm({ transaction, onSave, categories, closeDialog }: { transaction?: RecurringTransaction, onSave: (values: RecurringFormValues, id?: string) => void, categories: Category[], closeDialog: () => void }) {
   const form = useForm<RecurringFormValues>({
     resolver: zodResolver(recurringFormSchema),
@@ -167,7 +166,8 @@ function RecurringDialog({ transaction, onSave, children }: { transaction?: Recu
       title: transaction ? 'Recurring Transaction Updated' : 'Recurring Transaction Created',
       description: `Your recurring transaction has been successfully saved.`,
     });
-  }
+    setIsOpen(false);
+  };
   
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -187,9 +187,8 @@ function RecurringDialog({ transaction, onSave, children }: { transaction?: Recu
         />
       </DialogContent>
     </Dialog>
-  )
+  );
 }
-
 
 function calculateNextOccurrence(rt: RecurringTransaction): Date {
     const today = startOfToday();
@@ -300,11 +299,10 @@ function RecurringPageContent() {
   );
 }
 
-
 export default function RecurringPage() {
     return (
         <FeatureGate>
             <RecurringPageContent />
         </FeatureGate>
-    )
+    );
 }
