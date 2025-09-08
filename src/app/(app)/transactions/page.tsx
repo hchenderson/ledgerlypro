@@ -23,6 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { DateRange } from "react-day-picker";
 import { cn } from "@/lib/utils";
+import { Calendar } from "@/components/ui/calendar";
 
 
 function TransactionsSkeleton() {
@@ -62,7 +63,7 @@ export default function TransactionsPage() {
   const isPro = plan === 'pro';
 
   const allCategories = useMemo(() => {
-    return categories.map(c => c.name);
+    return categories.filter(c => !c.subCategories || c.subCategories.length === 0).map(c => c.name);
   }, [categories]);
 
   const getSubCategoryNames = (category: Category | SubCategory): string[] => {
@@ -74,16 +75,19 @@ export default function TransactionsPage() {
       }
       return names;
   }
+  
+  const getAllCategoryAndSubCategoryNames = (categoryName: string) => {
+    const parentCategory = categories.find(c => c.name === categoryName);
+    if (parentCategory) {
+      return getSubCategoryNames(parentCategory);
+    }
+    return [categoryName];
+  }
 
   const filteredTransactions = useMemo(() => {
     let categoriesToFilter: string[] = [];
     if (categoryFilter !== 'all') {
-      const parentCategory = categories.find(c => c.name === categoryFilter);
-      if (parentCategory) {
-        categoriesToFilter = getSubCategoryNames(parentCategory);
-      } else {
-        categoriesToFilter = [categoryFilter];
-      }
+      categoriesToFilter = getAllCategoryAndSubCategoryNames(categoryFilter);
     }
 
 
@@ -352,5 +356,3 @@ export default function TransactionsPage() {
     </div>
   );
 }
-
-    
