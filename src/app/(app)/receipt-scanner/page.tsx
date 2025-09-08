@@ -131,12 +131,10 @@ function ReceiptScannerPageContent() {
     };
     
     const handleTransactionCreated = (values: Omit<Transaction, 'id' | 'type'> & { type: "income" | "expense" }) => {
-        const newTransaction: Transaction = {
-         id: `txn_${Date.now()}`,
+        addTransaction({
          ...values,
          date: values.date.toISOString()
-       };
-       addTransaction(newTransaction);
+       });
        resetState();
      }
 
@@ -272,7 +270,7 @@ function ReceiptScannerPageContent() {
             isOpen={isSheetOpen}
             onOpenChange={setIsSheetOpen}
             transaction={extractedData ? {
-                id: '', // Temporary ID
+                id: '', // This ID is ignored for new transactions, but keeps the type correct
                 amount: extractedData.amount,
                 date: new Date(extractedData.date).toISOString(),
                 description: extractedData.description,
@@ -293,3 +291,5 @@ export default function ReceiptScannerPage() {
         </FeatureGate>
     )
 }
+
+    
