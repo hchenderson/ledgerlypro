@@ -62,47 +62,30 @@ export default function TransactionsPage() {
   const isPro = plan === 'pro';
 
   const allCategories = useMemo(() => {
-    const flattenCategories = (cats: Category[] | SubCategory[]): string[] => {
-      let names: string[] = [];
-      for (const cat of cats) {
-        names.push(cat.name);
-        if (cat.subCategories) {
-          names = names.concat(flattenCategories(cat.subCategories));
-        }
-      }
-      return names;
-    };
-    return Array.from(new Set(flattenCategories(categories)));
+    return categories.map(c => c.name);
   }, [categories]);
 
-  const getAllCategoryAndSubCategoryNames = (selectedCategoryName: string): string[] => {
-      const findCategory = (name: string, cats: (Category | SubCategory)[]): Category | SubCategory | null => {
-        for (const cat of cats) {
-            if (cat.name === name) return cat;
-            if (cat.subCategories) {
-                const found = findCategory(name, cat.subCategories);
-                if (found) return found;
-            }
-        }
-        return null;
-    };
-
-    const getSubCategoryNames = (category: Category | SubCategory): string[] => {
-        let names = [category.name];
-        if (category.subCategories) {
-            category.subCategories.forEach(sub => {
-                names = [...names, ...getSubCategoryNames(sub)];
-            });
-        }
-        return names;
-    }
-
-    const foundCategory = findCategory(selectedCategoryName, categories);
-    return foundCategory ? getSubCategoryNames(foundCategory) : [selectedCategoryName];
-  };
+  const getSubCategoryNames = (category: Category | SubCategory): string[] => {
+      let names = [category.name];
+      if (category.subCategories) {
+          category.subCategories.forEach(sub => {
+              names = [...names, ...getSubCategoryNames(sub)];
+          });
+      }
+      return names;
+  }
 
   const filteredTransactions = useMemo(() => {
-    const categoriesToFilter = categoryFilter === 'all' ? [] : getAllCategoryAndSubCategoryNames(categoryFilter);
+    let categoriesToFilter: string[] = [];
+    if (categoryFilter !== 'all') {
+      const parentCategory = categories.find(c => c.name === categoryFilter);
+      if (parentCategory) {
+        categoriesToFilter = getSubCategoryNames(parentCategory);
+      } else {
+        categoriesToFilter = [categoryFilter];
+      }
+    }
+
 
     return transactions.filter(t => {
       const transactionDate = new Date(t.date);
