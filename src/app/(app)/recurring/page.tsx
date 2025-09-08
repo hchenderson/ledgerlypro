@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { useUserData } from '@/hooks/use-user-data';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -52,11 +52,8 @@ const recurringFormSchema = z.object({
 
 type RecurringFormValues = z.infer<typeof recurringFormSchema>;
 
-function RecurringDialog({ transaction, onSave, children }: { transaction?: RecurringTransaction, onSave: (values: RecurringFormValues, id?: string) => void, children: React.ReactNode }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const { categories } = useUserData();
-  const { toast } = useToast();
 
+function RecurringForm({ transaction, onSave, categories, closeDialog }: { transaction?: RecurringTransaction, onSave: (values: RecurringFormValues, id?: string) => void, categories: Category[], closeDialog: () => void }) {
   const form = useForm<RecurringFormValues>({
     resolver: zodResolver(recurringFormSchema),
     defaultValues: {
@@ -69,47 +66,111 @@ function RecurringDialog({ transaction, onSave, children }: { transaction?: Recu
     }
   });
 
-  const handleOpenChange = (open: boolean) => {
-    setIsOpen(open);
-    if (open) {
-      if (transaction) {
-        form.reset({
-          description: transaction.description,
-          amount: transaction.amount,
-          type: transaction.type,
-          category: transaction.category,
-          frequency: transaction.frequency,
-          startDate: new Date(transaction.startDate),
-        });
-      } else {
-        form.reset({
-          description: '',
-          amount: 0,
-          type: 'expense',
-          category: '',
-          frequency: 'monthly',
-          startDate: new Date(),
-        });
-      }
-    }
-  }
-
-
   const onSubmit = (data: RecurringFormValues) => {
     onSave(data, transaction?.id);
+    closeDialog();
+  };
+  
+  const type = form.watch('type');
+  const availableCategories = useMemo(() => {
+    return categories
+      .filter(c => c.type === type)
+      .flatMap(c => [c.name, ...(c.subCategories?.map(sc => sc.name) ?? [])])
+      .sort();
+  }, [categories, type]);
+
+  return (
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <FormField control={form.control} name="description" render={({ field }) => (<FormItem><FormLabel>Description</FormLabel><FormControl><Input placeholder="e.g., Netflix Subscription" {...field} /></FormControl><FormMessage /></FormItem>)}/>
+        <FormField control={form.control} name="amount" render={({ field }) => (<FormItem><FormLabel>Amount</FormLabel><FormControl><Input type="number" placeholder="15.99" {...field} /></FormControl><FormMessage /></FormItem>)}/>
+        <FormField control={form.control} name="type" render={({ field }) => (
+            <FormItem className="space-y-3"><FormLabel>Type</FormLabel><FormControl>
+                <RadioGroup onValueChange={field.onChange} defaultValue={field.value} className="flex space-x-4">
+                    <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="income" /></FormControl><FormLabel className="font-normal">Income</FormLabel></FormItem>
+                    <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="expense" /></FormControl><FormLabel className="font-normal">Expense</FormLabel></FormItem>
+                </RadioGroup>
+            </FormControl><FormMessage /></FormItem>
+        )}/>
+        <FormField control={form.control} name="category" render={({ field }) => (
+            <FormItem><FormLabel>Category</FormLabel>
+            <Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select a category" /></SelectTrigger></FormControl>
+                <SelectContent>{availableCategories.map(cat => (<SelectItem key={cat} value={cat}>{cat}</SelectItem>))}</SelectContent>
+            </Select><FormMessage /></FormItem>
+        )}/>
+        <FormField control={form.control} name="frequency" render={({ field }) => (
+            <FormItem><FormLabel>Frequency</FormLabel>
+            <Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select frequency" /></SelectTrigger></FormControl>
+                <SelectContent>
+                    <SelectItem value="daily">Daily</SelectItem>
+                    <SelectItem value="weekly">Weekly</SelectItem>
+                    <SelectItem value="monthly">Monthly</SelectItem>
+                    <SelectItem value="yearly">Yearly</SelectItem>
+                </SelectContent>
+            </Select><FormMessage /></FormItem>
+        )}/>
+          <FormField
+          control={form.control}
+          name="startDate"
+          render={({ field }) => (
+            <FormItem className="flex flex-col">
+              <FormLabel>Start Date</FormLabel>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <FormControl>
+                    <Button
+                      variant={"outline"}
+                      className={cn(
+                        "w-full pl-3 text-left font-normal",
+                        !field.value && "text-muted-foreground"
+                      )}
+                    >
+                      {field.value ? (
+                        format(field.value, "PPP")
+                      ) : (
+                        <span>Pick a date</span>
+                      )}
+                      <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                    </Button>
+                  </FormControl>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={field.value}
+                    onSelect={field.onChange}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <DialogFooter>
+          <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
+          <Button type="submit">Save</Button>
+        </DialogFooter>
+      </form>
+    </Form>
+  )
+}
+
+function RecurringDialog({ transaction, onSave, children }: { transaction?: RecurringTransaction, onSave: (values: RecurringFormValues, id?: string) => void, children: React.ReactNode }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const { categories } = useUserData();
+  const { toast } = useToast();
+
+  const handleSave = (values: RecurringFormValues, id?: string) => {
+    onSave(values, id);
     toast({
       title: transaction ? 'Recurring Transaction Updated' : 'Recurring Transaction Created',
       description: `Your recurring transaction has been successfully saved.`,
     });
-    setIsOpen(false);
-    form.reset();
-  };
+  }
   
-  const type = form.watch('type');
-  const availableCategories = categories.filter(c => c.type === type).flatMap(c => c.subCategories ? c.subCategories.map(s => s.name) : c.name);
-
   return (
-    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
@@ -118,83 +179,17 @@ function RecurringDialog({ transaction, onSave, children }: { transaction?: Recu
             Set up a transaction that repeats on a schedule.
           </DialogDescription>
         </DialogHeader>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField control={form.control} name="description" render={({ field }) => (<FormItem><FormLabel>Description</FormLabel><FormControl><Input placeholder="e.g., Netflix Subscription" {...field} /></FormControl><FormMessage /></FormItem>)}/>
-            <FormField control={form.control} name="amount" render={({ field }) => (<FormItem><FormLabel>Amount</FormLabel><FormControl><Input type="number" placeholder="15.99" {...field} /></FormControl><FormMessage /></FormItem>)}/>
-            <FormField control={form.control} name="type" render={({ field }) => (
-                <FormItem className="space-y-3"><FormLabel>Type</FormLabel><FormControl>
-                    <RadioGroup onValueChange={field.onChange} defaultValue={field.value} className="flex space-x-4">
-                        <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="income" /></FormControl><FormLabel className="font-normal">Income</FormLabel></FormItem>
-                        <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="expense" /></FormControl><FormLabel className="font-normal">Expense</FormLabel></FormItem>
-                    </RadioGroup>
-                </FormControl><FormMessage /></FormItem>
-            )}/>
-            <FormField control={form.control} name="category" render={({ field }) => (
-                <FormItem><FormLabel>Category</FormLabel>
-                <Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select a category" /></SelectTrigger></FormControl>
-                    <SelectContent>{availableCategories.map(cat => (<SelectItem key={cat} value={cat}>{cat}</SelectItem>))}</SelectContent>
-                </Select><FormMessage /></FormItem>
-            )}/>
-            <FormField control={form.control} name="frequency" render={({ field }) => (
-                <FormItem><FormLabel>Frequency</FormLabel>
-                <Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select frequency" /></SelectTrigger></FormControl>
-                    <SelectContent>
-                        <SelectItem value="daily">Daily</SelectItem>
-                        <SelectItem value="weekly">Weekly</SelectItem>
-                        <SelectItem value="monthly">Monthly</SelectItem>
-                        <SelectItem value="yearly">Yearly</SelectItem>
-                    </SelectContent>
-                </Select><FormMessage /></FormItem>
-            )}/>
-             <FormField
-              control={form.control}
-              name="startDate"
-              render={({ field }) => (
-                <FormItem className="flex flex-col">
-                  <FormLabel>Start Date</FormLabel>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <FormControl>
-                        <Button
-                          variant={"outline"}
-                          className={cn(
-                            "w-full pl-3 text-left font-normal",
-                            !field.value && "text-muted-foreground"
-                          )}
-                        >
-                          {field.value ? (
-                            format(field.value, "PPP")
-                          ) : (
-                            <span>Pick a date</span>
-                          )}
-                          <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                        </Button>
-                      </FormControl>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={field.value}
-                        onSelect={field.onChange}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <DialogFooter>
-              <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
-              <Button type="submit">Save</Button>
-            </DialogFooter>
-          </form>
-        </Form>
+        <RecurringForm 
+          transaction={transaction}
+          onSave={handleSave}
+          categories={categories}
+          closeDialog={() => setIsOpen(false)}
+        />
       </DialogContent>
     </Dialog>
   )
 }
+
 
 function calculateNextOccurrence(rt: RecurringTransaction): Date {
     const today = startOfToday();
@@ -313,5 +308,3 @@ export default function RecurringPage() {
         </FeatureGate>
     )
 }
-
-    
