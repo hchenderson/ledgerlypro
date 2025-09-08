@@ -4,7 +4,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { collection, doc, getDocs, onSnapshot, writeBatch, getDoc, setDoc, deleteDoc, query } from 'firebase/firestore';
 import type { Transaction, Category, SubCategory, Budget, RecurringTransaction } from '@/types';
-import { defaultTransactions, defaultCategories, defaultBudgets, defaultRecurringTransactions } from '@/lib/data';
 import { useAuth } from './use-auth';
 import { db } from '@/lib/firebase';
 import { addDays, addWeeks, addMonths, addYears, isBefore, startOfDay, parseISO } from 'date-fns';
@@ -51,35 +50,6 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return collection(db, 'users', user.uid, collectionName);
   }, [user]);
 
-  const seedDefaultData = useCallback(async () => {
-    if (!user) return;
-    const batch = writeBatch(db);
-    
-    const collections = {
-        transactions: defaultTransactions,
-        categories: defaultCategories,
-        budgets: defaultBudgets,
-        recurringTransactions: defaultRecurringTransactions
-    };
-
-    for (const [name, data] of Object.entries(collections)) {
-        const collRef: any = getCollectionRef(name);
-        data.forEach((item: any) => {
-            const docRef = doc(collRef);
-            // Ensure no non-serializable data is passed
-            const { icon, ...serializableItem } = item;
-            batch.set(docRef, { ...serializableItem, id: docRef.id });
-        });
-    }
-
-    await batch.commit();
-
-    // Set the dataSeeded flag
-    const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'main');
-    await setDoc(settingsDocRef, { dataSeeded: true }, { merge: true });
-
-  }, [user, getCollectionRef]);
-  
   useEffect(() => {
     if (!user) {
       setLoading(false);
@@ -92,73 +62,77 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     setLoading(true);
 
-    const checkAndSeedData = async () => {
-        const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'main');
-        const docSnap = await getDoc(settingsDocRef);
-        if (!docSnap.exists() || !docSnap.data()?.dataSeeded) {
-            await seedDefaultData();
+    const unsubscribers = ['transactions', 'categories', 'budgets', 'recurringTransactions'].map(name => {
+      const collRef = getCollectionRef(name);
+      if (!collRef) return () => {};
+      
+      return onSnapshot(query(collRef), (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+        switch (name) {
+          case 'transactions': setTransactions(data as Transaction[]); break;
+          case 'categories': setCategories(data as Category[]); break;
+          case 'budgets': setBudgets(data as Budget[]); break;
+          case 'recurringTransactions': setRecurringTransactions(data as RecurringTransaction[]); break;
         }
-    };
-
-    checkAndSeedData().then(() => {
-        const unsubscribers = ['transactions', 'categories', 'budgets', 'recurringTransactions'].map(name => {
-          const collRef: any = getCollectionRef(name);
-          return onSnapshot(query(collRef), (snapshot) => {
-            const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            switch (name) {
-              case 'transactions': setTransactions(data as Transaction[]); break;
-              case 'categories': setCategories(data as Category[]); break;
-              case 'budgets': setBudgets(data as Budget[]); break;
-              case 'recurringTransactions': setRecurringTransactions(data as RecurringTransaction[]); break;
-            }
-          });
-        });
-
-        setLoading(false);
-
-        return () => {
-          unsubscribers.forEach(unsub => unsub());
-        };
+      }, (error) => {
+        console.error(`Error fetching ${name}:`, error);
+      });
     });
-  // The dependency array is intentionally structured this way to run once on user change.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+    
+    setLoading(false);
+
+    return () => {
+      unsubscribers.forEach(unsub => unsub());
+    };
+  }, [user, getCollectionRef]);
 
 
   const addTransaction = async (transaction: Omit<Transaction, 'id'>) => {
-    const collRef: any = getCollectionRef('transactions');
+    const collRef = getCollectionRef('transactions');
+    if (!collRef) return;
     const newDocRef = doc(collRef);
     await setDoc(newDocRef, { ...transaction, id: newDocRef.id });
   };
   
   const updateTransaction = async (id: string, values: Partial<Omit<Transaction, 'id'>>) => {
-      const docRef: any = doc(getCollectionRef('transactions'), id);
+      const collRef = getCollectionRef('transactions');
+      if (!collRef) return;
+      const docRef = doc(collRef, id);
       await setDoc(docRef, values, { merge: true });
   }
 
   const deleteTransaction = async (id: string) => {
-    const docRef: any = doc(getCollectionRef('transactions'), id);
+    const collRef = getCollectionRef('transactions');
+    if (!collRef) return;
+    const docRef = doc(collRef, id);
     await deleteDoc(docRef);
   };
   
   const addCategory = async (category: Omit<Category, 'id'>) => {
-    const collRef: any = getCollectionRef('categories');
+    const collRef = getCollectionRef('categories');
+    if (!collRef) return;
     const newDocRef = doc(collRef);
     await setDoc(newDocRef, { ...category, id: newDocRef.id, subCategories: [] });
   };
   
   const updateCategory = async (id: string, newName: string) => {
-    const docRef: any = doc(getCollectionRef('categories'), id);
+    const collRef = getCollectionRef('categories');
+    if (!collRef) return;
+    const docRef = doc(collRef, id);
     await setDoc(docRef, { name: newName }, { merge: true });
   }
 
   const deleteCategory = async (id: string) => {
-    const docRef: any = doc(getCollectionRef('categories'), id);
+    const collRef = getCollectionRef('categories');
+    if (!collRef) return;
+    const docRef = doc(collRef, id);
     await deleteDoc(docRef);
   }
 
   const addSubCategory = async (parentId: string, subCategory: Omit<SubCategory, 'id'>, parentPath: string[] = []) => {
-     const docRef: any = doc(getCollectionRef('categories'), parentId);
+     const collRef = getCollectionRef('categories');
+     if (!collRef) return;
+     const docRef = doc(collRef, parentId);
      const newId = `sub_${Date.now()}`;
      const newSubCategory = { ...subCategory, id: newId, subCategories: [] };
 
@@ -191,7 +165,9 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
   
   const updateSubCategory = async (categoryId: string, subCategoryId: string, newName: string, parentPath: string[] = []) => {
-      const docRef: any = doc(getCollectionRef('categories'), categoryId);
+      const collRef = getCollectionRef('categories');
+      if (!collRef) return;
+      const docRef = doc(collRef, categoryId);
       const parentDoc = await getDoc(docRef);
        if(parentDoc.exists()){
          let subCategories = parentDoc.data().subCategories || [];
@@ -216,7 +192,9 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }
 
   const deleteSubCategory = async (categoryId: string, subCategoryId: string, parentPath: string[] = []) => {
-      const docRef: any = doc(getCollectionRef('categories'), categoryId);
+      const collRef = getCollectionRef('categories');
+      if (!collRef) return;
+      const docRef = doc(collRef, categoryId);
       const parentDoc = await getDoc(docRef);
       if (parentDoc.exists()) {
           let subCategories = parentDoc.data().subCategories || [];
@@ -241,23 +219,30 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }
 
   const addBudget = async (budget: Omit<Budget, 'id'>) => {
-    const collRef: any = getCollectionRef('budgets');
+    const collRef = getCollectionRef('budgets');
+    if (!collRef) return;
     const newDocRef = doc(collRef);
     await setDoc(newDocRef, { ...budget, id: newDocRef.id });
   };
 
   const updateBudget = async (id: string, values: Partial<Omit<Budget, 'id'>>) => {
-    const docRef: any = doc(getCollectionRef('budgets'), id);
+    const collRef = getCollectionRef('budgets');
+    if (!collRef) return;
+    const docRef = doc(collRef, id);
     await setDoc(docRef, values, { merge: true });
   };
 
   const deleteBudget = async (id: string) => {
-    const docRef: any = doc(getCollectionRef('budgets'), id);
+    const collRef = getCollectionRef('budgets');
+    if (!collRef) return;
+    const docRef = doc(collRef, id);
     await deleteDoc(docRef);
   };
 
   const toggleFavoriteBudget = async (id: string) => {
-    const docRef: any = doc(getCollectionRef('budgets'), id);
+    const collRef = getCollectionRef('budgets');
+    if (!collRef) return;
+    const docRef = doc(collRef, id);
     const docSnap = await getDoc(docRef);
     if(docSnap.exists()) {
         await setDoc(docRef, { isFavorite: !docSnap.data().isFavorite }, { merge: true });
@@ -265,31 +250,38 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
   
   const addRecurringTransaction = async (transaction: Omit<RecurringTransaction, 'id'>) => {
-    const collRef: any = getCollectionRef('recurringTransactions');
+    const collRef = getCollectionRef('recurringTransactions');
+    if (!collRef) return;
     const newDocRef = doc(collRef);
     await setDoc(newDocRef, { ...transaction, id: newDocRef.id });
   };
 
   const updateRecurringTransaction = async (id: string, values: Partial<Omit<RecurringTransaction, 'id'>>) => {
-    const docRef: any = doc(getCollectionRef('recurringTransactions'), id);
+    const collRef = getCollectionRef('recurringTransactions');
+    if (!collRef) return;
+    const docRef = doc(collRef, id);
     await setDoc(docRef, values, { merge: true });
   };
 
   const deleteRecurringTransaction = async (id: string) => {
-    const docRef: any = doc(getCollectionRef('recurringTransactions'), id);
+    const collRef = getCollectionRef('recurringTransactions');
+    if (!collRef) return;
+    const docRef = doc(collRef, id);
     await deleteDoc(docRef);
   };
   
   const processRecurringTransactions = useCallback(async () => {
     if(!user) return;
     const today = startOfDay(new Date());
-    const settingsDocRef: any = doc(db, 'users', user.uid, 'settings', 'recurring');
+    const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'recurring');
     const settingsDoc = await getDoc(settingsDocRef);
     const lastCheckDate = settingsDoc.exists() && settingsDoc.data().lastCheck ? parseISO(settingsDoc.data().lastCheck) : new Date(0);
 
     const batch = writeBatch(db);
-    const transactionsCollRef: any = getCollectionRef('transactions');
-    const recurringCollRef: any = getCollectionRef('recurringTransactions');
+    const transactionsCollRef = getCollectionRef('transactions');
+    if (!transactionsCollRef) return;
+    const recurringCollRef = getCollectionRef('recurringTransactions');
+    if (!recurringCollRef) return;
 
     for (const rt of recurringTransactions) {
         let nextDate = rt.lastAddedDate ? addDays(parseISO(rt.lastAddedDate), 1) : parseISO(rt.startDate);
@@ -319,9 +311,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
     }
     
-    if (batch.length > 0) {
-        await batch.commit();
-    }
+    await batch.commit();
     await setDoc(settingsDocRef, { lastCheck: today.toISOString() }, { merge: true });
 
   }, [user, recurringTransactions, getCollectionRef]);
@@ -333,7 +323,8 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [user, loading, recurringTransactions, processRecurringTransactions]);
 
  const clearCollection = async (collectionName: string) => {
-    const collRef: any = getCollectionRef(collectionName);
+    const collRef = getCollectionRef(collectionName);
+    if (!collRef) return;
     const snapshot = await getDocs(collRef);
     const batch = writeBatch(db);
     snapshot.docs.forEach(doc => batch.delete(doc.ref));

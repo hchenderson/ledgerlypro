@@ -13,8 +13,10 @@ import { Check, User, Wallet, CreditCard, ArrowRight, ArrowLeft, Loader2, Sparkl
 import { updateProfile } from 'firebase/auth';
 import { cn } from '@/lib/utils';
 import { Progress } from '@/components/ui/progress';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, writeBatch, collection } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { defaultTransactions, defaultCategories, defaultBudgets, defaultRecurringTransactions } from '@/lib/data';
+import type { Transaction, Category, Budget, RecurringTransaction } from '@/types';
 
 
 export default function WelcomePage() {
@@ -35,6 +37,29 @@ export default function WelcomePage() {
 
     const handleNext = () => setStep(prev => prev + 1);
     const handleBack = () => setStep(prev => prev - 1);
+    
+    const seedDefaultData = async () => {
+        if (!user) return;
+        const batch = writeBatch(db);
+        
+        const collections: { [key: string]: (Omit<Transaction, 'id'> | Omit<Category, 'id'> | Omit<Budget, 'id'> | Omit<RecurringTransaction, 'id'>)[] } = {
+            transactions: defaultTransactions,
+            categories: defaultCategories,
+            budgets: defaultBudgets,
+            recurringTransactions: defaultRecurringTransactions
+        };
+    
+        for (const [name, data] of Object.entries(collections)) {
+            const collRef = collection(db, 'users', user.uid, name);
+            data.forEach((item) => {
+                const docRef = doc(collRef);
+                const { ...serializableItem } = item;
+                batch.set(docRef, { ...serializableItem, id: docRef.id });
+            });
+        }
+    
+        await batch.commit();
+    };
 
     const handleFinish = async () => {
         if (!user) {
@@ -59,7 +84,10 @@ export default function WelcomePage() {
             const balance = parseFloat(startingBalance);
              await setDoc(settingsRef, { 
                 startingBalance: isNaN(balance) ? 0 : balance,
+                dataSeeded: true
             }, { merge: true });
+            
+            await seedDefaultData();
             
             await setOnboardingComplete(true);
 
