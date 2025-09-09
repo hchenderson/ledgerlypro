@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { InstructionsGuide } from "@/components/dashboard/instructions-guide";
 
 
 function DashboardSkeleton() {
@@ -37,33 +38,10 @@ function DashboardSkeleton() {
   )
 }
 
-function GettingStartedGuide({ onDismiss }: { onDismiss: () => void }) {
-    return (
-        <Alert className="mb-6 bg-primary/5 border-primary/20 relative pr-10">
-            <Button variant="ghost" size="icon" className="absolute top-2 right-2 h-6 w-6" onClick={onDismiss}>
-                <X className="h-4 w-4" />
-                <span className="sr-only">Dismiss</span>
-            </Button>
-            <CheckCircle className="h-4 w-4 text-primary" />
-            <AlertTitle className="font-headline text-lg text-primary">Welcome to Ledgerly!</AlertTitle>
-            <AlertDescription className="text-muted-foreground mt-2">
-                <p className="mb-4">You're all set up! We've loaded some sample data so you can explore. Here's what to do next:</p>
-                <ol className="list-decimal list-inside space-y-2 mb-4">
-                    <li><strong>Explore the Dashboard:</strong> Check out your balances and charts below.</li>
-                    <li><strong>View Transactions:</strong> Head to the "Transactions" page to see the sample data.</li>
-                    <li><strong>Add a New Transaction:</strong> Click the "New Transaction" button in the header.</li>
-                </ol>
-                <p>You can clear this sample data and start with your own from the **Settings** page.</p>
-            </AlertDescription>
-        </Alert>
-    )
-}
-
 export default function DashboardPage() {
   const { transactions, loading, getBudgetDetails } = useUserData();
   const { user } = useAuth();
   const [startingBalance, setStartingBalance] = useState(0);
-  const [guideDismissed, setGuideDismissed] = useState(true);
 
   useEffect(() => {
     if (user) {
@@ -71,13 +49,6 @@ export default function DashboardPage() {
         getDoc(settingsDocRef).then(docSnap => {
             if (docSnap.exists()) {
                 setStartingBalance(docSnap.data().startingBalance || 0);
-                 if (docSnap.data().guideDismissed) {
-                    setGuideDismissed(true);
-                } else {
-                    setGuideDismissed(false);
-                }
-            } else {
-                 setGuideDismissed(false);
             }
         });
     }
@@ -143,12 +114,6 @@ export default function DashboardPage() {
     return { totalIncome, totalExpenses, currentBalance, overviewData, currentMonthIncome, currentMonthExpenses };
   }, [transactions, startingBalance]);
 
-  const handleDismissGuide = async () => {
-    if(!user) return;
-    setGuideDismissed(true);
-    const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'main');
-    await setDoc(settingsDocRef, { guideDismissed: true }, { merge: true });
-  }
 
   if (loading) {
     return <DashboardSkeleton />;
@@ -159,7 +124,7 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      {!guideDismissed && transactions.length > 0 && <GettingStartedGuide onDismiss={handleDismissGuide} />}
+      {transactions.length === 0 && <InstructionsGuide />}
       
       <div className="grid gap-4 md:grid-cols-1">
          <StatCard
@@ -249,5 +214,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
-    
