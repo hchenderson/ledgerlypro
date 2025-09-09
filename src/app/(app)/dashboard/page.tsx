@@ -40,7 +40,7 @@ function DashboardSkeleton() {
 
 export default function DashboardPage() {
   const { transactions, loading, getBudgetDetails } = useUserData();
-  const { user } = useAuth();
+  const { user, showInstructions } = useAuth();
   const [startingBalance, setStartingBalance] = useState(0);
 
   useEffect(() => {
@@ -124,7 +124,7 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      {transactions.length === 0 && <InstructionsGuide />}
+      {(transactions.length === 0 || showInstructions) && <InstructionsGuide />}
       
       <div className="grid gap-4 md:grid-cols-1">
          <StatCard

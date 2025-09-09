@@ -16,6 +16,8 @@ interface AuthContextType {
   setPlan: (plan: Plan) => void;
   onboardingComplete: boolean;
   setOnboardingComplete: (complete: boolean) => void;
+  showInstructions: boolean;
+  setShowInstructions: (show: boolean) => void;
 }
 
 const AuthContext = createContext<AuthContextType>({ 
@@ -24,7 +26,9 @@ const AuthContext = createContext<AuthContextType>({
   plan: 'free',
   setPlan: () => {},
   onboardingComplete: false,
-  setOnboardingComplete: () => {}
+  setOnboardingComplete: () => {},
+  showInstructions: false,
+  setShowInstructions: () => {}
 });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -32,6 +36,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const [plan, setPlanState] = useState<Plan>('free');
   const [onboardingComplete, setOnboardingCompleteState] = useState(false);
+  const [showInstructions, setShowInstructionsState] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(authState, async (user) => {
@@ -43,15 +48,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const data = userDoc.data();
           setPlanState(data.plan || 'free');
           setOnboardingCompleteState(data.onboardingComplete || false);
+          setShowInstructionsState(data.showInstructions || false);
         } else {
           // New user, set defaults
           setPlanState('free');
           setOnboardingCompleteState(false);
+          setShowInstructionsState(false);
         }
       } else {
         // No user
         setPlanState('free');
         setOnboardingCompleteState(false);
+        setShowInstructionsState(false);
       }
       setLoading(false);
     });
@@ -75,8 +83,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
   }, [user]);
 
+  const setShowInstructions = useCallback(async (show: boolean) => {
+    setShowInstructionsState(show);
+    if (user) {
+        const userDocRef = doc(db, 'users', user.uid, 'settings', 'main');
+        await setDoc(userDocRef, { showInstructions: show }, { merge: true });
+    }
+  }, [user]);
+
   return (
-    <AuthContext.Provider value={{ user, loading, plan, setPlan, onboardingComplete, setOnboardingComplete }}>
+    <AuthContext.Provider value={{ user, loading, plan, setPlan, onboardingComplete, setOnboardingComplete, showInstructions, setShowInstructions }}>
       {children}
     </AuthContext.Provider>
   );

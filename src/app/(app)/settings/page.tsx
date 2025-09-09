@@ -15,10 +15,11 @@ import { useUserData } from '@/hooks/use-user-data';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { Switch } from '@/components/ui/switch';
 
 export default function SettingsPage() {
     const { toast } = useToast();
-    const { user, plan } = useAuth();
+    const { user, plan, showInstructions, setShowInstructions } = useAuth();
     const { clearTransactions, clearAllData } = useUserData();
     const [name, setName] = useState('');
     const [startingBalance, setStartingBalance] = useState('');
@@ -138,6 +139,19 @@ export default function SettingsPage() {
                         <p className="text-sm text-muted-foreground">
                             Set your initial account balance. This will be used as the baseline for your dashboard calculations.
                         </p>
+                    </div>
+                     <div className="flex flex-row items-center justify-between rounded-lg border p-4">
+                        <div className="space-y-0.5">
+                            <Label htmlFor="show-instructions" className="text-base">Show Instructions</Label>
+                            <p className="text-sm text-muted-foreground">
+                                Display the "Getting Started" guide on your dashboard.
+                            </p>
+                        </div>
+                        <Switch
+                            id="show-instructions"
+                            checked={showInstructions}
+                            onCheckedChange={setShowInstructions}
+                        />
                     </div>
                 </CardContent>
                 </Card>
