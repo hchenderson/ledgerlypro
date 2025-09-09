@@ -397,10 +397,13 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const spent = transactions
         .filter(t => {
             const transactionDate = new Date(t.date);
+            const isInPeriod = budget.period === 'monthly'
+                ? transactionDate.getMonth() === forDate.getMonth() && transactionDate.getFullYear() === forDate.getFullYear()
+                : transactionDate >= new Date(budget.startDate) && (!budget.endDate || transactionDate <= new Date(budget.endDate));
+
             return t.type === 'expense' &&
                    allCategoryNamesForBudget.includes(t.category) &&
-                   transactionDate.getMonth() === forDate.getMonth() &&
-                   transactionDate.getFullYear() === forDate.getFullYear();
+                   isInPeriod;
         })
         .reduce((sum, t) => sum + t.amount, 0);
 

@@ -35,9 +35,12 @@ export type Category = {
 
 export type Budget = {
   id: string;
+  name: string;
   categoryId: string;
   amount: number;
-  period: "monthly"; // Can be expanded later
+  period: "monthly" | "fixed";
+  startDate: string;
+  endDate?: string;
   isFavorite?: boolean;
 };
 

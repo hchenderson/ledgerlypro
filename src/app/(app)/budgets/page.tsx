@@ -1,12 +1,12 @@
 
 "use client";
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useUserData } from '@/hooks/use-user-data';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { PlusCircle, Target, Trash2, Edit, Star, ChevronLeft, ChevronRight } from 'lucide-react';
+import { PlusCircle, Target, Trash2, Edit, Star, ChevronLeft, ChevronRight, CalendarIcon } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -17,7 +17,7 @@ import {
   DialogTrigger,
   DialogClose
 } from '@/components/ui/dialog';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import {
@@ -35,11 +35,26 @@ import type { Budget, Category, SubCategory } from '@/types';
 import { FeatureGate } from '@/components/feature-gate';
 import { cn } from '@/lib/utils';
 import { addMonths, subMonths, format } from 'date-fns';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 
 
 const budgetFormSchema = z.object({
+  name: z.string().min(2, 'Budget name must be at least 2 characters.'),
   categoryId: z.string().min(1, 'Please select a category.'),
   amount: z.coerce.number().positive('Amount must be a positive number.'),
+  period: z.enum(['monthly', 'fixed']),
+  startDate: z.date(),
+  endDate: z.date().optional(),
+}).refine(data => {
+    if (data.period === 'fixed' && data.endDate) {
+        return data.endDate > data.startDate;
+    }
+    return true;
+}, {
+    message: "End date must be after the start date.",
+    path: ["endDate"],
 });
 
 type BudgetFormValues = z.infer<typeof budgetFormSchema>;
@@ -51,36 +66,61 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
 
   const form = useForm<BudgetFormValues>({
     resolver: zodResolver(budgetFormSchema),
-    defaultValues: {
-      categoryId: budget?.categoryId || '',
-      amount: budget?.amount || 0,
+    defaultValues: budget ? {
+        ...budget,
+        startDate: new Date(budget.startDate),
+        endDate: budget.endDate ? new Date(budget.endDate) : undefined,
+    } : {
+      name: '',
+      categoryId: '',
+      amount: 0,
+      period: 'monthly',
+      startDate: new Date(),
     }
   });
+  
+  useEffect(() => {
+    if (isOpen) {
+        form.reset(budget ? {
+            ...budget,
+            startDate: new Date(budget.startDate),
+            endDate: budget.endDate ? new Date(budget.endDate) : undefined,
+        } : {
+          name: '',
+          categoryId: '',
+          amount: 0,
+          period: 'monthly',
+          startDate: new Date(),
+          endDate: undefined,
+        });
+    }
+  }, [isOpen, budget, form]);
 
   const onSubmit = (data: BudgetFormValues) => {
     onSave(data, budget?.id);
     toast({
       title: budget ? 'Budget Updated' : 'Budget Created',
-      description: `Your budget has been successfully saved.`,
+      description: `Your budget for "${data.name}" has been successfully saved.`,
     });
     setIsOpen(false);
-    form.reset();
   };
   
-    const expenseCategories = useMemo(() => {
-        const budgetedCategoryIds = new Set(budgets.map(b => b.categoryId));
-        const flatten = (cats: (Category | SubCategory)[]): { id: string; name: string, disabled: boolean }[] => {
-            return cats.reduce<{ id: string; name: string, disabled: boolean }[]>((acc, cat) => {
-                const isDisabled = budgetedCategoryIds.has(cat.id);
-                acc.push({ id: cat.id, name: cat.name, disabled: isDisabled });
-                if (cat.subCategories) {
-                    acc.push(...flatten(cat.subCategories));
-                }
-                return acc;
-            }, []);
-        };
-        return flatten(categories.filter(c => c.type === 'expense'));
-    }, [categories, budgets]);
+  const expenseCategories = useMemo(() => {
+      const budgetedCategoryIds = new Set(budgets.filter(b => b.id !== budget?.id).map(b => b.categoryId));
+      const flatten = (cats: (Category | SubCategory)[]): { id: string; name: string, disabled: boolean }[] => {
+          return cats.reduce<{ id: string; name: string, disabled: boolean }[]>((acc, cat) => {
+              const isDisabled = budgetedCategoryIds.has(cat.id);
+              acc.push({ id: cat.id, name: cat.name, disabled: isDisabled });
+              if (cat.subCategories) {
+                  acc.push(...flatten(cat.subCategories));
+              }
+              return acc;
+          }, []);
+      };
+      return flatten(categories.filter(c => c.type === 'expense'));
+  }, [categories, budgets, budget]);
+  
+  const period = useWatch({ control: form.control, name: 'period' });
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -89,11 +129,12 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
         <DialogHeader>
           <DialogTitle>{budget ? 'Edit' : 'Create'} Budget</DialogTitle>
           <DialogDescription>
-            Set a monthly spending limit for a category or sub-category.
+            Set a monthly spending limit or a fixed long-term budget for a category.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+             <FormField control={form.control} name="name" render={({ field }) => (<FormItem><FormLabel>Budget Name</FormLabel><FormControl><Input placeholder="e.g., Vacation Fund" {...field} /></FormControl><FormMessage /></FormItem>)} />
             <FormField
               control={form.control}
               name="categoryId"
@@ -116,19 +157,24 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
                 </FormItem>
               )}
             />
-            <FormField
-              control={form.control}
-              name="amount"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Monthly Budget Amount</FormLabel>
-                  <FormControl>
-                    <Input type="number" placeholder="e.g., 500" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <FormField control={form.control} name="amount" render={({ field }) => (<FormItem><FormLabel>Budget Amount</FormLabel><FormControl><Input type="number" placeholder="e.g., 500" {...field} /></FormControl><FormMessage /></FormItem>)} />
+            <FormField control={form.control} name="period" render={({ field }) => (
+                <FormItem className="space-y-3"><FormLabel>Period</FormLabel>
+                <FormControl><RadioGroup onValueChange={field.onChange} defaultValue={field.value} className="flex space-x-4">
+                    <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="monthly" /></FormControl><FormLabel className="font-normal">Monthly</FormLabel></FormItem>
+                    <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="fixed" /></FormControl><FormLabel className="font-normal">Fixed</FormLabel></FormItem>
+                </RadioGroup></FormControl><FormMessage /></FormItem>
+            )}/>
+            
+            {period === 'fixed' ? (
+                <div className="grid grid-cols-2 gap-4">
+                    <FormField control={form.control} name="startDate" render={({ field }) => (<FormItem className="flex flex-col"><FormLabel>Start Date</FormLabel><Popover><PopoverTrigger asChild><FormControl><Button variant={"outline"} className={cn("pl-3 text-left font-normal",!field.value && "text-muted-foreground")}>{field.value ? (format(field.value, "PPP")) : (<span>Pick a date</span>)}<CalendarIcon className="ml-auto h-4 w-4 opacity-50" /></Button></FormControl></PopoverTrigger><PopoverContent className="w-auto p-0" align="start"><Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus /></PopoverContent></Popover><FormMessage /></FormItem>)} />
+                    <FormField control={form.control} name="endDate" render={({ field }) => (<FormItem className="flex flex-col"><FormLabel>End Date (Optional)</FormLabel><Popover><PopoverTrigger asChild><FormControl><Button variant={"outline"} className={cn("pl-3 text-left font-normal",!field.value && "text-muted-foreground")}>{field.value ? (format(field.value, "PPP")) : (<span>Pick a date</span>)}<CalendarIcon className="ml-auto h-4 w-4 opacity-50" /></Button></FormControl></PopoverTrigger><PopoverContent className="w-auto p-0" align="start"><Calendar mode="single" selected={field.value} onSelect={field.onChange} /></PopoverContent></Popover><FormMessage /></FormItem>)} />
+                </div>
+            ) : (
+                <p className="text-sm text-muted-foreground">This budget will apply to the current month going forward.</p>
+            )}
+
             <DialogFooter>
               <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
               <Button type="submit">Save Budget</Button>
@@ -142,16 +188,20 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
 
 
 function BudgetsPageContent() {
-  const { budgets, addBudget, updateBudget, deleteBudget, toggleFavoriteBudget, loading, getBudgetDetails } = useUserData();
+  const { addBudget, updateBudget, deleteBudget, toggleFavoriteBudget, loading, getBudgetDetails } = useUserData();
   const [selectedDate, setSelectedDate] = useState(new Date());
 
   const handleSaveBudget = (values: BudgetFormValues, id?: string) => {
+    const budgetData = {
+        ...values,
+        startDate: values.startDate.toISOString(),
+        endDate: values.endDate ? values.endDate.toISOString() : undefined
+    }
     if (id) {
-        updateBudget(id, { ...values, period: 'monthly' });
+        updateBudget(id, budgetData);
     } else {
         addBudget({
-            ...values,
-            period: 'monthly',
+            ...budgetData,
             isFavorite: false,
         });
     }
@@ -177,10 +227,10 @@ function BudgetsPageContent() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold tracking-tight font-headline flex items-center gap-2">
-            <Target/> Monthly Budgets
+            <Target/> Budgets
           </h2>
           <p className="text-muted-foreground">
-            Track your spending against monthly goals. Use the star to feature a budget on your dashboard.
+            Track your spending against monthly or long-term goals.
           </p>
         </div>
         <BudgetDialog onSave={handleSaveBudget}>
@@ -193,7 +243,7 @@ function BudgetsPageContent() {
 
        <Card>
             <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>Viewing Budgets For</CardTitle>
+                <CardTitle>Viewing Monthly Budgets For</CardTitle>
                 <div className="flex items-center gap-2">
                     <Button variant="outline" size="icon" onClick={handlePrevMonth}>
                         <ChevronLeft className="h-4 w-4" />
@@ -229,9 +279,12 @@ function BudgetsPageContent() {
               <CardHeader>
                 <div className="flex justify-between items-start">
                     <div>
-                        <CardTitle>{budget.categoryName}</CardTitle>
+                        <CardTitle>{budget.name}</CardTitle>
                         <CardDescription>
-                            {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(budget.amount)} / month
+                             {budget.period === 'monthly'
+                                ? `${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(budget.amount)} / month`
+                                : `${format(new Date(budget.startDate), 'MMM yyyy')} - ${budget.endDate ? format(new Date(budget.endDate), 'MMM yyyy') : 'Present'}`
+                            }
                         </CardDescription>
                     </div>
                     <div className="flex gap-1">
@@ -249,6 +302,10 @@ function BudgetsPageContent() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
+                  <div className="mb-2">
+                    <span className="font-bold text-lg">{new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(budget.amount)}</span>
+                    <span className="text-sm text-muted-foreground"> Goal</span>
+                  </div>
                   <Progress value={budget.progress} className={budget.progress > 100 ? '[&>div]:bg-destructive' : ''} />
                   <div className="flex justify-between text-sm">
                     <span className="font-medium">
