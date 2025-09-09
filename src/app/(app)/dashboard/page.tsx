@@ -1,7 +1,7 @@
 
 "use client";
 
-import { DollarSign, TrendingUp, TrendingDown, Wallet, X, CheckCircle, Target, CalendarClock, Star } from "lucide-react";
+import { DollarSign, TrendingUp, TrendingDown, Wallet, Target, CalendarClock, Star } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { OverviewChart } from "@/components/dashboard/overview-chart";
@@ -10,12 +10,12 @@ import { BudgetProgress } from "@/components/dashboard/budget-progress";
 import { useEffect, useMemo, useState } from "react";
 import { useUserData } from "@/hooks/use-user-data";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { InstructionsGuide } from "@/components/dashboard/instructions-guide";
+import { getDashboardAnalytics } from "@/lib/actions";
+import type { DashboardAnalytics } from "@/lib/actions";
 
 
 function DashboardSkeleton() {
@@ -42,6 +42,8 @@ export default function DashboardPage() {
   const { transactions, loading, getBudgetDetails } = useUserData();
   const { user, showInstructions } = useAuth();
   const [startingBalance, setStartingBalance] = useState(0);
+  const [analytics, setAnalytics] = useState<DashboardAnalytics | null>(null);
+  const [isAnalyticsLoading, setIsAnalyticsLoading] = useState(true);
 
   useEffect(() => {
     if (user) {
@@ -54,72 +56,24 @@ export default function DashboardPage() {
     }
   }, [user]);
 
+  useEffect(() => {
+    if (!loading) {
+      setIsAnalyticsLoading(true);
+      getDashboardAnalytics({ transactions, startingBalance })
+        .then(setAnalytics)
+        .finally(() => setIsAnalyticsLoading(false));
+    }
+  }, [transactions, startingBalance, loading]);
+
+
   const favoritedBudgets = useMemo(() => {
     return getBudgetDetails().filter(b => b.isFavorite);
   }, [getBudgetDetails]);
-
-  const { 
-      totalIncome, 
-      totalExpenses, 
-      currentBalance, 
-      overviewData,
-      currentMonthIncome,
-      currentMonthExpenses
-    } = useMemo(() => {
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
-
-    const totalIncome = transactions
-      .filter(t => t.type === 'income')
-      .reduce((sum, t) => sum + t.amount, 0);
-
-    const totalExpenses = transactions
-      .filter(t => t.type === 'expense')
-      .reduce((sum, t) => sum + t.amount, 0);
-      
-    const currentMonthIncome = transactions
-      .filter(t => {
-          const transactionDate = new Date(t.date);
-          return t.type === 'income' && transactionDate.getMonth() === currentMonth && transactionDate.getFullYear() === currentYear
-      })
-      .reduce((sum, t) => sum + t.amount, 0);
-      
-    const currentMonthExpenses = transactions
-      .filter(t => {
-          const transactionDate = new Date(t.date);
-          return t.type === 'expense' && transactionDate.getMonth() === currentMonth && transactionDate.getFullYear() === currentYear
-      })
-      .reduce((sum, t) => sum + t.amount, 0);
-
-    const currentBalance = startingBalance + totalIncome - totalExpenses;
-    
-    // Generate data for overview chart
-    const monthlyData: Record<string, { income: number, expense: number }> = {};
-    
-    transactions.forEach(t => {
-      const month = new Date(t.date).toLocaleString('default', { month: 'short' });
-      if (!monthlyData[month]) {
-        monthlyData[month] = { income: 0, expense: 0 };
-      }
-      monthlyData[month][t.type] += t.amount;
-    });
-
-    const overviewData = Object.entries(monthlyData).map(([name, values]) => ({
-      name,
-      ...values
-    })).reverse();
-
-
-    return { totalIncome, totalExpenses, currentBalance, overviewData, currentMonthIncome, currentMonthExpenses };
-  }, [transactions, startingBalance]);
-
-
-  if (loading) {
+  
+  if (loading || isAnalyticsLoading || !analytics) {
     return <DashboardSkeleton />;
   }
-
-  const savingsRate = totalIncome > 0 ? ((totalIncome - totalExpenses) / totalIncome) * 100 : 0;
+  
   const currentMonthName = new Date().toLocaleString('default', { month: 'long' });
 
   return (
@@ -129,7 +83,7 @@ export default function DashboardPage() {
       <div className="grid gap-4 md:grid-cols-1">
          <StatCard
           title="Current Balance"
-          value={currentBalance}
+          value={analytics.currentBalance}
           icon="Wallet"
           trendValue="Your real-time balance"
         />
@@ -138,14 +92,14 @@ export default function DashboardPage() {
        <div className="grid gap-4 md:grid-cols-2">
         <StatCard
           title="Total Income"
-          value={totalIncome}
+          value={analytics.totalIncome}
           icon="TrendingUp"
           trendValue="All-time income"
           variant="success"
         />
         <StatCard
           title="Total Expenses"
-          value={totalExpenses}
+          value={analytics.totalExpenses}
           icon="TrendingDown"
           trendValue="All-time expenses"
           variant="danger"
@@ -155,21 +109,21 @@ export default function DashboardPage() {
        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <StatCard
           title={`${currentMonthName} Income`}
-          value={currentMonthIncome}
+          value={analytics.currentMonthIncome}
           icon="CalendarClock"
           trendValue="Income this month"
           variant="success"
         />
         <StatCard
           title={`${currentMonthName} Expenses`}
-          value={currentMonthExpenses}
+          value={analytics.currentMonthExpenses}
           icon="CalendarClock"
           trendValue="Expenses this month"
           variant="danger"
         />
         <StatCard
           title="Savings Rate"
-          value={savingsRate}
+          value={analytics.savingsRate}
           icon="DollarSign"
           trendValue="Based on all-time data"
           isPercentage
@@ -182,7 +136,7 @@ export default function DashboardPage() {
             <CardTitle>Income vs. Expense</CardTitle>
           </CardHeader>
           <CardContent>
-            <OverviewChart data={overviewData}/>
+            <OverviewChart data={analytics.overviewData}/>
           </CardContent>
         </Card>
         <Card className="lg:col-span-2">
