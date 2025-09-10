@@ -164,7 +164,7 @@ export default function SettingsPage() {
                     <div>
                         <div className="font-medium">You are on the <Badge variant={plan === 'pro' ? 'default' : 'secondary'} className="font-bold capitalize">{plan}</Badge> plan.</div>
                         <p className="text-sm text-muted-foreground">
-                            {plan === 'pro' ? 'You have access to all features.' : 'Limited to 100 transactions.'}
+                            {plan === 'pro' ? 'You have access to all features.' : 'Limited to 50 transactions per month.'}
                         </p>
                     </div>
                      <Button asChild>
