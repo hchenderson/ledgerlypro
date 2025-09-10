@@ -1,17 +1,15 @@
 
 "use client";
 
-import { useRef, useMemo, useState } from 'react';
+import { useRef, useMemo, useState, lazy, Suspense } from 'react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { DateRange } from 'react-day-picker';
 import { addDays, format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { OverviewChart } from "@/components/dashboard/overview-chart";
-import { CategoryPieChart } from "@/components/reports/category-pie-chart";
 import { Button } from "@/components/ui/button";
-import { Upload, Calendar as CalendarIcon } from "lucide-react";
+import { Upload, Calendar as CalendarIcon, Loader2 } from "lucide-react";
 import {
   ChartContainer,
   ChartTooltip,
@@ -28,6 +26,16 @@ import { FeatureGate } from '@/components/feature-gate';
 import { useAuth } from '@/hooks/use-auth';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
+const OverviewChart = lazy(() => import('@/components/dashboard/overview-chart').then(module => ({ default: module.OverviewChart })));
+const CategoryPieChart = lazy(() => import('@/components/reports/category-pie-chart').then(module => ({ default: module.CategoryPieChart })));
+
+function ChartSuspenseFallback() {
+    return (
+        <div className="flex items-center justify-center h-[300px] w-full">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+    )
+}
 
 function ReportsPageContent() {
     const reportRef = useRef<HTMLDivElement>(null);
@@ -251,7 +259,9 @@ function ReportsPageContent() {
                 <CardDescription>A breakdown of your income and expenses over the last few months.</CardDescription>
             </CardHeader>
             <CardContent>
-                <OverviewChart data={overviewData} />
+                <Suspense fallback={<ChartSuspenseFallback />}>
+                    <OverviewChart data={overviewData} />
+                </Suspense>
             </CardContent>
             </Card>
             <Card>
@@ -260,7 +270,9 @@ function ReportsPageContent() {
                 <CardDescription>How your spending is distributed across different categories this month.</CardDescription>
             </CardHeader>
             <CardContent>
-                <CategoryPieChart data={categoryData} />
+                 <Suspense fallback={<ChartSuspenseFallback />}>
+                    <CategoryPieChart data={categoryData} />
+                </Suspense>
             </CardContent>
             </Card>
         </div>
@@ -319,3 +331,5 @@ export default function ReportsPage() {
         </FeatureGate>
     )
 }
+
+    

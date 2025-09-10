@@ -1,4 +1,5 @@
 
+
 import type { LucideIcon } from "lucide-react";
 
 export type Transaction = {
@@ -59,3 +60,5 @@ export type Goal = {
   savedAmount: number;
   targetDate?: string;
 }
+
+    

@@ -2,19 +2,24 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { collection, doc, getDocs, onSnapshot, writeBatch, getDoc, setDoc, deleteDoc, query } from 'firebase/firestore';
+import { collection, doc, getDocs, onSnapshot, writeBatch, getDoc, setDoc, deleteDoc, query, orderBy, limit, startAfter, where, QueryConstraint, getCountFromServer, DocumentData, Query } from 'firebase/firestore';
 import type { Transaction, Category, SubCategory, Budget, RecurringTransaction, Goal } from '@/types';
 import { useAuth } from './use-auth';
 import { db } from '@/lib/firebase';
 import { addDays, addWeeks, addMonths, addYears, isBefore, startOfDay, parseISO, isToday } from 'date-fns';
+import { DateRange } from 'react-day-picker';
+
+const TRANSACTIONS_PAGE_SIZE = 25;
 
 interface UserDataContextType {
   transactions: Transaction[];
+  totalTransactions: number;
   categories: Category[];
   budgets: Budget[];
   recurringTransactions: RecurringTransaction[];
   goals: Goal[];
   loading: boolean;
+  hasMore: boolean;
   addTransaction: (transaction: Omit<Transaction, 'id'>) => Promise<void>;
   updateTransaction: (id: string, values: Partial<Omit<Transaction, 'id'>>) => Promise<void>;
   deleteTransaction: (id: string) => Promise<void>;
@@ -38,6 +43,7 @@ interface UserDataContextType {
   addContributionToGoal: (goalId: string, amount: number) => Promise<void>;
   clearTransactions: () => Promise<void>;
   clearAllData: () => Promise<void>;
+  fetchTransactions: (reset: boolean, filters?: any) => void;
 }
 
 const UserDataContext = createContext<UserDataContextType | undefined>(undefined);
@@ -45,11 +51,16 @@ const UserDataContext = createContext<UserDataContextType | undefined>(undefined
 export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [totalTransactions, setTotalTransactions] = useState(0);
   const [categories, setCategories] = useState<Category[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [recurringTransactions, setRecurringTransactions] = useState<RecurringTransaction[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Pagination state
+  const [lastVisible, setLastVisible] = useState<any>(null);
+  const [hasMore, setHasMore] = useState(true);
 
   const getCollectionRef = useCallback((collectionName: string) => {
     if (!user) return null;
@@ -156,7 +167,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     setLoading(true);
 
-    const collectionsToSync = ['transactions', 'categories', 'budgets', 'recurringTransactions', 'goals'];
+    const collectionsToSync = ['categories', 'budgets', 'recurringTransactions', 'goals'];
     const unsubscribers = collectionsToSync.map(name => {
       const collRef = getCollectionRef(name);
       if (!collRef) return () => {};
@@ -164,7 +175,6 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return onSnapshot(query(collRef), (snapshot) => {
         const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
         switch (name) {
-          case 'transactions': setTransactions(data as Transaction[]); break;
           case 'categories': setCategories(data as Category[]); break;
           case 'budgets': setBudgets(data as Budget[]); break;
           case 'recurringTransactions': setRecurringTransactions(data as RecurringTransaction[]); break;
@@ -175,12 +185,96 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       });
     });
     
-    setLoading(false);
+    // Initial fetch for transactions
+    fetchTransactions(true);
 
     return () => {
       unsubscribers.forEach(unsub => unsub());
     };
   }, [user, getCollectionRef]);
+  
+  const getSubCategoryNames = useCallback((category: Category | SubCategory): string[] => {
+      let names = [category.name];
+      if (category.subCategories) {
+          category.subCategories.forEach(sub => {
+              names = [...names, ...getSubCategoryNames(sub)];
+          });
+      }
+      return names;
+  }, []);
+
+  const getAllCategoryAndSubCategoryNames = useCallback((categoryName: string) => {
+    const parentCategory = categories.find(c => c.name === categoryName);
+    if (parentCategory) {
+      return getSubCategoryNames(parentCategory);
+    }
+    return [categoryName];
+  }, [categories, getSubCategoryNames]);
+
+  const fetchTransactions = useCallback(async (reset: boolean, filters: any = {}) => {
+      const collRef = getCollectionRef('transactions');
+      if (!collRef) return;
+  
+      setLoading(true);
+      if (reset) {
+          setLastVisible(null);
+          setTransactions([]);
+      }
+  
+      const queryConstraints: QueryConstraint[] = [orderBy("date", "desc")];
+  
+      if (filters.dateRange?.from) {
+        queryConstraints.push(where("date", ">=", filters.dateRange.from.toISOString()));
+      }
+      if (filters.dateRange?.to) {
+        queryConstraints.push(where("date", "<=", filters.dateRange.to.toISOString()));
+      }
+  
+      let baseQuery: Query<DocumentData> = query(collRef, ...queryConstraints.filter(c => c.type !== 'where' || c.getOperator() === '==' || (c.getOperator() !== '!=' && c.getOperator() !== 'not-in')));
+
+      const createFilteredQuery = (q: Query<DocumentData>): Query<DocumentData> => {
+        let finalQuery = q;
+        if(lastVisible && !reset) {
+          finalQuery = query(finalQuery, startAfter(lastVisible));
+        }
+        return query(finalQuery, limit(TRANSACTIONS_PAGE_SIZE));
+      };
+
+      let finalQuery = createFilteredQuery(baseQuery);
+  
+      const totalCountQuery = query(collRef, ...queryConstraints);
+      const totalCountSnapshot = await getCountFromServer(totalCountQuery);
+      setTotalTransactions(totalCountSnapshot.data().count);
+      
+      const documentSnapshots = await getDocs(finalQuery);
+  
+      let newTransactions = documentSnapshots.docs.map(doc => doc.data() as Transaction);
+
+      if (filters.description) {
+        newTransactions = newTransactions.filter(t => t.description.toLowerCase().includes(filters.description.toLowerCase()));
+      }
+      if (filters.category && filters.category !== 'all') {
+        const categoriesToFilter = getAllCategoryAndSubCategoryNames(filters.category);
+        newTransactions = newTransactions.filter(t => categoriesToFilter.includes(t.category));
+      }
+      if (filters.minAmount) {
+        newTransactions = newTransactions.filter(t => t.amount >= filters.minAmount);
+      }
+       if (filters.maxAmount) {
+        newTransactions = newTransactions.filter(t => t.amount <= filters.maxAmount);
+      }
+
+      setLastVisible(documentSnapshots.docs[documentSnapshots.docs.length-1]);
+  
+      if (documentSnapshots.docs.length < TRANSACTIONS_PAGE_SIZE) {
+          setHasMore(false);
+      } else {
+          setHasMore(true);
+      }
+
+      setTransactions(prev => reset ? newTransactions : [...prev, ...newTransactions]);
+      setLoading(false);
+  }, [getCollectionRef, lastVisible, getAllCategoryAndSubCategoryNames]);
 
 
   const addTransaction = async (transaction: Omit<Transaction, 'id'>) => {
@@ -188,6 +282,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!collRef) return;
     const newDocRef = doc(collRef);
     await setDoc(newDocRef, { ...transaction, id: newDocRef.id });
+    fetchTransactions(true); // Refetch
   };
   
   const updateTransaction = async (id: string, values: Partial<Omit<Transaction, 'id'>>) => {
@@ -195,6 +290,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (!collRef) return;
       const docRef = doc(collRef, id);
       await setDoc(docRef, values, { merge: true });
+      fetchTransactions(true); // Refetch
   }
 
   const deleteTransaction = async (id: string) => {
@@ -202,6 +298,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!collRef) return;
     const docRef = doc(collRef, id);
     await deleteDoc(docRef);
+    fetchTransactions(true); // Refetch
   };
   
   const addCategory = async (category: Omit<Category, 'id'>) => {
@@ -377,16 +474,6 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return undefined;
     }
 
-    const getAllSubCategoryNames = (category: Category | SubCategory): string[] => {
-        let names = [category.name];
-        if (category.subCategories) {
-            category.subCategories.forEach(sub => {
-                names = [...names, ...getAllSubCategoryNames(sub)];
-            });
-        }
-        return names;
-    }
-
     return budgets.map(budget => {
       const category = findCategoryById(budget.categoryId, categories);
       
@@ -395,7 +482,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       if (category) {
         categoryName = category.name;
-        allCategoryNamesForBudget = getAllSubCategoryNames(category);
+        allCategoryNamesForBudget = getSubCategoryNames(category);
       }
       
       const spent = transactions
@@ -419,7 +506,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         progress,
       };
     });
-  }, [budgets, transactions, categories]);
+  }, [budgets, transactions, categories, getSubCategoryNames]);
 
   const addGoal = async (goal: Omit<Goal, 'id'>) => {
     const collRef = getCollectionRef('goals');
@@ -482,11 +569,13 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const value = { 
         transactions, 
+        totalTransactions,
         categories, 
         budgets,
         recurringTransactions,
         goals,
         loading, 
+        hasMore,
         addTransaction, 
         updateTransaction,
         deleteTransaction,
@@ -510,6 +599,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         addContributionToGoal,
         clearTransactions,
         clearAllData,
+        fetchTransactions,
     };
 
   return (
@@ -526,3 +616,5 @@ export const useUserData = () => {
   }
   return context;
 };
+
+    

@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +24,19 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { DateRange } from "react-day-picker";
 import { cn } from "@/lib/utils";
 import { Calendar } from "@/components/ui/calendar";
+
+const useDebounce = <T>(value: T, delay: number): T => {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+  return debouncedValue;
+};
 
 
 function TransactionsSkeleton() {
@@ -48,7 +61,7 @@ function TransactionsSkeleton() {
 
 
 export default function TransactionsPage() {
-  const { transactions, loading, addTransaction, updateTransaction, deleteTransaction, categories } = useUserData();
+  const { transactions, loading, addTransaction, updateTransaction, deleteTransaction, categories, fetchTransactions, hasMore, totalTransactions } = useUserData();
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const { toast } = useToast();
@@ -60,52 +73,27 @@ export default function TransactionsPage() {
   const [minAmount, setMinAmount] = useState('');
   const [maxAmount, setMaxAmount] = useState('');
   
+  const debouncedDescription = useDebounce(descriptionFilter, 500);
+  const debouncedMinAmount = useDebounce(minAmount, 500);
+  const debouncedMaxAmount = useDebounce(maxAmount, 500);
+  
   const isPro = plan === 'pro';
+  
+  const filters = useMemo(() => ({
+    description: debouncedDescription,
+    category: categoryFilter,
+    dateRange,
+    minAmount: debouncedMinAmount ? parseFloat(debouncedMinAmount) : undefined,
+    maxAmount: debouncedMaxAmount ? parseFloat(debouncedMaxAmount) : undefined,
+  }), [debouncedDescription, categoryFilter, dateRange, debouncedMinAmount, debouncedMaxAmount]);
+  
+  useEffect(() => {
+      fetchTransactions(true, filters);
+  }, [filters, fetchTransactions]);
 
   const allCategories = useMemo(() => {
     return categories.filter(c => !c.subCategories || c.subCategories.length === 0).map(c => c.name);
   }, [categories]);
-
-  const getSubCategoryNames = (category: Category | SubCategory): string[] => {
-      let names = [category.name];
-      if (category.subCategories) {
-          category.subCategories.forEach(sub => {
-              names = [...names, ...getSubCategoryNames(sub)];
-          });
-      }
-      return names;
-  }
-  
-  const getAllCategoryAndSubCategoryNames = (categoryName: string) => {
-    const parentCategory = categories.find(c => c.name === categoryName);
-    if (parentCategory) {
-      return getSubCategoryNames(parentCategory);
-    }
-    return [categoryName];
-  }
-
-  const filteredTransactions = useMemo(() => {
-    let categoriesToFilter: string[] = [];
-    if (categoryFilter !== 'all') {
-      categoriesToFilter = getAllCategoryAndSubCategoryNames(categoryFilter);
-    }
-
-
-    return transactions.filter(t => {
-      const transactionDate = new Date(t.date);
-      const amount = t.amount;
-
-      const descriptionMatch = descriptionFilter ? t.description.toLowerCase().includes(descriptionFilter.toLowerCase()) : true;
-      const categoryMatch = categoryFilter === 'all' || categoriesToFilter.includes(t.category);
-      const dateMatch = dateRange?.from ? (
-          transactionDate >= dateRange.from && (dateRange.to ? transactionDate <= dateRange.to : true)
-      ) : true;
-      const minAmountMatch = minAmount ? amount >= parseFloat(minAmount) : true;
-      const maxAmountMatch = maxAmount ? amount <= parseFloat(maxAmount) : true;
-
-      return descriptionMatch && categoryMatch && dateMatch && minAmountMatch && maxAmountMatch;
-    }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [transactions, descriptionFilter, categoryFilter, dateRange, minAmount, maxAmount, categories]);
 
   const resetFilters = () => {
     setDescriptionFilter('');
@@ -148,7 +136,7 @@ export default function TransactionsPage() {
   
   const handleExport = () => {
     if (!isPro) return;
-    const csv = Papa.unparse(filteredTransactions);
+    const csv = Papa.unparse(transactions);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
@@ -164,7 +152,7 @@ export default function TransactionsPage() {
     });
   }
   
-  if (loading) return <TransactionsSkeleton />;
+  if (loading && transactions.length === 0) return <TransactionsSkeleton />;
 
   return (
     <div className="space-y-6">
@@ -251,7 +239,7 @@ export default function TransactionsPage() {
         <div>
             <CardTitle>Transactions</CardTitle>
             <CardDescription>
-                Showing {filteredTransactions.length} of {transactions.length} transactions.
+                Showing {transactions.length} of {totalTransactions} transactions.
             </CardDescription>
         </div>
          <Tooltip>
@@ -284,7 +272,7 @@ export default function TransactionsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredTransactions.map((transaction) => (
+            {transactions.map((transaction) => (
               <TableRow key={transaction.id}>
                 <TableCell className="font-medium">{transaction.description}</TableCell>
                 <TableCell>
@@ -334,7 +322,7 @@ export default function TransactionsPage() {
                 </TableCell>
               </TableRow>
             ))}
-             {filteredTransactions.length === 0 && (
+             {transactions.length === 0 && !loading && (
                 <TableRow>
                     <TableCell colSpan={5} className="h-24 text-center">
                         No transactions found matching your filters.
@@ -343,6 +331,13 @@ export default function TransactionsPage() {
             )}
           </TableBody>
         </Table>
+        {hasMore && (
+            <div className="flex justify-center mt-4">
+                <Button onClick={() => fetchTransactions(false, filters)} disabled={loading}>
+                    {loading ? 'Loading...' : 'Load More'}
+                </Button>
+            </div>
+        )}
       </CardContent>
     </Card>
      <NewTransactionSheet 
@@ -356,3 +351,5 @@ export default function TransactionsPage() {
     </div>
   );
 }
+
+    
