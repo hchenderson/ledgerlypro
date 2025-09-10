@@ -15,14 +15,14 @@ function ProjectionsPageContent() {
   const [loading, setLoading] = useState(false);
   const [projection, setProjection] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const { transactions } = useUserData();
+  const { allTransactions } = useUserData();
 
   const handleGenerateProjection = async () => {
     setLoading(true);
     setError(null);
     setProjection(null);
 
-    if (transactions.length === 0) {
+    if (allTransactions.length === 0) {
         setError("You need at least one transaction to generate a projection.");
         setLoading(false);
         return;
@@ -30,7 +30,7 @@ function ProjectionsPageContent() {
 
     try {
       const input: GetCashFlowProjectionsInput = {
-        historicalData: JSON.stringify(transactions),
+        historicalData: JSON.stringify(allTransactions),
       };
       const result = await getCashFlowProjections(input);
       setProjection(result.projection);

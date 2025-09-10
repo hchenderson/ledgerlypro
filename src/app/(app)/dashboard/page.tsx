@@ -40,7 +40,7 @@ function DashboardSkeleton() {
 }
 
 export default function DashboardPage() {
-  const { transactions, loading, getBudgetDetails, goals } = useUserData();
+  const { allTransactions, loading, getBudgetDetails, goals } = useUserData();
   const { user, showInstructions } = useAuth();
   const [startingBalance, setStartingBalance] = useState(0);
   const [analytics, setAnalytics] = useState<DashboardAnalytics | null>(null);
@@ -60,11 +60,11 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!loading) {
       setIsAnalyticsLoading(true);
-      getDashboardAnalytics({ transactions, startingBalance })
+      getDashboardAnalytics({ transactions: allTransactions, startingBalance })
         .then(setAnalytics)
         .finally(() => setIsAnalyticsLoading(false));
     }
-  }, [transactions, startingBalance, loading]);
+  }, [allTransactions, startingBalance, loading]);
 
 
   const favoritedBudgets = useMemo(() => {
@@ -79,7 +79,7 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      {(transactions.length === 0 || showInstructions) && <InstructionsGuide />}
+      {(allTransactions.length === 0 || showInstructions) && <InstructionsGuide />}
       
       <div className="grid gap-4 md:grid-cols-1">
          <StatCard
@@ -145,8 +145,8 @@ export default function DashboardPage() {
             <CardTitle>Recent Transactions</CardTitle>
           </CardHeader>
           <CardContent>
-            {transactions.length > 0 ? (
-                 <RecentTransactions transactions={transactions.slice(0, 5)} />
+            {allTransactions.length > 0 ? (
+                 <RecentTransactions transactions={allTransactions.slice(0, 5)} />
             ) : (
                 <div className="flex flex-col items-center justify-center h-full text-center">
                     <p className="text-muted-foreground">No transactions yet.</p>

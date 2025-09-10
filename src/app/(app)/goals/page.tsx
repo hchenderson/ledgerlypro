@@ -224,7 +224,7 @@ function GoalsPageContent() {
                             {goal.name}
                           </CardTitle>
                           <CardDescription>
-                               {goal.targetDate ? `Target: ${format(new Date(goal.targetDate), 'MMM yyyy')}` : 'No target date'}
+                               {goal.targetDate ? `Target: ${format(new Date(goal.targetDate), 'PPP')}` : 'No target date'}
                           </CardDescription>
                       </div>
                       <div className="flex gap-1">

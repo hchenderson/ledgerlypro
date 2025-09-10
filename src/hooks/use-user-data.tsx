@@ -2,18 +2,18 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { collection, doc, getDocs, onSnapshot, writeBatch, getDoc, setDoc, deleteDoc, query, orderBy, limit, startAfter, where, QueryConstraint, getCountFromServer, DocumentData, Query } from 'firebase/firestore';
+import { collection, doc, getDocs, onSnapshot, writeBatch, getDoc, setDoc, deleteDoc, query, orderBy, limit, startAfter, where, QueryConstraint, getCountFromServer } from 'firebase/firestore';
 import type { Transaction, Category, SubCategory, Budget, RecurringTransaction, Goal } from '@/types';
 import { useAuth } from './use-auth';
 import { db } from '@/lib/firebase';
 import { addDays, addWeeks, addMonths, addYears, isBefore, startOfDay, parseISO, isToday } from 'date-fns';
-import { DateRange } from 'react-day-picker';
 
 const TRANSACTIONS_PAGE_SIZE = 25;
 
 interface UserDataContextType {
-  transactions: Transaction[];
-  totalTransactions: number;
+  allTransactions: Transaction[];
+  paginatedTransactions: Transaction[];
+  totalPaginatedTransactions: number;
   categories: Category[];
   budgets: Budget[];
   recurringTransactions: RecurringTransaction[];
@@ -43,15 +43,16 @@ interface UserDataContextType {
   addContributionToGoal: (goalId: string, amount: number) => Promise<void>;
   clearTransactions: () => Promise<void>;
   clearAllData: () => Promise<void>;
-  fetchTransactions: (reset: boolean, filters?: any) => void;
+  fetchPaginatedTransactions: (reset: boolean, filters?: any) => void;
 }
 
 const UserDataContext = createContext<UserDataContextType | undefined>(undefined);
 
 export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [totalTransactions, setTotalTransactions] = useState(0);
+  const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
+  const [paginatedTransactions, setPaginatedTransactions] = useState<Transaction[]>([]);
+  const [totalPaginatedTransactions, setTotalPaginatedTransactions] = useState(0);
   const [categories, setCategories] = useState<Category[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [recurringTransactions, setRecurringTransactions] = useState<RecurringTransaction[]>([]);
@@ -157,7 +158,8 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   useEffect(() => {
     if (!user) {
       setLoading(false);
-      setTransactions([]);
+      setAllTransactions([]);
+      setPaginatedTransactions([]);
       setCategories([]);
       setBudgets([]);
       setRecurringTransactions([]);
@@ -166,26 +168,29 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     setLoading(true);
-
-    const collectionsToSync = ['categories', 'budgets', 'recurringTransactions', 'goals'];
+    
+    const collectionsToSync = ['categories', 'budgets', 'recurringTransactions', 'goals', 'transactions'];
     const unsubscribers = collectionsToSync.map(name => {
       const collRef = getCollectionRef(name);
       if (!collRef) return () => {};
       
-      return onSnapshot(query(collRef), (snapshot) => {
+      const q = name === 'transactions' ? query(collRef, orderBy('date', 'desc')) : query(collRef);
+
+      return onSnapshot(q, (snapshot) => {
         const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
         switch (name) {
+          case 'transactions': setAllTransactions(data as Transaction[]); break;
           case 'categories': setCategories(data as Category[]); break;
           case 'budgets': setBudgets(data as Budget[]); break;
           case 'recurringTransactions': setRecurringTransactions(data as RecurringTransaction[]); break;
           case 'goals': setGoals(data as Goal[]); break;
         }
+        if (name === 'transactions') setLoading(false);
       }, (error) => {
         console.error(`Error fetching ${name}:`, error);
+        if (name === 'transactions') setLoading(false);
       });
     });
-    
-    // Initial fetch for transactions done via useEffect on transactions page
 
     return () => {
       unsubscribers.forEach(unsub => unsub());
@@ -202,27 +207,19 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return names;
   }, []);
 
-  const getAllCategoryAndSubCategoryNames = useCallback((categoryName: string) => {
-    const parentCategory = categories.find(c => c.name === categoryName);
-    if (parentCategory) {
-      return getSubCategoryNames(parentCategory);
-    }
-    return [categoryName];
-  }, [categories, getSubCategoryNames]);
-
-  const fetchTransactions = useCallback(async (reset: boolean, filters: any = {}) => {
+  const fetchPaginatedTransactions = useCallback(async (reset: boolean, filters: any = {}) => {
       const collRef = getCollectionRef('transactions');
       if (!collRef) return;
   
       setLoading(true);
       if (reset) {
           setLastVisible(null);
-          setTransactions([]);
+          setPaginatedTransactions([]);
       }
   
       const queryConstraints: QueryConstraint[] = [orderBy("date", "desc")];
       
-      // Server-side filters
+      if (filters.description) queryConstraints.push(where("description", ">=", filters.description), where("description", "<=", filters.description + '\uf8ff'));
       if (filters.dateRange?.from) queryConstraints.push(where("date", ">=", filters.dateRange.from.toISOString()));
       if (filters.dateRange?.to) queryConstraints.push(where("date", "<=", filters.dateRange.to.toISOString()));
       if (filters.category && filters.category !== 'all') queryConstraints.push(where("category", "==", filters.category));
@@ -230,6 +227,9 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (filters.maxAmount) queryConstraints.push(where("amount", "<=", filters.maxAmount));
       
       let baseQuery = query(collRef, ...queryConstraints);
+      
+      const totalCountSnapshot = await getCountFromServer(baseQuery);
+      setTotalPaginatedTransactions(totalCountSnapshot.data().count);
 
       if (lastVisible && !reset) {
         baseQuery = query(baseQuery, startAfter(lastVisible));
@@ -238,26 +238,17 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const finalQuery = query(baseQuery, limit(TRANSACTIONS_PAGE_SIZE));
       
       try {
-        const totalCountQuery = query(collRef, ...queryConstraints);
-        const totalCountSnapshot = await getCountFromServer(totalCountQuery);
-        setTotalTransactions(totalCountSnapshot.data().count);
-      
         const documentSnapshots = await getDocs(finalQuery);
         let newTransactions = documentSnapshots.docs.map(doc => doc.data() as Transaction);
-
-        // Client-side filter for description (Firestore doesn't support partial text search well)
-        if (filters.description) {
-            newTransactions = newTransactions.filter(t => t.description.toLowerCase().includes(filters.description.toLowerCase()));
-        }
     
         const lastDoc = documentSnapshots.docs[documentSnapshots.docs.length-1];
         setLastVisible(lastDoc);
         setHasMore(documentSnapshots.docs.length === TRANSACTIONS_PAGE_SIZE);
 
-        setTransactions(prev => reset ? newTransactions : [...prev, ...newTransactions]);
+        setPaginatedTransactions(prev => reset ? newTransactions : [...prev, ...newTransactions]);
 
       } catch (error) {
-        console.error("Error fetching transactions:", error);
+        console.error("Error fetching paginated transactions:", error);
       } finally {
         setLoading(false);
       }
@@ -269,7 +260,6 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!collRef) return;
     const newDocRef = doc(collRef);
     await setDoc(newDocRef, { ...transaction, id: newDocRef.id });
-    fetchTransactions(true); // Refetch
   };
   
   const updateTransaction = async (id: string, values: Partial<Omit<Transaction, 'id'>>) => {
@@ -277,7 +267,6 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (!collRef) return;
       const docRef = doc(collRef, id);
       await setDoc(docRef, values, { merge: true });
-      fetchTransactions(true); // Refetch
   }
 
   const deleteTransaction = async (id: string) => {
@@ -285,7 +274,6 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!collRef) return;
     const docRef = doc(collRef, id);
     await deleteDoc(docRef);
-    fetchTransactions(true); // Refetch
   };
   
   const addCategory = async (category: Omit<Category, 'id'>) => {
@@ -472,7 +460,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         allCategoryNamesForBudget = getSubCategoryNames(category);
       }
       
-      const spent = transactions
+      const spent = allTransactions
         .filter(t => {
             const transactionDate = new Date(t.date);
             return t.type === 'expense' &&
@@ -493,7 +481,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         progress,
       };
     });
-  }, [budgets, transactions, categories, getSubCategoryNames]);
+  }, [budgets, allTransactions, categories, getSubCategoryNames]);
 
   const addGoal = async (goal: Omit<Goal, 'id'>) => {
     const collRef = getCollectionRef('goals');
@@ -555,8 +543,9 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
 
   const value = { 
-        transactions, 
-        totalTransactions,
+        allTransactions, 
+        paginatedTransactions,
+        totalPaginatedTransactions,
         categories, 
         budgets,
         recurringTransactions,
@@ -586,7 +575,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         addContributionToGoal,
         clearTransactions,
         clearAllData,
-        fetchTransactions,
+        fetchPaginatedTransactions,
     };
 
   return (
@@ -603,5 +592,3 @@ export const useUserData = () => {
   }
   return context;
 };
-
-    

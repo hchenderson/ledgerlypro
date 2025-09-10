@@ -40,7 +40,7 @@ function ChartSuspenseFallback() {
 function ReportsPageContent() {
     const reportRef = useRef<HTMLDivElement>(null);
     const { toast } = useToast();
-    const { transactions } = useUserData();
+    const { allTransactions } = useUserData();
     const { plan } = useAuth();
 
     const isPro = plan === 'pro';
@@ -52,14 +52,14 @@ function ReportsPageContent() {
     const [categoryFilter, setCategoryFilter] = useState<string>('all');
 
     const filteredTransactions = useMemo(() => {
-        return transactions.filter(t => {
+        return allTransactions.filter(t => {
             const transactionDate = new Date(t.date);
             const isInDateRange = dateRange?.from && dateRange?.to ? 
                 (transactionDate >= dateRange.from && transactionDate <= dateRange.to) : true;
             const isInCategory = categoryFilter === 'all' || t.category === categoryFilter;
             return isInDateRange && isInCategory;
         });
-    }, [transactions, dateRange, categoryFilter]);
+    }, [allTransactions, dateRange, categoryFilter]);
 
     const { overviewData, categoryData } = useMemo(() => {
         const monthlyData: Record<string, { income: number, expense: number }> = {};
@@ -153,7 +153,7 @@ function ReportsPageContent() {
         }
     };
     
-    const allCategories = useMemo(() => [...new Set(transactions.map(t => t.category))], [transactions]);
+    const allCategories = useMemo(() => [...new Set(allTransactions.map(t => t.category))], [allTransactions]);
 
     const handlePresetDateRange = (preset: string) => {
         const now = new Date();
@@ -331,5 +331,3 @@ export default function ReportsPage() {
         </FeatureGate>
     )
 }
-
-    

@@ -61,7 +61,17 @@ function TransactionsSkeleton() {
 
 
 export default function TransactionsPage() {
-  const { transactions, loading, addTransaction, updateTransaction, deleteTransaction, categories, fetchTransactions, hasMore, totalTransactions } = useUserData();
+  const { 
+    paginatedTransactions, 
+    loading, 
+    addTransaction, 
+    updateTransaction, 
+    deleteTransaction, 
+    categories, 
+    fetchPaginatedTransactions, 
+    hasMore, 
+    totalPaginatedTransactions 
+  } = useUserData();
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const { toast } = useToast();
@@ -88,7 +98,7 @@ export default function TransactionsPage() {
   }), [debouncedDescription, categoryFilter, dateRange, debouncedMinAmount, debouncedMaxAmount]);
   
   useEffect(() => {
-      fetchTransactions(true, filters);
+      fetchPaginatedTransactions(true, filters);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters]);
 
@@ -146,7 +156,7 @@ export default function TransactionsPage() {
   
   const handleExport = () => {
     if (!isPro) return;
-    const csv = Papa.unparse(transactions);
+    const csv = Papa.unparse(paginatedTransactions);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
@@ -162,7 +172,7 @@ export default function TransactionsPage() {
     });
   }
   
-  if (loading && transactions.length === 0) return <TransactionsSkeleton />;
+  if (loading && paginatedTransactions.length === 0) return <TransactionsSkeleton />;
 
   return (
     <div className="space-y-6">
@@ -249,7 +259,7 @@ export default function TransactionsPage() {
         <div>
             <CardTitle>Transactions</CardTitle>
             <CardDescription>
-                Showing {transactions.length} of {totalTransactions} transactions.
+                Showing {paginatedTransactions.length} of {totalPaginatedTransactions} transactions.
             </CardDescription>
         </div>
          <Tooltip>
@@ -282,7 +292,7 @@ export default function TransactionsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {transactions.map((transaction) => (
+            {paginatedTransactions.map((transaction) => (
               <TableRow key={transaction.id}>
                 <TableCell className="font-medium">{transaction.description}</TableCell>
                 <TableCell>
@@ -332,7 +342,7 @@ export default function TransactionsPage() {
                 </TableCell>
               </TableRow>
             ))}
-             {transactions.length === 0 && !loading && (
+             {paginatedTransactions.length === 0 && !loading && (
                 <TableRow>
                     <TableCell colSpan={5} className="h-24 text-center">
                         No transactions found matching your filters.
@@ -343,7 +353,7 @@ export default function TransactionsPage() {
         </Table>
         {hasMore && (
             <div className="flex justify-center mt-4">
-                <Button onClick={() => fetchTransactions(false, filters)} disabled={loading}>
+                <Button onClick={() => fetchPaginatedTransactions(false, filters)} disabled={loading}>
                     {loading ? 'Loading...' : 'Load More'}
                 </Button>
             </div>
@@ -361,5 +371,3 @@ export default function TransactionsPage() {
     </div>
   );
 }
-
-    
