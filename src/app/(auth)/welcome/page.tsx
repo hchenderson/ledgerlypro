@@ -44,7 +44,7 @@ export default function WelcomePage() {
         if (!user) return;
         const batch = writeBatch(db);
         
-        const collections: { [key: string]: any[] } = {
+        const collections: { [key: string]: (Omit<Transaction, 'id'> | Omit<Category, 'id'> | Omit<Budget, 'id'> | Omit<RecurringTransaction, 'id'> | Omit<Goal, 'id'>)[] } = {
             transactions: defaultTransactions,
             categories: defaultCategories,
             budgets: defaultBudgets,
@@ -56,8 +56,7 @@ export default function WelcomePage() {
             const collRef = collection(db, 'users', user.uid, name);
             data.forEach((item) => {
                 const docRef = doc(collRef);
-                const { ...serializableItem } = item;
-                batch.set(docRef, { ...serializableItem, id: docRef.id });
+                batch.set(docRef, { ...item, id: docRef.id });
             });
         }
     
@@ -95,7 +94,7 @@ export default function WelcomePage() {
                 await seedDefaultData();
             }
             
-            await setOnboardingComplete(true);
+            setOnboardingComplete(true);
 
             toast({ title: 'Setup Complete!', description: 'Welcome to Ledgerly. Redirecting you to the dashboard...' });
             router.push('/dashboard');

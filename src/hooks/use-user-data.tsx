@@ -36,6 +36,8 @@ interface UserDataContextType {
   updateGoal: (id: string, values: Partial<Omit<Goal, 'id'>>) => Promise<void>;
   deleteGoal: (id: string) => Promise<void>;
   addContributionToGoal: (goalId: string, amount: number) => Promise<void>;
+  clearTransactions: () => Promise<void>;
+  clearAllData: () => Promise<void>;
 }
 
 const UserDataContext = createContext<UserDataContextType | undefined>(undefined);
@@ -419,7 +421,6 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     });
   }, [budgets, transactions, categories]);
 
-  // Goal functions
   const addGoal = async (goal: Omit<Goal, 'id'>) => {
     const collRef = getCollectionRef('goals');
     if (!collRef) return;
@@ -453,6 +454,31 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }
 
+  const clearCollection = async (collectionName: string) => {
+    const collRef = getCollectionRef(collectionName);
+    if (!collRef) return;
+    const snapshot = await getDocs(collRef);
+    const batch = writeBatch(db);
+    snapshot.docs.forEach(doc => {
+        batch.delete(doc.ref);
+    });
+    await batch.commit();
+  }
+
+  const clearTransactions = async () => {
+    await clearCollection('transactions');
+  }
+
+  const clearAllData = async () => {
+    await Promise.all([
+      clearCollection('transactions'),
+      clearCollection('categories'),
+      clearCollection('budgets'),
+      clearCollection('recurringTransactions'),
+      clearCollection('goals'),
+    ]);
+  }
+
 
   const value = { 
         transactions, 
@@ -482,6 +508,8 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         updateGoal,
         deleteGoal,
         addContributionToGoal,
+        clearTransactions,
+        clearAllData,
     };
 
   return (

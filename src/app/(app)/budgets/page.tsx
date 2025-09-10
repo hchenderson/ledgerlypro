@@ -50,7 +50,10 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
 
   const form = useForm<BudgetFormValues>({
     resolver: zodResolver(budgetFormSchema),
-    defaultValues: budget ? budget : {
+    defaultValues: budget ? {
+      categoryId: budget.categoryId,
+      amount: budget.amount,
+    } : {
       categoryId: '',
       amount: 0,
     }
@@ -58,7 +61,10 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
 
   useEffect(() => {
     if (isOpen) {
-        form.reset(budget ? budget : {
+        form.reset(budget ? {
+          categoryId: budget.categoryId,
+          amount: budget.amount,
+        } : {
           categoryId: '',
           amount: 0,
         });
@@ -89,7 +95,28 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
           }, []);
       };
       
-      return flatten(categories.filter(c => c.type === 'expense'));
+      const findCategory = (id: string, cats: (Category|SubCategory)[]): Category | SubCategory | undefined => {
+          for (const cat of cats) {
+              if (cat.id === id) return cat;
+              if (cat.subCategories) {
+                  const found = findCategory(id, cat.subCategories);
+                  if (found) return found;
+              }
+          }
+          return undefined;
+      };
+
+      const getExpenseCategories = (cats: Category[]) => {
+          let expenseCats: (Category | SubCategory)[] = [];
+          cats.forEach(c => {
+              if (c.type === 'expense') {
+                  expenseCats.push(c);
+              }
+          });
+          return expenseCats;
+      }
+      
+      return flatten(getExpenseCategories(categories));
   }, [categories, budgets, budget]);
 
   return (

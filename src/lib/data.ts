@@ -3,54 +3,59 @@ import type { Budget, Category, Goal, RecurringTransaction, Transaction } from "
 
 export const defaultCategories: Omit<Category, 'id'>[] = [
     {
+        id: "cat_inc_1",
         name: "Income",
         type: "income",
         icon: "Landmark",
         subCategories: [
-            { id: "sub_inc_1", name: "Salary" },
-            { id: "sub_inc_2", name: "Freelance" },
-            { id: "sub_inc_3", name: "Investment" },
+            { id: "sub_inc_1", name: "Salary", subCategories: [] },
+            { id: "sub_inc_2", name: "Freelance", subCategories: [] },
+            { id: "sub_inc_3", name: "Investment", subCategories: [] },
         ],
     },
     {
+        id: "cat_exp_1",
         name: "Home & Utilities",
         type: "expense",
         icon: "Home",
         subCategories: [
-            { id: "sub_exp_1", name: "Rent/Mortgage" },
-            { id: "sub_exp_2", name: "Electricity" },
-            { id: "sub_exp_3", name: "Water" },
-            { id: "sub_exp_4", name: "Internet" },
+            { id: "sub_exp_1", name: "Rent/Mortgage", subCategories: [] },
+            { id: "sub_exp_2", name: "Electricity", subCategories: [] },
+            { id: "sub_exp_3", name: "Water", subCategories: [] },
+            { id: "sub_exp_4", name: "Internet", subCategories: [] },
         ],
     },
     {
+        id: "cat_exp_2",
         name: "Food & Dining",
         type: "expense",
         icon: "Utensils",
         subCategories: [
-            { id: "sub_exp_5", name: "Groceries" },
-            { id: "sub_exp_6", name: "Restaurants" },
-            { id: "sub_exp_7", name: "Coffee Shops" },
+            { id: "sub_exp_5", name: "Groceries", subCategories: [] },
+            { id: "sub_exp_6", name: "Restaurants", subCategories: [] },
+            { id: "sub_exp_7", name: "Coffee Shops", subCategories: [] },
         ],
     },
     {
+        id: "cat_exp_3",
         name: "Shopping",
         type: "expense",
         icon: "ShoppingBag",
         subCategories: [
-            { id: "sub_exp_8", name: "Clothing" },
-            { id: "sub_exp_9", name: "Electronics" },
-            { id: "sub_exp_10", name: "Hobbies" },
+            { id: "sub_exp_8", name: "Clothing", subCategories: [] },
+            { id: "sub_exp_9", name: "Electronics", subCategories: [] },
+            { id: "sub_exp_10", name: "Hobbies", subCategories: [] },
         ],
     },
     {
+        id: "cat_exp_4",
         name: "Transportation",
         type: "expense",
         icon: "Car",
         subCategories: [
-            { id: "sub_exp_11", name: "Gas/Fuel" },
-            { id: "sub_exp_12", name: "Public Transit" },
-            { id: "sub_exp_13", name: "Ride Sharing" },
+            { id: "sub_exp_11", name: "Gas/Fuel", subCategories: [] },
+            { id: "sub_exp_12", name: "Public Transit", subCategories: [] },
+            { id: "sub_exp_13", name: "Ride Sharing", subCategories: [] },
         ]
     }
 ];
