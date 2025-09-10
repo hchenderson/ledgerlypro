@@ -68,11 +68,59 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return collection(db, 'users', user.uid, collectionName);
   }, [user]);
 
+  const fetchPaginatedTransactions = useCallback(async (reset: boolean, filters: any = {}) => {
+      const collRef = getCollectionRef('transactions');
+      if (!collRef) return;
+  
+      setLoading(true);
+      if (reset) {
+          setLastVisible(null);
+          setPaginatedTransactions([]);
+      }
+  
+      const queryConstraints: QueryConstraint[] = [orderBy("date", "desc")];
+      
+      if (filters.description) queryConstraints.push(where("description", ">=", filters.description), where("description", "<=", filters.description + '\uf8ff'));
+      if (filters.dateRange?.from) queryConstraints.push(where("date", ">=", filters.dateRange.from.toISOString()));
+      if (filters.dateRange?.to) queryConstraints.push(where("date", "<=", filters.dateRange.to.toISOString()));
+      if (filters.category && filters.category !== 'all') queryConstraints.push(where("category", "==", filters.category));
+      if (filters.minAmount) queryConstraints.push(where("amount", ">=", filters.minAmount));
+      if (filters.maxAmount) queryConstraints.push(where("amount", "<=", filters.maxAmount));
+      
+      let baseQuery = query(collRef, ...queryConstraints);
+      
+      const totalCountSnapshot = await getCountFromServer(baseQuery);
+      setTotalPaginatedTransactions(totalCountSnapshot.data().count);
+
+      if (lastVisible && !reset) {
+        baseQuery = query(baseQuery, startAfter(lastVisible));
+      }
+      
+      const finalQuery = query(baseQuery, limit(TRANSACTIONS_PAGE_SIZE));
+      
+      try {
+        const documentSnapshots = await getDocs(finalQuery);
+        let newTransactions = documentSnapshots.docs.map(doc => doc.data() as Transaction);
+    
+        const lastDoc = documentSnapshots.docs[documentSnapshots.docs.length-1];
+        setLastVisible(lastDoc);
+        setHasMore(documentSnapshots.docs.length === TRANSACTIONS_PAGE_SIZE);
+
+        setPaginatedTransactions(prev => reset ? newTransactions : [...prev, ...newTransactions]);
+
+      } catch (error) {
+        console.error("Error fetching paginated transactions:", error);
+      } finally {
+        setLoading(false);
+      }
+  }, [getCollectionRef, lastVisible]);
+
   const processRecurringTransactions = useCallback(async () => {
     if (!user || recurringTransactions.length === 0) return;
   
     const today = startOfDay(new Date());
     const batch = writeBatch(db);
+    let transactionsAdded = false;
     const transactionsCollRef = getCollectionRef('transactions');
     const recurringCollRef = getCollectionRef('recurringTransactions');
   
@@ -104,6 +152,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                  });
                  const recurringDocToUpdate = doc(recurringCollRef, rt.id);
                  batch.update(recurringDocToUpdate, { lastAddedDate: nextDate.toISOString() });
+                 transactionsAdded = true;
            }
       }
 
@@ -126,6 +175,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           type: rt.type,
           category: rt.category
         });
+        transactionsAdded = true;
   
         const recurringDocToUpdate = doc(recurringCollRef, rt.id);
         batch.update(recurringDocToUpdate, { lastAddedDate: nextDate.toISOString() });
@@ -140,12 +190,15 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   
     try {
-        await batch.commit();
+        if(transactionsAdded){
+            await batch.commit();
+            fetchPaginatedTransactions(true, {}); // Refetch transactions if new ones were added.
+        }
     } catch(e) {
         console.error("Error processing recurring transactions batch: ", e)
     }
 
-  }, [user, recurringTransactions, getCollectionRef]);
+  }, [user, recurringTransactions, getCollectionRef, fetchPaginatedTransactions]);
   
   useEffect(() => {
     if (user && !loading && recurringTransactions.length > 0) {
@@ -206,54 +259,6 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
       return names;
   }, []);
-
-  const fetchPaginatedTransactions = useCallback(async (reset: boolean, filters: any = {}) => {
-      const collRef = getCollectionRef('transactions');
-      if (!collRef) return;
-  
-      setLoading(true);
-      if (reset) {
-          setLastVisible(null);
-          setPaginatedTransactions([]);
-      }
-  
-      const queryConstraints: QueryConstraint[] = [orderBy("date", "desc")];
-      
-      if (filters.description) queryConstraints.push(where("description", ">=", filters.description), where("description", "<=", filters.description + '\uf8ff'));
-      if (filters.dateRange?.from) queryConstraints.push(where("date", ">=", filters.dateRange.from.toISOString()));
-      if (filters.dateRange?.to) queryConstraints.push(where("date", "<=", filters.dateRange.to.toISOString()));
-      if (filters.category && filters.category !== 'all') queryConstraints.push(where("category", "==", filters.category));
-      if (filters.minAmount) queryConstraints.push(where("amount", ">=", filters.minAmount));
-      if (filters.maxAmount) queryConstraints.push(where("amount", "<=", filters.maxAmount));
-      
-      let baseQuery = query(collRef, ...queryConstraints);
-      
-      const totalCountSnapshot = await getCountFromServer(baseQuery);
-      setTotalPaginatedTransactions(totalCountSnapshot.data().count);
-
-      if (lastVisible && !reset) {
-        baseQuery = query(baseQuery, startAfter(lastVisible));
-      }
-      
-      const finalQuery = query(baseQuery, limit(TRANSACTIONS_PAGE_SIZE));
-      
-      try {
-        const documentSnapshots = await getDocs(finalQuery);
-        let newTransactions = documentSnapshots.docs.map(doc => doc.data() as Transaction);
-    
-        const lastDoc = documentSnapshots.docs[documentSnapshots.docs.length-1];
-        setLastVisible(lastDoc);
-        setHasMore(documentSnapshots.docs.length === TRANSACTIONS_PAGE_SIZE);
-
-        setPaginatedTransactions(prev => reset ? newTransactions : [...prev, ...newTransactions]);
-
-      } catch (error) {
-        console.error("Error fetching paginated transactions:", error);
-      } finally {
-        setLoading(false);
-      }
-  }, [getCollectionRef, lastVisible]);
-
 
   const addTransaction = async (transaction: Omit<Transaction, 'id'>) => {
     const collRef = getCollectionRef('transactions');

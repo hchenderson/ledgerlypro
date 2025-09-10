@@ -121,6 +121,7 @@ export default function TransactionsPage() {
     setDateRange(undefined);
     setMinAmount('');
     setMaxAmount('');
+    fetchPaginatedTransactions(true, {}); // This will trigger a refetch with no filters
   }
 
   const handleEdit = (transaction: Transaction) => {
