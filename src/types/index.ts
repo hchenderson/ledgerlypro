@@ -35,12 +35,9 @@ export type Category = {
 
 export type Budget = {
   id: string;
-  name: string;
   categoryId: string;
   amount: number;
-  period: "monthly" | "fixed";
-  startDate: string;
-  endDate?: string;
+  period: "monthly";
   isFavorite?: boolean;
 };
 
@@ -54,3 +51,11 @@ export type RecurringTransaction = {
   startDate: string;
   lastAddedDate?: string;
 };
+
+export type Goal = {
+  id: string;
+  name: string;
+  targetAmount: number;
+  savedAmount: number;
+  targetDate?: string;
+}

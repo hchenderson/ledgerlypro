@@ -15,8 +15,9 @@ import { cn } from '@/lib/utils';
 import { Progress } from '@/components/ui/progress';
 import { doc, setDoc, writeBatch, collection } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { defaultTransactions, defaultCategories, defaultBudgets, defaultRecurringTransactions } from '@/lib/data';
-import type { Transaction, Category, Budget, RecurringTransaction } from '@/types';
+import { defaultTransactions, defaultCategories, defaultBudgets, defaultRecurringTransactions, defaultGoals } from '@/lib/data';
+import type { Transaction, Category, Budget, RecurringTransaction, Goal } from '@/types';
+import { Checkbox } from '@/components/ui/checkbox';
 
 
 export default function WelcomePage() {
@@ -27,6 +28,7 @@ export default function WelcomePage() {
     const [name, setName] = useState('');
     const [startingBalance, setStartingBalance] = useState('');
     const [subscription, setSubscription] = useState<'free' | 'pro'>('free');
+    const [seedData, setSeedData] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
@@ -42,11 +44,12 @@ export default function WelcomePage() {
         if (!user) return;
         const batch = writeBatch(db);
         
-        const collections: { [key: string]: (Omit<Transaction, 'id'> | Omit<Category, 'id'> | Omit<Budget, 'id'> | Omit<RecurringTransaction, 'id'>)[] } = {
+        const collections: { [key: string]: any[] } = {
             transactions: defaultTransactions,
             categories: defaultCategories,
             budgets: defaultBudgets,
-            recurringTransactions: defaultRecurringTransactions
+            recurringTransactions: defaultRecurringTransactions,
+            goals: defaultGoals,
         };
     
         for (const [name, data] of Object.entries(collections)) {
@@ -70,6 +73,7 @@ export default function WelcomePage() {
 
         if(!name) {
             toast({ variant: 'destructive', title: 'Error', description: 'Please enter your name.' });
+            setStep(1);
             return;
         }
 
@@ -84,10 +88,12 @@ export default function WelcomePage() {
             const balance = parseFloat(startingBalance);
              await setDoc(settingsRef, { 
                 startingBalance: isNaN(balance) ? 0 : balance,
-                dataSeeded: true
+                onboardingComplete: true
             }, { merge: true });
             
-            await seedDefaultData();
+            if (seedData) {
+                await seedDefaultData();
+            }
             
             await setOnboardingComplete(true);
 
@@ -130,11 +136,27 @@ export default function WelcomePage() {
                              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
                                 <Wallet className="h-6 w-6" />
                             </div>
-                            <h3 className="text-xl font-semibold">What's your starting balance?</h3>
-                            <p className="text-muted-foreground">You can change this later in your settings. You can also leave it at 0.</p>
-                             <div className="space-y-2 text-left max-w-sm mx-auto">
-                                <Label htmlFor="starting-balance">Starting Balance</Label>
-                                <Input id="starting-balance" type="number" placeholder="0.00" value={startingBalance} onChange={(e) => setStartingBalance(e.target.value)} />
+                            <h3 className="text-xl font-semibold">Set up your account</h3>
+                            <p className="text-muted-foreground">You can change these settings later.</p>
+                             <div className="space-y-4 text-left max-w-sm mx-auto">
+                                <div className="space-y-2">
+                                    <Label htmlFor="starting-balance">Starting Balance (Optional)</Label>
+                                    <Input id="starting-balance" type="number" placeholder="0.00" value={startingBalance} onChange={(e) => setStartingBalance(e.target.value)} />
+                                </div>
+                                <div className="flex items-center space-x-2 rounded-md border p-4">
+                                    <Checkbox id="seed-data" checked={seedData} onCheckedChange={(checked) => setSeedData(!!checked)}/>
+                                    <div className="grid gap-1.5 leading-none">
+                                        <label
+                                        htmlFor="seed-data"
+                                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                                        >
+                                        Add sample data
+                                        </label>
+                                        <p className="text-sm text-muted-foreground">
+                                        Populate your account with sample transactions and categories to explore features.
+                                        </p>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     )}

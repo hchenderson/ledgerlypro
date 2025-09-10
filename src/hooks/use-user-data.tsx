@@ -1,10 +1,9 @@
 
-
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { collection, doc, getDocs, onSnapshot, writeBatch, getDoc, setDoc, deleteDoc, query } from 'firebase/firestore';
-import type { Transaction, Category, SubCategory, Budget, RecurringTransaction } from '@/types';
+import type { Transaction, Category, SubCategory, Budget, RecurringTransaction, Goal } from '@/types';
 import { useAuth } from './use-auth';
 import { db } from '@/lib/firebase';
 import { addDays, addWeeks, addMonths, addYears, isBefore, startOfDay, parseISO, isToday } from 'date-fns';
@@ -14,6 +13,7 @@ interface UserDataContextType {
   categories: Category[];
   budgets: Budget[];
   recurringTransactions: RecurringTransaction[];
+  goals: Goal[];
   loading: boolean;
   addTransaction: (transaction: Omit<Transaction, 'id'>) => Promise<void>;
   updateTransaction: (id: string, values: Partial<Omit<Transaction, 'id'>>) => Promise<void>;
@@ -32,6 +32,10 @@ interface UserDataContextType {
   updateRecurringTransaction: (id: string, values: Partial<Omit<RecurringTransaction, 'id'>>) => Promise<void>;
   deleteRecurringTransaction: (id: string) => Promise<void>;
   getBudgetDetails: (forDate?: Date) => any[];
+  addGoal: (goal: Omit<Goal, 'id'>) => Promise<void>;
+  updateGoal: (id: string, values: Partial<Omit<Goal, 'id'>>) => Promise<void>;
+  deleteGoal: (id: string) => Promise<void>;
+  addContributionToGoal: (goalId: string, amount: number) => Promise<void>;
 }
 
 const UserDataContext = createContext<UserDataContextType | undefined>(undefined);
@@ -42,6 +46,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [categories, setCategories] = useState<Category[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [recurringTransactions, setRecurringTransactions] = useState<RecurringTransaction[]>([]);
+  const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
 
   const getCollectionRef = useCallback((collectionName: string) => {
@@ -62,19 +67,17 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     for (const rt of recurringTransactions) {
       let lastProcessedDate = rt.lastAddedDate ? parseISO(rt.lastAddedDate) : startOfDay(parseISO(rt.startDate));
       
-      // If the start date is in the future, skip it
       if (isBefore(today, lastProcessedDate)) {
         continue;
       }
 
-      // If the last processed date is today, skip it
       if (isToday(lastProcessedDate) && rt.lastAddedDate) {
           continue;
       }
       
       let nextDate = lastProcessedDate;
 
-       if (!rt.lastAddedDate) { // First run for this item
+       if (!rt.lastAddedDate) {
            if (isBefore(nextDate, today) || isToday(nextDate)) {
                const newTransactionDoc = doc(transactionsCollRef);
                  batch.set(newTransactionDoc, {
@@ -90,7 +93,6 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
            }
       }
 
-      // Calculate next occurrence from the last added date
       if (rt.lastAddedDate) {
          switch(rt.frequency) {
             case 'daily': nextDate = addDays(nextDate, 1); break;
@@ -100,7 +102,6 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
          }
       }
   
-      // Catch up on missed transactions
       while (isBefore(nextDate, today) || isToday(nextDate)) {
         const newTransactionDoc = doc(transactionsCollRef);
         batch.set(newTransactionDoc, {
@@ -147,12 +148,14 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setCategories([]);
       setBudgets([]);
       setRecurringTransactions([]);
+      setGoals([]);
       return;
     }
 
     setLoading(true);
 
-    const unsubscribers = ['transactions', 'categories', 'budgets', 'recurringTransactions'].map(name => {
+    const collectionsToSync = ['transactions', 'categories', 'budgets', 'recurringTransactions', 'goals'];
+    const unsubscribers = collectionsToSync.map(name => {
       const collRef = getCollectionRef(name);
       if (!collRef) return () => {};
       
@@ -162,9 +165,8 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           case 'transactions': setTransactions(data as Transaction[]); break;
           case 'categories': setCategories(data as Category[]); break;
           case 'budgets': setBudgets(data as Budget[]); break;
-          case 'recurringTransactions': 
-            setRecurringTransactions(data as RecurringTransaction[]);
-            break;
+          case 'recurringTransactions': setRecurringTransactions(data as RecurringTransaction[]); break;
+          case 'goals': setGoals(data as Goal[]); break;
         }
       }, (error) => {
         console.error(`Error fetching ${name}:`, error);
@@ -397,13 +399,10 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const spent = transactions
         .filter(t => {
             const transactionDate = new Date(t.date);
-            const isInPeriod = budget.period === 'monthly'
-                ? transactionDate.getMonth() === forDate.getMonth() && transactionDate.getFullYear() === forDate.getFullYear()
-                : transactionDate >= new Date(budget.startDate) && (!budget.endDate || transactionDate <= new Date(budget.endDate));
-
             return t.type === 'expense' &&
                    allCategoryNamesForBudget.includes(t.category) &&
-                   isInPeriod;
+                   transactionDate.getMonth() === forDate.getMonth() && 
+                   transactionDate.getFullYear() === forDate.getFullYear();
         })
         .reduce((sum, t) => sum + t.amount, 0);
 
@@ -420,12 +419,47 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     });
   }, [budgets, transactions, categories]);
 
+  // Goal functions
+  const addGoal = async (goal: Omit<Goal, 'id'>) => {
+    const collRef = getCollectionRef('goals');
+    if (!collRef) return;
+    const newDocRef = doc(collRef);
+    await setDoc(newDocRef, { ...goal, id: newDocRef.id });
+  };
+
+  const updateGoal = async (id: string, values: Partial<Omit<Goal, 'id'>>) => {
+    const collRef = getCollectionRef('goals');
+    if (!collRef) return;
+    const docRef = doc(collRef, id);
+    await setDoc(docRef, values, { merge: true });
+  };
+
+  const deleteGoal = async (id: string) => {
+    const collRef = getCollectionRef('goals');
+    if (!collRef) return;
+    const docRef = doc(collRef, id);
+    await deleteDoc(docRef);
+  };
+  
+  const addContributionToGoal = async (goalId: string, amount: number) => {
+    const collRef = getCollectionRef('goals');
+    if(!collRef) return;
+    const goalRef = doc(collRef, goalId);
+    const goalDoc = await getDoc(goalRef);
+    if(goalDoc.exists()) {
+        const goal = goalDoc.data() as Goal;
+        const newSavedAmount = goal.savedAmount + amount;
+        await updateGoal(goalId, { savedAmount: newSavedAmount });
+    }
+  }
+
 
   const value = { 
         transactions, 
         categories, 
         budgets,
         recurringTransactions,
+        goals,
         loading, 
         addTransaction, 
         updateTransaction,
@@ -444,6 +478,10 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         updateRecurringTransaction,
         deleteRecurringTransaction,
         getBudgetDetails,
+        addGoal,
+        updateGoal,
+        deleteGoal,
+        addContributionToGoal,
     };
 
   return (

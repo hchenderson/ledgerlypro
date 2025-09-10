@@ -12,7 +12,8 @@ import {
   Settings,
   Target,
   Camera,
-  Repeat
+  Repeat,
+  Flag,
 } from "lucide-react";
 import {
   SidebarMenu,
@@ -30,8 +31,9 @@ const navItems: NavItem[] = [
 
 const proNavItems: NavItem[] = [
   { title: "Reports", href: "/reports", icon: PieChart, variant: "ghost" },
-  { title: "Budgets", href: "/budgets", icon: Target, variant: "ghost", badge: "New" },
-  { title: "Recurring", href: "/recurring", icon: Repeat, variant: "ghost", badge: "New" },
+  { title: "Budgets", href: "/budgets", icon: Target, variant: "ghost" },
+  { title: "Goals", href: "/goals", icon: Flag, variant: "ghost", badge: "New" },
+  { title: "Recurring", href: "/recurring", icon: Repeat, variant: "ghost" },
   { title: "Receipt Scanner", href: "/receipt-scanner", icon: Camera, variant: "ghost", badge: "AI" },
   { title: "Projections", href: "/projections", icon: Rocket, variant: "ghost", badge: "AI" },
 ]

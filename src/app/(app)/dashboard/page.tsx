@@ -16,6 +16,7 @@ import { db } from "@/lib/firebase";
 import { InstructionsGuide } from "@/components/dashboard/instructions-guide";
 import { getDashboardAnalytics } from "@/lib/actions";
 import type { DashboardAnalytics } from "@/lib/actions";
+import { GoalProgress } from "@/components/dashboard/goal-progress";
 
 
 function DashboardSkeleton() {
@@ -39,7 +40,7 @@ function DashboardSkeleton() {
 }
 
 export default function DashboardPage() {
-  const { transactions, loading, getBudgetDetails } = useUserData();
+  const { transactions, loading, getBudgetDetails, goals } = useUserData();
   const { user, showInstructions } = useAuth();
   const [startingBalance, setStartingBalance] = useState(0);
   const [analytics, setAnalytics] = useState<DashboardAnalytics | null>(null);
@@ -156,15 +157,26 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-       <Card>
-        <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Star className="text-yellow-400 fill-yellow-400" /> Favorite Budgets</CardTitle>
-            <CardDescription>Your hand-picked budgets for quick insights.</CardDescription>
-        </CardHeader>
-        <CardContent>
-            <BudgetProgress budgets={favoritedBudgets} />
-        </CardContent>
-      </Card>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+              <CardTitle className="flex items-center gap-2"><Target className="text-primary" /> Savings Goals</CardTitle>
+              <CardDescription>Track your progress towards your financial goals.</CardDescription>
+          </CardHeader>
+          <CardContent>
+              <GoalProgress goals={goals} />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+              <CardTitle className="flex items-center gap-2"><Star className="text-yellow-400 fill-yellow-400" /> Favorite Budgets</CardTitle>
+              <CardDescription>Your hand-picked budgets for quick insights.</CardDescription>
+          </CardHeader>
+          <CardContent>
+              <BudgetProgress budgets={favoritedBudgets} />
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
