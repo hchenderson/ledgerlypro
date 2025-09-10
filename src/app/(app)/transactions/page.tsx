@@ -89,10 +89,20 @@ export default function TransactionsPage() {
   
   useEffect(() => {
       fetchTransactions(true, filters);
-  }, [filters, fetchTransactions]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters]);
 
   const allCategories = useMemo(() => {
-    return categories.filter(c => !c.subCategories || c.subCategories.length === 0).map(c => c.name);
+    const flattenCategories = (cats: (Category | SubCategory)[]): string[] => {
+        return cats.flatMap(c => {
+            const names = [c.name];
+            if(c.subCategories) {
+                return names.concat(flattenCategories(c.subCategories))
+            }
+            return names;
+        })
+    }
+    return flattenCategories(categories);
   }, [categories]);
 
   const resetFilters = () => {

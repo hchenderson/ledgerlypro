@@ -185,8 +185,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       });
     });
     
-    // Initial fetch for transactions
-    fetchTransactions(true);
+    // Initial fetch for transactions done via useEffect on transactions page
 
     return () => {
       unsubscribers.forEach(unsub => unsub());
@@ -222,59 +221,47 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
   
       const queryConstraints: QueryConstraint[] = [orderBy("date", "desc")];
-  
-      if (filters.dateRange?.from) {
-        queryConstraints.push(where("date", ">=", filters.dateRange.from.toISOString()));
-      }
-      if (filters.dateRange?.to) {
-        queryConstraints.push(where("date", "<=", filters.dateRange.to.toISOString()));
-      }
-  
-      let baseQuery: Query<DocumentData> = query(collRef, ...queryConstraints.filter(c => c.type !== 'where' || c.getOperator() === '==' || (c.getOperator() !== '!=' && c.getOperator() !== 'not-in')));
-
-      const createFilteredQuery = (q: Query<DocumentData>): Query<DocumentData> => {
-        let finalQuery = q;
-        if(lastVisible && !reset) {
-          finalQuery = query(finalQuery, startAfter(lastVisible));
-        }
-        return query(finalQuery, limit(TRANSACTIONS_PAGE_SIZE));
-      };
-
-      let finalQuery = createFilteredQuery(baseQuery);
-  
-      const totalCountQuery = query(collRef, ...queryConstraints);
-      const totalCountSnapshot = await getCountFromServer(totalCountQuery);
-      setTotalTransactions(totalCountSnapshot.data().count);
       
-      const documentSnapshots = await getDocs(finalQuery);
-  
-      let newTransactions = documentSnapshots.docs.map(doc => doc.data() as Transaction);
+      // Server-side filters
+      if (filters.dateRange?.from) queryConstraints.push(where("date", ">=", filters.dateRange.from.toISOString()));
+      if (filters.dateRange?.to) queryConstraints.push(where("date", "<=", filters.dateRange.to.toISOString()));
+      if (filters.category && filters.category !== 'all') queryConstraints.push(where("category", "==", filters.category));
+      if (filters.minAmount) queryConstraints.push(where("amount", ">=", filters.minAmount));
+      if (filters.maxAmount) queryConstraints.push(where("amount", "<=", filters.maxAmount));
+      
+      let baseQuery = query(collRef, ...queryConstraints);
 
-      if (filters.description) {
-        newTransactions = newTransactions.filter(t => t.description.toLowerCase().includes(filters.description.toLowerCase()));
+      if (lastVisible && !reset) {
+        baseQuery = query(baseQuery, startAfter(lastVisible));
       }
-      if (filters.category && filters.category !== 'all') {
-        const categoriesToFilter = getAllCategoryAndSubCategoryNames(filters.category);
-        newTransactions = newTransactions.filter(t => categoriesToFilter.includes(t.category));
-      }
-      if (filters.minAmount) {
-        newTransactions = newTransactions.filter(t => t.amount >= filters.minAmount);
-      }
-       if (filters.maxAmount) {
-        newTransactions = newTransactions.filter(t => t.amount <= filters.maxAmount);
-      }
+      
+      const finalQuery = query(baseQuery, limit(TRANSACTIONS_PAGE_SIZE));
+      
+      try {
+        const totalCountQuery = query(collRef, ...queryConstraints);
+        const totalCountSnapshot = await getCountFromServer(totalCountQuery);
+        setTotalTransactions(totalCountSnapshot.data().count);
+      
+        const documentSnapshots = await getDocs(finalQuery);
+        let newTransactions = documentSnapshots.docs.map(doc => doc.data() as Transaction);
 
-      setLastVisible(documentSnapshots.docs[documentSnapshots.docs.length-1]);
-  
-      if (documentSnapshots.docs.length < TRANSACTIONS_PAGE_SIZE) {
-          setHasMore(false);
-      } else {
-          setHasMore(true);
-      }
+        // Client-side filter for description (Firestore doesn't support partial text search well)
+        if (filters.description) {
+            newTransactions = newTransactions.filter(t => t.description.toLowerCase().includes(filters.description.toLowerCase()));
+        }
+    
+        const lastDoc = documentSnapshots.docs[documentSnapshots.docs.length-1];
+        setLastVisible(lastDoc);
+        setHasMore(documentSnapshots.docs.length === TRANSACTIONS_PAGE_SIZE);
 
-      setTransactions(prev => reset ? newTransactions : [...prev, ...newTransactions]);
-      setLoading(false);
-  }, [getCollectionRef, lastVisible, getAllCategoryAndSubCategoryNames]);
+        setTransactions(prev => reset ? newTransactions : [...prev, ...newTransactions]);
+
+      } catch (error) {
+        console.error("Error fetching transactions:", error);
+      } finally {
+        setLoading(false);
+      }
+  }, [getCollectionRef, lastVisible]);
 
 
   const addTransaction = async (transaction: Omit<Transaction, 'id'>) => {
