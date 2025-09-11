@@ -66,7 +66,8 @@ const ProductDisplay = () => {
             });
 
             if (!res.ok) {
-                throw new Error('Failed to create checkout session');
+                 const errorBody = await res.json().catch(() => ({ error: 'Failed to parse error body' }));
+                 throw new Error(`Failed to create checkout session: ${res.statusText} - ${errorBody.error || 'No additional error info'}`);
             }
 
             const { sessionId } = await res.json();
@@ -257,5 +258,3 @@ const ProductDisplay = () => {
 export default function PricingPage() {
     return <ProductDisplay />;
 }
-
-    
