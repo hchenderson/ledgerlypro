@@ -239,8 +239,8 @@ const ProductDisplay = () => {
                         {plan === 'pro' ? (
                             <Button className="w-full" disabled>Current Plan</Button>
                         ) : (
-                            <Button className="w-full" onClick={() => promoApplied ? setPlan('pro') : handleCreateCheckout('price_pro_yearly')}>
-                                {isLoading === 'price_pro_yearly' && <Loader2 className="animate-spin" />}
+                            <Button className="w-full" onClick={() => promoApplied ? setPlan('pro') : handleCreateCheckout('price_1S5nrARs9qnEJnitiMmszdg7')}>
+                                {isLoading === 'price_1S5nrARs9qnEJnitiMmszdg7' && <Loader2 className="animate-spin" />}
                                 {promoApplied ? "Activate Pro" : "Choose Yearly"}
                             </Button>
                         )}
