@@ -26,7 +26,7 @@ const GoogleIcon = () => (
 export default function SignInPage() {
     const router = useRouter();
     const { toast } = useToast();
-    const { setOnboardingComplete } = useAuth();
+    const { setOnboardingComplete, onboardingComplete } = useAuth();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -36,10 +36,11 @@ export default function SignInPage() {
         try {
             const result = await signInWithGoogle();
             const additionalInfo = getAdditionalUserInfo(result);
-            if(additionalInfo?.isNewUser) {
+            // Instead of just checking isNewUser, we rely on our onboardingComplete state from the hook,
+            // which is fetched from Firestore and is the single source of truth.
+            if(additionalInfo?.isNewUser || !onboardingComplete) {
                 router.push("/welcome");
             } else {
-                setOnboardingComplete(true);
                 router.push("/dashboard");
             }
         } catch (error) {
@@ -59,8 +60,8 @@ export default function SignInPage() {
         setIsSubmitting(true);
         try {
             await signInWithEmail(email, password);
-            setOnboardingComplete(true);
-            router.push("/dashboard");
+            // The AuthLayout will handle redirection based on the onboardingComplete state.
+            // We just need to trigger a state update.
         } catch (error: any) {
             console.error("Email Sign-in failed:", error)
             let description = "An unexpected error occurred. Please try again.";

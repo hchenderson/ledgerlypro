@@ -49,18 +49,7 @@ const ProductDisplay = () => {
             });
             return;
         }
-
-        // TODO: The backend API route at '/api/stripe/create-checkout-session' needs to be created.
-        // This function is temporarily disabled and will show a "Coming soon!" message.
-        // Once the backend is ready, uncomment the logic below.
-        toast({
-            title: 'Coming soon!',
-            description: 'The payment system is not yet configured.'
-        });
-        return;
-
-
-        /*
+        
         setIsLoading(priceId);
 
         try {
@@ -101,7 +90,6 @@ const ProductDisplay = () => {
         } finally {
             setIsLoading(null);
         }
-        */
     }
 
 

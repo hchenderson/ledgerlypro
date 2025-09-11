@@ -27,7 +27,7 @@ export default function WelcomePage() {
     const [step, setStep] = useState(1);
     const [name, setName] = useState('');
     const [startingBalance, setStartingBalance] = useState('');
-    const [subscription, setSubscription] = useState<'free' | 'pro'>('free');
+    const [subscription, setSubscription] = useState<'free' | 'pro-monthly' | 'pro-yearly'>('free');
     const [seedData, setSeedData] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -82,7 +82,7 @@ export default function WelcomePage() {
             
             const settingsRef = doc(db, 'users', user.uid, 'settings', 'main');
             
-            await setPlan(subscription);
+            await setPlan(subscription.startsWith('pro') ? 'pro' : 'free');
 
             const balance = parseFloat(startingBalance);
              await setDoc(settingsRef, { 
@@ -173,18 +173,18 @@ export default function WelcomePage() {
                                     <p className="text-xs text-muted-foreground mt-2">Basic features</p>
                                     {subscription === 'free' && <Check className="absolute top-2 right-2 h-5 w-5 text-primary" />}
                                 </button>
-                                <button onClick={() => setSubscription('pro')} className={cn("rounded-lg border p-4 text-left transition-all relative", subscription === 'pro' && 'ring-2 ring-primary border-primary')}>
-                                     <h4 className="font-semibold">Pro</h4>
+                                <button onClick={() => setSubscription('pro-monthly')} className={cn("rounded-lg border p-4 text-left transition-all relative", subscription === 'pro-monthly' && 'ring-2 ring-primary border-primary')}>
+                                     <h4 className="font-semibold">Pro Monthly</h4>
                                     <p className="text-sm text-muted-foreground">$9.99 / month</p>
                                     <p className="text-xs text-muted-foreground mt-2">All pro features</p>
-                                    {subscription === 'pro' && <Check className="absolute top-2 right-2 h-5 w-5 text-primary" />}
+                                    {subscription === 'pro-monthly' && <Check className="absolute top-2 right-2 h-5 w-5 text-primary" />}
                                 </button>
-                                 <button onClick={() => setSubscription('pro')} className={cn("rounded-lg border p-4 text-left transition-all relative", subscription === 'pro' && 'ring-2 ring-primary border-primary')}>
+                                 <button onClick={() => setSubscription('pro-yearly')} className={cn("rounded-lg border p-4 text-left transition-all relative", subscription === 'pro-yearly' && 'ring-2 ring-primary border-primary')}>
                                     <Sparkles className="absolute top-2 left-2 size-4 text-primary" />
                                     <h4 className="font-semibold">Pro Yearly</h4>
                                     <p className="text-sm text-muted-foreground">$99 / year</p>
                                     <p className="text-xs font-bold text-primary">Save 17%</p>
-                                    {subscription === 'pro' && <Check className="absolute top-2 right-2 h-5 w-5 text-primary" />}
+                                    {subscription === 'pro-yearly' && <Check className="absolute top-2 right-2 h-5 w-5 text-primary" />}
                                 </button>
                             </div>
                         </div>
