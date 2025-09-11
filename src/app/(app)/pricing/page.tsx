@@ -197,8 +197,8 @@ const ProductDisplay = () => {
                         {plan === 'pro' ? (
                             <Button className="w-full" disabled>Current Plan</Button>
                         ) : (
-                            <Button className="w-full" variant={promoApplied ? "default" : "outline"} onClick={() => promoApplied ? setPlan('pro') : handleCreateCheckout('price_pro_monthly')}>
-                                {isLoading === 'price_pro_monthly' && <Loader2 className="animate-spin" />}
+                            <Button className="w-full" variant={promoApplied ? "default" : "outline"} onClick={() => promoApplied ? setPlan('pro') : handleCreateCheckout('price_1S5nrzRs9qnEJnit6XPAWeNi')}>
+                                {isLoading === 'price_1S5nrzRs9qnEJnit6XPAWeNi' && <Loader2 className="animate-spin" />}
                                 {promoApplied ? "Activate Pro" : "Choose Monthly"}
                             </Button>
                         )}
@@ -257,3 +257,5 @@ const ProductDisplay = () => {
 export default function PricingPage() {
     return <ProductDisplay />;
 }
+
+    
