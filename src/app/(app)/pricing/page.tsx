@@ -4,13 +4,14 @@
 import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Check, X, Sparkles } from "lucide-react";
+import { Check, X, Sparkles, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { validPromoCodes } from '@/lib/promo-codes';
+import { getStripe } from '@/lib/stripe';
 
 const freeFeatures = [
     { text: "Up to 50 transactions/month", included: true },
@@ -32,23 +33,67 @@ const proFeatures = [
     { text: "Priority Support", included: true },
 ];
 
-
 const ProductDisplay = () => {
-    const { plan, setPlan } = useAuth();
+    const { plan, setPlan, user } = useAuth();
     const { toast } = useToast();
     const [promoCode, setPromoCode] = useState('');
     const [promoApplied, setPromoApplied] = useState(false);
+    const [isLoading, setIsLoading] = useState<string | null>(null);
 
-    const handleChoosePlan = (newPlan: 'free' | 'pro') => {
-        setPlan(newPlan);
-        toast({
-            title: "Plan Updated!",
-            description: `You are now on the ${newPlan === 'pro' ? 'Pro' : 'Free'} plan.`
-        })
+    const handleCreateCheckout = async (priceId: string) => {
+        if (!user) {
+            toast({
+                variant: 'destructive',
+                title: 'Not signed in',
+                description: 'You must be signed in to purchase a plan.'
+            });
+            return;
+        }
+
+        setIsLoading(priceId);
+
+        try {
+            const res = await fetch('/api/stripe/create-checkout-session', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    priceId,
+                    userId: user.uid,
+                    email: user.email,
+                }),
+            });
+
+            if (!res.ok) {
+                throw new Error('Failed to create checkout session');
+            }
+
+            const { sessionId } = await res.json();
+            const stripe = await getStripe();
+            if (stripe) {
+                const { error } = await stripe.redirectToCheckout({ sessionId });
+                if (error) {
+                    throw new Error(error.message);
+                }
+            }
+
+        } catch (error) {
+            console.error(error);
+            const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
+            toast({
+                variant: 'destructive',
+                title: 'Checkout Error',
+                description: `Could not proceed to checkout. ${errorMessage}`,
+            });
+        } finally {
+            setIsLoading(null);
+        }
     }
 
+
     const handleApplyPromo = () => {
-        if(validPromoCodes.includes(promoCode.toUpperCase())) {
+        if (validPromoCodes.includes(promoCode.toUpperCase())) {
             setPromoApplied(true);
             toast({
                 title: 'Promo Code Applied!',
@@ -62,7 +107,7 @@ const ProductDisplay = () => {
             });
         }
     }
-    
+
     return (
         <div className="max-w-7xl mx-auto">
             <div className="text-center mb-12">
@@ -73,19 +118,19 @@ const ProductDisplay = () => {
                     Start for free, or unlock powerful bookkeeping features. Cancel anytime.
                 </p>
             </div>
-            
+
             {!promoApplied && plan !== 'pro' && (
                 <Card className="max-w-md mx-auto mb-8">
                     <CardHeader>
-                        <CardTitle className="flex items-center gap-2"><Sparkles className="text-primary"/> Have a Promo Code?</CardTitle>
+                        <CardTitle className="flex items-center gap-2"><Sparkles className="text-primary" /> Have a Promo Code?</CardTitle>
                     </CardHeader>
                     <CardContent className="flex items-end gap-2">
                         <div className="w-full space-y-2">
                             <Label htmlFor="promo-code">Promo Code</Label>
-                            <Input 
-                                id="promo-code" 
-                                placeholder="Enter your code" 
-                                value={promoCode} 
+                            <Input
+                                id="promo-code"
+                                placeholder="Enter your code"
+                                value={promoCode}
                                 onChange={(e) => setPromoCode(e.target.value)}
                             />
                         </div>
@@ -95,17 +140,17 @@ const ProductDisplay = () => {
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                    <Card>
+                <Card>
                     <CardHeader className="pb-4">
                         <CardTitle className="text-2xl">Free</CardTitle>
                         <CardDescription>For getting started with the basics.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6">
                         <div className="flex items-baseline gap-2">
-                                <span className="text-5xl font-bold font-code">$0</span>
-                                <span className="text-muted-foreground">/ month</span>
+                            <span className="text-5xl font-bold font-code">$0</span>
+                            <span className="text-muted-foreground">/ month</span>
                         </div>
-                            <ul className="space-y-3">
+                        <ul className="space-y-3">
                             {freeFeatures.map(feature => (
                                 <li key={feature.text} className="flex items-center gap-2">
                                     {feature.included ? <Check className="h-5 w-5 text-primary" /> : <X className="h-5 w-5 text-muted-foreground" />}
@@ -115,10 +160,10 @@ const ProductDisplay = () => {
                         </ul>
                     </CardContent>
                     <CardFooter>
-                         {plan === 'free' ? (
+                        {plan === 'free' ? (
                             <Button className="w-full" variant="outline" disabled>Current Plan</Button>
                         ) : (
-                            <Button className="w-full" variant="outline" onClick={() => handleChoosePlan('free')}>Downgrade</Button>
+                            <Button className="w-full" variant="outline" onClick={() => handleCreateCheckout('price_free_plan')}>Downgrade</Button>
                         )}
                     </CardFooter>
                 </Card>
@@ -139,20 +184,21 @@ const ProductDisplay = () => {
                             )}
                             <span className="text-muted-foreground">/ month</span>
                         </div>
-                            <ul className="space-y-3">
+                        <ul className="space-y-3">
                             {proFeatures.map(feature => (
                                 <li key={feature.text} className="flex items-center gap-2">
-                                        <Check className="h-5 w-5 text-primary" />
+                                    <Check className="h-5 w-5 text-primary" />
                                     <span className="text-foreground">{feature.text}</span>
                                 </li>
                             ))}
                         </ul>
                     </CardContent>
                     <CardFooter>
-                       {plan === 'pro' ? (
+                        {plan === 'pro' ? (
                             <Button className="w-full" disabled>Current Plan</Button>
                         ) : (
-                            <Button className="w-full" variant={promoApplied ? "default" : "outline"} onClick={() => handleChoosePlan('pro')}>
+                            <Button className="w-full" variant={promoApplied ? "default" : "outline"} onClick={() => promoApplied ? setPlan('pro') : handleCreateCheckout('price_pro_monthly')}>
+                                {isLoading === 'price_pro_monthly' && <Loader2 className="animate-spin" />}
                                 {promoApplied ? "Activate Pro" : "Choose Monthly"}
                             </Button>
                         )}
@@ -160,7 +206,7 @@ const ProductDisplay = () => {
                 </Card>
 
                 <Card className="border-2 border-primary relative">
-                        <Badge className="absolute -top-3 left-1/2 -translate-x-1/2">Most Popular</Badge>
+                    <Badge className="absolute -top-3 left-1/2 -translate-x-1/2">Most Popular</Badge>
                     <CardHeader className="pb-4">
                         <CardTitle className="text-2xl">Pro Yearly</CardTitle>
                         <CardDescription>Save over 17% and get the best value.</CardDescription>
@@ -193,15 +239,16 @@ const ProductDisplay = () => {
                         {plan === 'pro' ? (
                             <Button className="w-full" disabled>Current Plan</Button>
                         ) : (
-                           <Button className="w-full" onClick={() => handleChoosePlan('pro')}>
-                             {promoApplied ? "Activate Pro" : "Choose Yearly"}
-                           </Button>
+                            <Button className="w-full" onClick={() => promoApplied ? setPlan('pro') : handleCreateCheckout('price_pro_yearly')}>
+                                {isLoading === 'price_pro_yearly' && <Loader2 className="animate-spin" />}
+                                {promoApplied ? "Activate Pro" : "Choose Yearly"}
+                            </Button>
                         )}
                     </CardFooter>
                 </Card>
             </div>
-                <p className="text-center text-sm text-muted-foreground mt-8">
-                This is a demo. Clicking a button will update your plan status locally.
+            <p className="text-center text-sm text-muted-foreground mt-8">
+                You will be redirected to Stripe to complete your purchase.
             </p>
         </div>
     );
