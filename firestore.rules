@@ -1,10 +1,19 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Users can only read or write their own documents and subcollections.
-    match /users/{userId}/{document=**} {
-      allow read, write: if request.auth.uid == userId;
+    // By default, deny all reads and writes
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Allow users to read and write only their own data
+    match /users/{userId}/{collection}/{docId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Allow users to manage their own settings document
+     match /users/{userId}/settings/main {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
     }
   }
 }
