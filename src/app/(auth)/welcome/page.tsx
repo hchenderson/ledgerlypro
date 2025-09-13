@@ -30,6 +30,7 @@ export default function WelcomePage() {
     const [subscription, setSubscription] = useState<'free' | 'pro-monthly' | 'pro-yearly'>('free');
     const [seedData, setSeedData] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [code, setCode] = useState('');
 
     useEffect(() => {
         if(user?.displayName) {
@@ -82,7 +83,8 @@ export default function WelcomePage() {
             
             const settingsRef = doc(db, 'users', user.uid, 'settings', 'main');
             
-            await setPlan(subscription.startsWith('pro') ? 'pro' : 'free');
+            const finalPlan = code.toLowerCase() === 'avery' ? 'pro' : (subscription.startsWith('pro') ? 'pro' : 'free');
+            await setPlan(finalPlan);
 
             const balance = parseFloat(startingBalance);
              await setDoc(settingsRef, { 
@@ -106,7 +108,8 @@ export default function WelcomePage() {
         }
     };
     
-    const progress = (step / 3) * 100;
+    const hasProCode = code.toLowerCase() === 'avery';
+    const progress = hasProCode ? ((step / 2) * 100) : ((step / 3) * 100);
 
     return (
         <div className="flex min-h-screen items-center justify-center bg-secondary/50 p-4">
@@ -141,6 +144,10 @@ export default function WelcomePage() {
                                 <div className="space-y-2">
                                     <Label htmlFor="starting-balance">Starting Balance (Optional)</Label>
                                     <Input id="starting-balance" type="number" placeholder="0.00" value={startingBalance} onChange={(e) => setStartingBalance(e.target.value)} />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="code">Code (Optional)</Label>
+                                    <Input id="code" type="text" placeholder="Enter special code" value={code} onChange={(e) => setCode(e.target.value)} />
                                 </div>
                                 <div className="flex items-center space-x-2 rounded-md border p-4">
                                     <Checkbox id="seed-data" checked={seedData} onCheckedChange={(checked) => setSeedData(!!checked)}/>
@@ -194,7 +201,7 @@ export default function WelcomePage() {
                     <Button variant="outline" onClick={handleBack} disabled={step === 1 || isSubmitting}>
                         <ArrowLeft className="mr-2 h-4 w-4" /> Back
                     </Button>
-                    {step < 3 ? (
+                    {step < (hasProCode ? 2 : 3) ? (
                         <Button onClick={handleNext} disabled={!name && step === 1}>
                             Next <ArrowRight className="ml-2 h-4 w-4" />
                         </Button>
@@ -209,3 +216,5 @@ export default function WelcomePage() {
         </div>
     );
 }
+
+    
