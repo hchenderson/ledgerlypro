@@ -1,13 +1,12 @@
 
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
-import { validPromoCodes } from '@/lib/promo-codes';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 export async function POST(request: Request) {
   try {
-    const { priceId, userId, email, promoCode } = await request.json();
+    const { priceId, userId, email } = await request.json();
 
     if (!priceId || !userId || !email) {
       return NextResponse.json({ error: 'Missing required parameters: priceId, userId, or email' }, { status: 400 });
@@ -29,15 +28,6 @@ export async function POST(request: Request) {
         success_url: `${origin}/stripe/success?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${origin}/stripe/cancel`,
     };
-    
-    if (promoCode && validPromoCodes.includes(promoCode.toUpperCase())) {
-      const coupon = await stripe.coupons.create({
-        percent_off: 100,
-        duration: 'forever',
-        name: `Promo Code ${promoCode}`,
-      });
-      stripeSessionOptions.discounts = [{ coupon: coupon.id }];
-    }
 
     const session = await stripe.checkout.sessions.create(stripeSessionOptions);
 
@@ -47,5 +37,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Could not create checkout session' }, { status: 500 });
   }
 }
-
-    

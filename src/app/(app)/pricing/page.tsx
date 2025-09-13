@@ -4,13 +4,10 @@
 import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Check, X, Sparkles, Loader2 } from "lucide-react";
+import { Check, X, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { validPromoCodes } from '@/lib/promo-codes';
 import { getStripe } from '@/lib/stripe';
 import { useRouter } from 'next/navigation';
 
@@ -38,11 +35,9 @@ const ProductDisplay = () => {
     const { plan, setPlan, user } = useAuth();
     const router = useRouter();
     const { toast } = useToast();
-    const [promoCode, setPromoCode] = useState('');
-    const [promoApplied, setPromoApplied] = useState(false);
     const [isLoading, setIsLoading] = useState<string | null>(null);
 
-    const handleCreateCheckout = async (priceId: string, promoCode?: string) => {
+    const handleCreateCheckout = async (priceId: string) => {
         if (!user) {
             toast({
                 variant: 'destructive',
@@ -64,7 +59,6 @@ const ProductDisplay = () => {
                     priceId,
                     userId: user.uid,
                     email: user.email,
-                    promoCode: promoCode || null,
                 }),
             });
 
@@ -95,22 +89,6 @@ const ProductDisplay = () => {
         }
     }
 
-
-    const handleApplyPromo = () => {
-        if (validPromoCodes.includes(promoCode.toUpperCase())) {
-            setPromoApplied(true);
-            toast({
-                title: 'Promo Code Applied!',
-                description: 'The discount will be applied at checkout.',
-            });
-        } else {
-            toast({
-                variant: 'destructive',
-                title: 'Invalid Promo Code',
-                description: 'The code you entered is not valid. Please try again.',
-            });
-        }
-    }
     
     const handleFreePlan = () => {
         setPlan('free');
@@ -131,26 +109,6 @@ const ProductDisplay = () => {
                     Start for free, or unlock powerful bookkeeping features. Cancel anytime.
                 </p>
             </div>
-
-            {!promoApplied && plan !== 'pro' && (
-                <Card className="max-w-md mx-auto mb-8">
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2"><Sparkles className="text-primary" /> Have a Promo Code?</CardTitle>
-                    </CardHeader>
-                    <CardContent className="flex items-end gap-2">
-                        <div className="w-full space-y-2">
-                            <Label htmlFor="promo-code">Promo Code</Label>
-                            <Input
-                                id="promo-code"
-                                placeholder="Enter your code"
-                                value={promoCode}
-                                onChange={(e) => setPromoCode(e.target.value)}
-                            />
-                        </div>
-                        <Button onClick={handleApplyPromo}>Apply</Button>
-                    </CardContent>
-                </Card>
-            )}
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                 <Card>
@@ -187,14 +145,7 @@ const ProductDisplay = () => {
                     </CardHeader>
                     <CardContent className="space-y-6">
                         <div className="flex items-baseline gap-2">
-                            {promoApplied ? (
-                                <>
-                                    <span className="text-5xl font-bold font-code text-primary line-through">$9.99</span>
-                                    <span className="text-5xl font-bold font-code">$0</span>
-                                </>
-                            ) : (
-                                <span className="text-5xl font-bold font-code">$9.99</span>
-                            )}
+                            <span className="text-5xl font-bold font-code">$9.99</span>
                             <span className="text-muted-foreground">/ month</span>
                         </div>
                         <ul className="space-y-3">
@@ -212,7 +163,7 @@ const ProductDisplay = () => {
                         ) : (
                              <Button 
                                 className="w-full" 
-                                onClick={() => handleCreateCheckout('price_1S6cOBRyVxTUItc4K968x9mz', promoApplied ? promoCode : undefined)}
+                                onClick={() => handleCreateCheckout('price_1S6cOBRyVxTUItc4K968x9mz')}
                                 disabled={isLoading === 'price_1S6cOBRyVxTUItc4K968x9mz'}
                             >
                                 {isLoading === 'price_1S6cOBRyVxTUItc4K968x9mz' && <Loader2 className="animate-spin" />}
@@ -231,17 +182,10 @@ const ProductDisplay = () => {
                     <CardContent className="space-y-6">
                         <div className="flex flex-col items-start gap-2">
                             <div className="flex items-baseline gap-2">
-                                {promoApplied ? (
-                                    <>
-                                        <span className="text-5xl font-bold font-code text-primary line-through">$99</span>
-                                        <span className="text-5xl font-bold font-code">$0</span>
-                                    </>
-                                ) : (
-                                    <span className="text-5xl font-bold font-code">$99</span>
-                                )}
+                                <span className="text-5xl font-bold font-code">$99</span>
                                 <span className="text-muted-foreground self-end">/ year</span>
                             </div>
-                            {!promoApplied && <p className="text-sm text-muted-foreground">Equivalent to $8.25/month</p>}
+                            <p className="text-sm text-muted-foreground">Equivalent to $8.25/month</p>
                         </div>
                         <ul className="space-y-3">
                             {proFeatures.map(feature => (
@@ -258,7 +202,7 @@ const ProductDisplay = () => {
                         ) : (
                              <Button 
                                 className="w-full" 
-                                onClick={() => handleCreateCheckout('price_1S6cOyRyVxTUItc43HaCVot0', promoApplied ? promoCode : undefined)}
+                                onClick={() => handleCreateCheckout('price_1S6cOyRyVxTUItc43HaCVot0')}
                                 disabled={isLoading === 'price_1S6cOyRyVxTUItc43HaCVot0'}
                             >
                                 {isLoading === 'price_1S6cOyRyVxTUItc43HaCVot0' && <Loader2 className="animate-spin" />}
@@ -278,5 +222,3 @@ const ProductDisplay = () => {
 export default function PricingPage() {
     return <ProductDisplay />;
 }
-
-    
