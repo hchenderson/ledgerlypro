@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { validPromoCodes } from '@/lib/promo-codes';
 import { getStripe } from '@/lib/stripe';
+import { useRouter } from 'next/navigation';
 
 const freeFeatures = [
     { text: "Up to 50 transactions/month", included: true },
@@ -35,12 +36,13 @@ const proFeatures = [
 
 const ProductDisplay = () => {
     const { plan, setPlan, user } = useAuth();
+    const router = useRouter();
     const { toast } = useToast();
     const [promoCode, setPromoCode] = useState('');
     const [promoApplied, setPromoApplied] = useState(false);
     const [isLoading, setIsLoading] = useState<string | null>(null);
 
-    const handleCreateCheckout = async (priceId: string) => {
+    const handleCreateCheckout = async (priceId: string, promoCode?: string) => {
         if (!user) {
             toast({
                 variant: 'destructive',
@@ -62,6 +64,7 @@ const ProductDisplay = () => {
                     priceId,
                     userId: user.uid,
                     email: user.email,
+                    promoCode: promoCode || null,
                 }),
             });
 
@@ -98,7 +101,7 @@ const ProductDisplay = () => {
             setPromoApplied(true);
             toast({
                 title: 'Promo Code Applied!',
-                description: 'You have unlocked the Pro plan for free.',
+                description: 'The discount will be applied at checkout.',
             });
         } else {
             toast({
@@ -107,6 +110,15 @@ const ProductDisplay = () => {
                 description: 'The code you entered is not valid. Please try again.',
             });
         }
+    }
+    
+    const handleFreePlan = () => {
+        setPlan('free');
+        toast({
+            title: "You are on the Free Plan",
+            description: "You have been successfully downgraded to the free plan."
+        });
+        router.push('/dashboard');
     }
 
     return (
@@ -164,7 +176,7 @@ const ProductDisplay = () => {
                         {plan === 'free' ? (
                             <Button className="w-full" variant="outline" disabled>Current Plan</Button>
                         ) : (
-                            <Button className="w-full" variant="outline" onClick={() => handleCreateCheckout('price_free_plan')}>Downgrade</Button>
+                            <Button className="w-full" variant="outline" onClick={handleFreePlan}>Downgrade</Button>
                         )}
                     </CardFooter>
                 </Card>
@@ -198,9 +210,13 @@ const ProductDisplay = () => {
                         {plan === 'pro' ? (
                             <Button className="w-full" disabled>Current Plan</Button>
                         ) : (
-                            <Button className="w-full" variant={promoApplied ? "default" : "outline"} onClick={() => promoApplied ? setPlan('pro') : handleCreateCheckout('price_1S6cOBRyVxTUItc4K968x9mz')}>
+                             <Button 
+                                className="w-full" 
+                                onClick={() => handleCreateCheckout('price_1S6cOBRyVxTUItc4K968x9mz', promoApplied ? promoCode : undefined)}
+                                disabled={isLoading === 'price_1S6cOBRyVxTUItc4K968x9mz'}
+                            >
                                 {isLoading === 'price_1S6cOBRyVxTUItc4K968x9mz' && <Loader2 className="animate-spin" />}
-                                {promoApplied ? "Activate Pro" : "Choose Monthly"}
+                                Choose Monthly
                             </Button>
                         )}
                     </CardFooter>
@@ -240,9 +256,13 @@ const ProductDisplay = () => {
                         {plan === 'pro' ? (
                             <Button className="w-full" disabled>Current Plan</Button>
                         ) : (
-                            <Button className="w-full" onClick={() => promoApplied ? setPlan('pro') : handleCreateCheckout('price_1S6cOyRyVxTUItc43HaCVot0')}>
+                             <Button 
+                                className="w-full" 
+                                onClick={() => handleCreateCheckout('price_1S6cOyRyVxTUItc43HaCVot0', promoApplied ? promoCode : undefined)}
+                                disabled={isLoading === 'price_1S6cOyRyVxTUItc43HaCVot0'}
+                            >
                                 {isLoading === 'price_1S6cOyRyVxTUItc43HaCVot0' && <Loader2 className="animate-spin" />}
-                                {promoApplied ? "Activate Pro" : "Choose Yearly"}
+                                Choose Yearly
                             </Button>
                         )}
                     </CardFooter>
