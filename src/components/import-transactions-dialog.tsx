@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useMemo, type ReactNode, useEffect } from "react";
@@ -231,7 +232,7 @@ export function ImportTransactionsDialog({
     const processCats = (cats: (Category | SubCategory)[], type: 'income' | 'expense') => {
         cats.forEach(c => {
             const targetSet = (c as Category).type === 'income' || type === 'income' ? incomeCats : expenseCats;
-            targetSet.add(c.name);
+            if(c.name) targetSet.add(c.name);
             if (c.subCategories) {
                 processCats(c.subCategories, (c as Category).type || type);
             }
@@ -240,7 +241,10 @@ export function ImportTransactionsDialog({
     processCats(categories.filter(c => c.type === 'income'), 'income');
     processCats(categories.filter(c => c.type === 'expense'), 'expense');
 
-    return { income: Array.from(incomeCats), expense: Array.from(expenseCats) };
+    return { 
+        income: Array.from(incomeCats).filter(Boolean), 
+        expense: Array.from(expenseCats).filter(Boolean) 
+    };
   }, [categories]);
 
   const renderContent = () => {
