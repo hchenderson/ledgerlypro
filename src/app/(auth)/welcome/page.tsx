@@ -9,9 +9,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { Check, User, Wallet, CreditCard, ArrowRight, ArrowLeft, Loader2, Sparkles } from 'lucide-react';
+import { User, Wallet, ArrowRight, ArrowLeft, Loader2 } from 'lucide-react';
 import { updateProfile } from 'firebase/auth';
-import { cn } from '@/lib/utils';
 import { Progress } from '@/components/ui/progress';
 import { doc, setDoc, writeBatch, collection } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -21,16 +20,14 @@ import { Checkbox } from '@/components/ui/checkbox';
 
 
 export default function WelcomePage() {
-    const { user, setPlan, setOnboardingComplete } = useAuth();
+    const { user, setOnboardingComplete } = useAuth();
     const router = useRouter();
     const { toast } = useToast();
     const [step, setStep] = useState(1);
     const [name, setName] = useState('');
     const [startingBalance, setStartingBalance] = useState('');
-    const [subscription, setSubscription] = useState<'free' | 'pro-monthly' | 'pro-yearly'>('free');
     const [seedData, setSeedData] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [code, setCode] = useState('');
 
     useEffect(() => {
         if(user?.displayName) {
@@ -82,9 +79,6 @@ export default function WelcomePage() {
             await updateProfile(user, { displayName: name });
             
             const settingsRef = doc(db, 'users', user.uid, 'settings', 'main');
-            
-            const finalPlan = code.toLowerCase() === 'avery' ? 'pro' : (subscription.startsWith('pro') ? 'pro' : 'free');
-            await setPlan(finalPlan);
 
             const balance = parseFloat(startingBalance);
              await setDoc(settingsRef, { 
@@ -108,8 +102,7 @@ export default function WelcomePage() {
         }
     };
     
-    const hasProCode = code.toLowerCase() === 'avery';
-    const progress = hasProCode ? ((step / 2) * 100) : ((step / 3) * 100);
+    const progress = (step / 2) * 100;
 
     return (
         <div className="flex min-h-screen items-center justify-center bg-secondary/50 p-4">
@@ -145,10 +138,6 @@ export default function WelcomePage() {
                                     <Label htmlFor="starting-balance">Starting Balance (Optional)</Label>
                                     <Input id="starting-balance" type="number" placeholder="0.00" value={startingBalance} onChange={(e) => setStartingBalance(e.target.value)} />
                                 </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="code">Code (Optional)</Label>
-                                    <Input id="code" type="text" placeholder="Enter special code" value={code} onChange={(e) => setCode(e.target.value)} />
-                                </div>
                                 <div className="flex items-center space-x-2 rounded-md border p-4">
                                     <Checkbox id="seed-data" checked={seedData} onCheckedChange={(checked) => setSeedData(!!checked)}/>
                                     <div className="grid gap-1.5 leading-none">
@@ -166,42 +155,12 @@ export default function WelcomePage() {
                             </div>
                         </div>
                     )}
-                    {step === 3 && (
-                        <div className="space-y-4 text-center animate-in fade-in-0 duration-500">
-                            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
-                                <CreditCard className="h-6 w-6" />
-                            </div>
-                             <h3 className="text-xl font-semibold">Choose your plan</h3>
-                             <p className="text-muted-foreground">You can always upgrade or downgrade later.</p>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-                                <button onClick={() => setSubscription('free')} className={cn("rounded-lg border p-4 text-left transition-all relative", subscription === 'free' && 'ring-2 ring-primary border-primary')}>
-                                    <h4 className="font-semibold">Free</h4>
-                                    <p className="text-sm text-muted-foreground">$0 / month</p>
-                                    <p className="text-xs text-muted-foreground mt-2">Basic features</p>
-                                    {subscription === 'free' && <Check className="absolute top-2 right-2 h-5 w-5 text-primary" />}
-                                </button>
-                                <button onClick={() => setSubscription('pro-monthly')} className={cn("rounded-lg border p-4 text-left transition-all relative", subscription === 'pro-monthly' && 'ring-2 ring-primary border-primary')}>
-                                     <h4 className="font-semibold">Pro Monthly</h4>
-                                    <p className="text-sm text-muted-foreground">$9.99 / month</p>
-                                    <p className="text-xs text-muted-foreground mt-2">All pro features</p>
-                                    {subscription === 'pro-monthly' && <Check className="absolute top-2 right-2 h-5 w-5 text-primary" />}
-                                </button>
-                                 <button onClick={() => setSubscription('pro-yearly')} className={cn("rounded-lg border p-4 text-left transition-all relative", subscription === 'pro-yearly' && 'ring-2 ring-primary border-primary')}>
-                                    <Sparkles className="absolute top-2 left-2 size-4 text-primary" />
-                                    <h4 className="font-semibold">Pro Yearly</h4>
-                                    <p className="text-sm text-muted-foreground">$99 / year</p>
-                                    <p className="text-xs font-bold text-primary">Save 17%</p>
-                                    {subscription === 'pro-yearly' && <Check className="absolute top-2 right-2 h-5 w-5 text-primary" />}
-                                </button>
-                            </div>
-                        </div>
-                    )}
                 </CardContent>
                 <CardFooter className="flex justify-between">
                     <Button variant="outline" onClick={handleBack} disabled={step === 1 || isSubmitting}>
                         <ArrowLeft className="mr-2 h-4 w-4" /> Back
                     </Button>
-                    {step < (hasProCode ? 2 : 3) ? (
+                    {step < 2 ? (
                         <Button onClick={handleNext} disabled={!name && step === 1}>
                             Next <ArrowRight className="ml-2 h-4 w-4" />
                         </Button>
@@ -216,5 +175,3 @@ export default function WelcomePage() {
         </div>
     );
 }
-
-    

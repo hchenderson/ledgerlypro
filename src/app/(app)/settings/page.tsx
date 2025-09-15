@@ -9,8 +9,6 @@ import { Label } from "@/components/ui/label";
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
 import { updateProfile } from 'firebase/auth';
-import { Badge } from '@/components/ui/badge';
-import Link from 'next/link';
 import { useUserData } from '@/hooks/use-user-data';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { doc, getDoc, setDoc } from 'firebase/firestore';
@@ -19,7 +17,7 @@ import { Switch } from '@/components/ui/switch';
 
 export default function SettingsPage() {
     const { toast } = useToast();
-    const { user, plan, showInstructions, setShowInstructions } = useAuth();
+    const { user, showInstructions, setShowInstructions } = useAuth();
     const { clearTransactions, clearAllData } = useUserData();
     const [name, setName] = useState('');
     const [startingBalance, setStartingBalance] = useState('');
@@ -153,23 +151,6 @@ export default function SettingsPage() {
                             onCheckedChange={setShowInstructions}
                         />
                     </div>
-                </CardContent>
-                </Card>
-                <Card>
-                <CardHeader>
-                    <CardTitle>Subscription</CardTitle>
-                    <CardDescription>Manage your billing and subscription.</CardDescription>
-                </CardHeader>
-                 <CardContent className="flex items-center justify-between rounded-lg border p-4">
-                    <div>
-                        <div className="font-medium">You are on the <Badge variant={plan === 'pro' ? 'default' : 'secondary'} className="font-bold capitalize">{plan}</Badge> plan.</div>
-                        <p className="text-sm text-muted-foreground">
-                            {plan === 'pro' ? 'You have access to all features.' : 'Limited to 50 transactions per month.'}
-                        </p>
-                    </div>
-                     <Button asChild>
-                        <Link href="/pricing">{plan === 'pro' ? 'Manage Plan' : 'Upgrade Plan'}</Link>
-                     </Button>
                 </CardContent>
                 </Card>
                 <Card>

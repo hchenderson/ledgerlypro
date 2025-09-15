@@ -13,10 +13,8 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuPortal,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
 } from "@/components/ui/dropdown-menu";
-import { CreditCard, LogOut, Settings, User, Monitor, Moon, Sun } from "lucide-react";
+import { LogOut, Settings, User, Monitor, Moon, Sun } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/hooks/use-auth";
 import { signOut } from "@/lib/auth";
@@ -58,12 +56,6 @@ export function UserNav() {
             <Link href="/settings">
               <User className="mr-2 h-4 w-4" />
               <span>Profile</span>
-            </Link>
-          </DropdownMenuItem>
-          <DropdownMenuItem asChild>
-            <Link href="/pricing">
-              <CreditCard className="mr-2 h-4 w-4" />
-              <span>Billing</span>
             </Link>
           </DropdownMenuItem>
           <DropdownMenuItem asChild>

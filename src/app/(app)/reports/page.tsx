@@ -22,8 +22,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
-import { FeatureGate } from '@/components/feature-gate';
-import { useAuth } from '@/hooks/use-auth';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 const OverviewChart = lazy(() => import('@/components/dashboard/overview-chart').then(module => ({ default: module.OverviewChart })));
@@ -37,14 +35,11 @@ function ChartSuspenseFallback() {
     )
 }
 
-function ReportsPageContent() {
+export default function ReportsPage() {
     const reportRef = useRef<HTMLDivElement>(null);
     const { toast } = useToast();
     const { allTransactions } = useUserData();
-    const { plan } = useAuth();
 
-    const isPro = plan === 'pro';
-    
     const [dateRange, setDateRange] = useState<DateRange | undefined>({
       from: startOfMonth(new Date()),
       to: endOfMonth(new Date()),
@@ -106,7 +101,6 @@ function ReportsPageContent() {
     }, [overviewData]);
 
     const handleExportPdf = async () => {
-        if (!isPro) return;
         const input = reportRef.current;
         if (!input) {
             toast({
@@ -175,21 +169,10 @@ function ReportsPageContent() {
                 Your monthly financial overview.
             </p>
         </div>
-        <Tooltip>
-            <TooltipTrigger asChild>
-                <div className="inline-block"> {/* Wrapper div for tooltip on disabled button */}
-                    <Button variant="outline" onClick={handleExportPdf} disabled={!isPro}>
-                        <Upload className="mr-2 h-4 w-4" />
-                        Export PDF
-                    </Button>
-                </div>
-            </TooltipTrigger>
-            {!isPro && (
-                <TooltipContent>
-                    <p>Upgrade to Pro to export reports.</p>
-                </TooltipContent>
-            )}
-        </Tooltip>
+        <Button variant="outline" onClick={handleExportPdf}>
+            <Upload className="mr-2 h-4 w-4" />
+            Export PDF
+        </Button>
       </div>
 
        <Card>
@@ -322,12 +305,4 @@ function ReportsPageContent() {
         </div>
     </div>
   );
-}
-
-export default function ReportsPage() {
-    return (
-        <FeatureGate>
-            <ReportsPageContent />
-        </FeatureGate>
-    )
 }

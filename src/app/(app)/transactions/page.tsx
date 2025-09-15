@@ -16,8 +16,6 @@ import { useToast } from "@/hooks/use-toast";
 import Papa from "papaparse";
 import { useUserData } from "@/hooks/use-user-data";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useAuth } from "@/hooks/use-auth";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -75,7 +73,6 @@ export default function TransactionsPage() {
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const { toast } = useToast();
-  const { plan } = useAuth();
 
   const [descriptionFilter, setDescriptionFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
@@ -86,8 +83,6 @@ export default function TransactionsPage() {
   const debouncedDescription = useDebounce(descriptionFilter, 500);
   const debouncedMinAmount = useDebounce(minAmount, 500);
   const debouncedMaxAmount = useDebounce(maxAmount, 500);
-  
-  const isPro = plan === 'pro';
   
   const filters = useMemo(() => ({
     description: debouncedDescription,
@@ -156,7 +151,6 @@ export default function TransactionsPage() {
   }
   
   const handleExport = () => {
-    if (!isPro) return;
     const csv = Papa.unparse(paginatedTransactions);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
@@ -263,21 +257,10 @@ export default function TransactionsPage() {
                 Showing {paginatedTransactions.length} of {totalPaginatedTransactions} transactions.
             </CardDescription>
         </div>
-         <Tooltip>
-            <TooltipTrigger asChild>
-                 <div className="inline-block"> {/* Wrapper div for tooltip on disabled button */}
-                    <Button onClick={handleExport} variant="outline" disabled={!isPro}>
-                        <Upload className="mr-2 h-4 w-4" />
-                        Export CSV
-                    </Button>
-                </div>
-            </TooltipTrigger>
-            {!isPro && (
-                 <TooltipContent>
-                    <p>Upgrade to Pro to export transactions.</p>
-                </TooltipContent>
-            )}
-        </Tooltip>
+        <Button onClick={handleExport} variant="outline">
+            <Upload className="mr-2 h-4 w-4" />
+            Export CSV
+        </Button>
       </CardHeader>
       <CardContent>
         <Table>

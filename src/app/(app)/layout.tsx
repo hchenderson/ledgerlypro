@@ -62,7 +62,6 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const { categories, addTransaction } = useUserData();
-  const { plan } = useAuth();
 
   const handleTransactionsImported = (importedTransactions: Omit<Transaction, 'id'>[]) => {
       importedTransactions.forEach(t => {
@@ -82,8 +81,6 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
     if (!segment || segment === 'dashboard') return 'Dashboard';
     return segment.charAt(0).toUpperCase() + segment.slice(1);
   };
-  
-  const isPro = plan === 'pro';
 
   return (
     <TooltipProvider>
@@ -100,13 +97,6 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
           <SidebarContent>
             <MainNav />
           </SidebarContent>
-          {!isPro && (
-              <SidebarFooter>
-                <Button asChild className="w-full" variant="secondary">
-                  <Link href="/pricing">Upgrade to Pro</Link>
-                </Button>
-              </SidebarFooter>
-          )}
         </Sidebar>
         <SidebarInset className="bg-background">
           <header className="sticky top-0 z-10 flex h-16 items-center gap-4 border-b bg-background/80 px-4 backdrop-blur-sm md:px-6">
@@ -116,23 +106,14 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
               </div>
               <div className="ml-auto flex items-center gap-2">
                   <ImportTransactionsDialog
-                      isOpen={isPro && isImportDialogOpen}
+                      isOpen={isImportDialogOpen}
                       onOpenChange={setIsImportDialogOpen}
                       onTransactionsImported={handleTransactionsImported}
                     >
-                      <Tooltip>
-                          <TooltipTrigger asChild>
-                              <Button size="sm" variant="outline" className="gap-2" onClick={() => setIsImportDialogOpen(true)} disabled={!isPro}>
-                                  <Download className="size-4" />
-                                  <span className="hidden sm:inline">Import</span>
-                              </Button>
-                          </TooltipTrigger>
-                          {!isPro && (
-                              <TooltipContent>
-                                  <p>Upgrade to Pro to import transactions.</p>
-                              </TooltipContent>
-                          )}
-                      </Tooltip>
+                      <Button size="sm" variant="outline" className="gap-2" onClick={() => setIsImportDialogOpen(true)}>
+                          <Download className="size-4" />
+                          <span className="hidden sm:inline">Import</span>
+                      </Button>
                     </ImportTransactionsDialog>
                   <NewTransactionSheet 
                       isOpen={isSheetOpen}

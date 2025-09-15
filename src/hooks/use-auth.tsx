@@ -7,13 +7,9 @@ import { authState } from '@/lib/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
-type Plan = 'free' | 'pro';
-
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  plan: Plan;
-  setPlan: (plan: Plan) => void;
   onboardingComplete: boolean;
   setOnboardingComplete: (complete: boolean) => void;
   showInstructions: boolean;
@@ -23,8 +19,6 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({ 
   user: null, 
   loading: true,
-  plan: 'free',
-  setPlan: () => {},
   onboardingComplete: false,
   setOnboardingComplete: () => {},
   showInstructions: false,
@@ -34,7 +28,6 @@ const AuthContext = createContext<AuthContextType>({
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [plan, setPlanState] = useState<Plan>('free');
   const [onboardingComplete, setOnboardingCompleteState] = useState(false);
   const [showInstructions, setShowInstructionsState] = useState(false);
 
@@ -46,18 +39,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const userDoc = await getDoc(userDocRef);
         if (userDoc.exists()) {
           const data = userDoc.data();
-          setPlanState(data.plan || 'free');
           setOnboardingCompleteState(data.onboardingComplete || false);
           setShowInstructionsState(data.showInstructions || false);
         } else {
           // New user, set defaults
-          setPlanState('free');
           setOnboardingCompleteState(false);
           setShowInstructionsState(false);
         }
       } else {
         // No user
-        setPlanState('free');
         setOnboardingCompleteState(false);
         setShowInstructionsState(false);
       }
@@ -66,14 +56,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return () => unsubscribe();
   }, []);
-
-  const setPlan = useCallback(async (newPlan: Plan) => {
-    setPlanState(newPlan);
-    if (user) {
-      const userDocRef = doc(db, 'users', user.uid, 'settings', 'main');
-      await setDoc(userDocRef, { plan: newPlan }, { merge: true });
-    }
-  }, [user]);
 
   const setOnboardingComplete = useCallback(async (complete: boolean) => {
       setOnboardingCompleteState(complete);
@@ -92,7 +74,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [user]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, plan, setPlan, onboardingComplete, setOnboardingComplete, showInstructions, setShowInstructions }}>
+    <AuthContext.Provider value={{ user, loading, onboardingComplete, setOnboardingComplete, showInstructions, setShowInstructions }}>
       {children}
     </AuthContext.Provider>
   );
