@@ -78,29 +78,50 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           setPaginatedTransactions([]);
       }
   
-      const queryConstraints: QueryConstraint[] = [orderBy("date", "desc")];
+      const queryConstraints: QueryConstraint[] = [];
       
-      if (filters.description) queryConstraints.push(where("description", ">=", filters.description), where("description", "<=", filters.description + '\uf8ff'));
+      // Firestore limitation: You can only perform range filters on a single field.
+      // We will prioritize date for range filtering. Other filters will be equality checks.
       if (filters.dateRange?.from) queryConstraints.push(where("date", ">=", filters.dateRange.from.toISOString()));
       if (filters.dateRange?.to) queryConstraints.push(where("date", "<=", filters.dateRange.to.toISOString()));
+
+      // Equality check for category
       if (filters.category && filters.category !== 'all') queryConstraints.push(where("category", "==", filters.category));
-      if (filters.minAmount) queryConstraints.push(where("amount", ">=", filters.minAmount));
-      if (filters.maxAmount) queryConstraints.push(where("amount", "<=", filters.maxAmount));
+
+      // For description, we'll have to rely on client-side filtering after the query for a "contains" search,
+      // as Firestore doesn't support it efficiently on text fields combined with other filters.
+      // The >= and <= trick only works for prefix searches and can cause index issues with other range filters.
+      
+      // We can do amount filtering if no date range is selected.
+      if (!filters.dateRange) {
+        if (filters.minAmount) queryConstraints.push(where("amount", ">=", filters.minAmount));
+        if (filters.maxAmount) queryConstraints.push(where("amount", "<=", filters.maxAmount));
+      }
+
+      // Always order by date
+      queryConstraints.push(orderBy("date", "desc"));
       
       let baseQuery = query(collRef, ...queryConstraints);
       
-      const totalCountSnapshot = await getCountFromServer(baseQuery);
-      setTotalPaginatedTransactions(totalCountSnapshot.data().count);
-
-      if (lastVisible && !reset) {
-        baseQuery = query(baseQuery, startAfter(lastVisible));
-      }
-      
-      const finalQuery = query(baseQuery, limit(TRANSACTIONS_PAGE_SIZE));
-      
       try {
+        const totalCountSnapshot = await getCountFromServer(baseQuery);
+        setTotalPaginatedTransactions(totalCountSnapshot.data().count);
+
+        if (lastVisible && !reset) {
+          baseQuery = query(baseQuery, startAfter(lastVisible));
+        }
+        
+        const finalQuery = query(baseQuery, limit(TRANSACTIONS_PAGE_SIZE));
+      
         const documentSnapshots = await getDocs(finalQuery);
         let newTransactions = documentSnapshots.docs.map(doc => doc.data() as Transaction);
+
+        // Client-side filtering for description 'contains'
+        if (filters.description) {
+            newTransactions = newTransactions.filter(t => 
+                t.description.toLowerCase().includes(filters.description.toLowerCase())
+            );
+        }
     
         const lastDoc = documentSnapshots.docs[documentSnapshots.docs.length-1];
         setLastVisible(lastDoc);
