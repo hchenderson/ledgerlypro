@@ -82,7 +82,11 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       
       if (filters.category && filters.category !== 'all') {
         queryConstraints.push(where("category", "==", filters.category));
+        queryConstraints.push(orderBy("category"));
       }
+      
+      queryConstraints.push(orderBy("date", "desc"));
+      
       if (filters.dateRange?.from) {
         queryConstraints.push(where("date", ">=", filters.dateRange.from.toISOString()));
       }
@@ -96,17 +100,11 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         queryConstraints.push(where("amount", "<=", filters.maxAmount));
       }
       
-      // Order by category if filtering by it, then by date.
-      if (filters.category && filters.category !== 'all') {
-          queryConstraints.push(orderBy("category"));
-      }
-      queryConstraints.push(orderBy("date", "desc"));
-      
       let baseQuery = query(collRef, ...queryConstraints);
       
       try {
-        const totalCountSnapshot = await getCountFromServer(baseQuery);
-        const filteredCount = totalCountSnapshot.data().count;
+        const totalCountSnapshot = await getCountFromServer(query(collRef, ...queryConstraints.filter(c => c.type !== 'orderBy'))); // Count without ordering
+        let filteredCount = totalCountSnapshot.data().count;
 
         let newTransactions = [];
         let lastDoc = null;
@@ -119,14 +117,20 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           const finalQuery = query(baseQuery, limit(TRANSACTIONS_PAGE_SIZE));
         
           const documentSnapshots = await getDocs(finalQuery);
-          newTransactions = documentSnapshots.docs.map(doc => doc.data() as Transaction);
+          let docsData = documentSnapshots.docs.map(doc => doc.data() as Transaction);
           
           // Client-side filtering for description 'contains'
           if (filters.description) {
-              newTransactions = newTransactions.filter(t => 
-                  t.description.toLowerCase().includes(filters.description.toLowerCase())
+              const lowercasedDescription = filters.description.toLowerCase();
+              docsData = docsData.filter(t => 
+                  t.description.toLowerCase().includes(lowercasedDescription)
               );
+              // Note: client-side filtering changes the count. This is a simplification.
+              // For perfect count, this filter would also need to be done server-side if possible.
+              filteredCount = docsData.length;
           }
+
+          newTransactions = docsData;
       
           lastDoc = documentSnapshots.docs[documentSnapshots.docs.length-1];
           setHasMore(documentSnapshots.docs.length === TRANSACTIONS_PAGE_SIZE);
@@ -158,44 +162,26 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!transactionsCollRef || !recurringCollRef) return;
   
     for (const rt of recurringTransactions) {
-      let lastProcessedDate = rt.lastAddedDate ? parseISO(rt.lastAddedDate) : startOfDay(parseISO(rt.startDate));
-      
-      if (isBefore(today, lastProcessedDate)) {
-        continue;
-      }
+      const startDate = startOfDay(parseISO(rt.startDate));
+      let lastAdded = rt.lastAddedDate ? startOfDay(parseISO(rt.lastAddedDate)) : null;
 
-      if (isToday(lastProcessedDate) && rt.lastAddedDate) {
-          continue;
-      }
-      
-      let nextDate = lastProcessedDate;
+      // Determine the next date to check from. If it has run before, it's the date after the last one. If not, it's the start date.
+      let nextDate = lastAdded ? lastAdded : startDate;
 
-       if (!rt.lastAddedDate) {
-           if (isBefore(nextDate, today) || isToday(nextDate)) {
-               const newTransactionDoc = doc(transactionsCollRef);
-                 batch.set(newTransactionDoc, {
-                    id: newTransactionDoc.id,
-                    date: nextDate.toISOString(),
-                    description: `(Recurring) ${rt.description}`,
-                    amount: rt.amount,
-                    type: rt.type,
-                    category: rt.category
-                 });
-                 const recurringDocToUpdate = doc(recurringCollRef, rt.id);
-                 batch.update(recurringDocToUpdate, { lastAddedDate: nextDate.toISOString() });
-                 transactionsAdded = true;
-           }
-      }
-
-      if (rt.lastAddedDate) {
-         switch(rt.frequency) {
+      // If lastAdded is null, we need to check from the start date
+      if (!lastAdded) {
+         nextDate = startDate;
+      } else {
+         // If it has been added, calculate the next scheduled date
+          switch(rt.frequency) {
             case 'daily': nextDate = addDays(nextDate, 1); break;
             case 'weekly': nextDate = addWeeks(nextDate, 1); break;
             case 'monthly': nextDate = addMonths(nextDate, 1); break;
             case 'yearly': nextDate = addYears(nextDate, 1); break;
-         }
+          }
       }
   
+      // Loop through and add any transactions that should have occurred up to today
       while (isBefore(nextDate, today) || isToday(nextDate)) {
         const newTransactionDoc = doc(transactionsCollRef);
         batch.set(newTransactionDoc, {
@@ -208,9 +194,10 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         });
         transactionsAdded = true;
   
-        const recurringDocToUpdate = doc(recurringCollRef, rt.id);
-        batch.update(recurringDocToUpdate, { lastAddedDate: nextDate.toISOString() });
+        // Update lastAddedDate in the batch for this recurring transaction
+        lastAdded = nextDate;
   
+        // Calculate the next date
         switch(rt.frequency) {
           case 'daily': nextDate = addDays(nextDate, 1); break;
           case 'weekly': nextDate = addWeeks(nextDate, 1); break;
@@ -218,18 +205,24 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           case 'yearly': nextDate = addYears(nextDate, 1); break;
         }
       }
+
+      // After the loop, if we added any transactions, update the recurring transaction doc with the final lastAdded date
+      if (lastAdded && (!rt.lastAddedDate || lastAdded.getTime() !== parseISO(rt.lastAddedDate).getTime())) {
+          const recurringDocToUpdate = doc(recurringCollRef, rt.id);
+          batch.update(recurringDocToUpdate, { lastAddedDate: lastAdded.toISOString() });
+      }
     }
   
     try {
         if(transactionsAdded){
             await batch.commit();
-            fetchPaginatedTransactions(true, {}); // Refetch transactions if new ones were added.
+            // Don't need to refetch here, onSnapshot will handle it.
         }
     } catch(e) {
         console.error("Error processing recurring transactions batch: ", e)
     }
 
-  }, [user, recurringTransactions, getCollectionRef, fetchPaginatedTransactions]);
+  }, [user, recurringTransactions, getCollectionRef]);
   
   useEffect(() => {
     if (user && !loading && recurringTransactions.length > 0) {
@@ -628,5 +621,7 @@ export const useUserData = () => {
   }
   return context;
 };
+
+    
 
     
