@@ -116,7 +116,7 @@ export function ImportTransactionsDialog({
           setIsLoading(false);
           return;
         }
-        setHeaders(results.meta.fields || []);
+        setHeaders((results.meta.fields || []).filter(Boolean));
         setParsedData(results.data as Record<string, string>[]);
         setStep("mapping");
         setIsLoading(false);
