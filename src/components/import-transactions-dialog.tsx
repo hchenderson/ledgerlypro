@@ -415,7 +415,7 @@ export function ImportTransactionsDialog({
                   </TableBody>
                 </Table>
               </div>
-              {parsedData.length > 100 && <p className="text-xs text-center text-muted-foreground mt-2">Showing first 100 of {processedTransactions.length} valid transactions.</p>}
+              {parsedData.length > 100 && <p className="text-xs text-center text-muted-foreground mt-2">Showing a preview of the first 100 of {processedTransactions.length} valid transactions. All will be imported.</p>}
             </div>
             <DialogFooter>
                  <Button variant="outline" onClick={() => setStep('mapping')}>Back</Button>
