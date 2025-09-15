@@ -80,53 +80,63 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   
       const queryConstraints: QueryConstraint[] = [];
       
-      // Firestore limitation: You can only perform range filters on a single field.
-      // We will prioritize date for range filtering. Other filters will be equality checks.
-      if (filters.dateRange?.from) queryConstraints.push(where("date", ">=", filters.dateRange.from.toISOString()));
-      if (filters.dateRange?.to) queryConstraints.push(where("date", "<=", filters.dateRange.to.toISOString()));
-
-      // Equality check for category
-      if (filters.category && filters.category !== 'all') queryConstraints.push(where("category", "==", filters.category));
-
-      // For description, we'll have to rely on client-side filtering after the query for a "contains" search,
-      // as Firestore doesn't support it efficiently on text fields combined with other filters.
-      // The >= and <= trick only works for prefix searches and can cause index issues with other range filters.
-      
-      // We can do amount filtering if no date range is selected.
-      if (!filters.dateRange) {
-        if (filters.minAmount) queryConstraints.push(where("amount", ">=", filters.minAmount));
-        if (filters.maxAmount) queryConstraints.push(where("amount", "<=", filters.maxAmount));
+      if (filters.category && filters.category !== 'all') {
+        queryConstraints.push(where("category", "==", filters.category));
       }
-
-      // Always order by date
+      if (filters.dateRange?.from) {
+        queryConstraints.push(where("date", ">=", filters.dateRange.from.toISOString()));
+      }
+      if (filters.dateRange?.to) {
+        queryConstraints.push(where("date", "<=", filters.dateRange.to.toISOString()));
+      }
+      if (filters.minAmount) {
+        queryConstraints.push(where("amount", ">=", filters.minAmount));
+      }
+      if (filters.maxAmount) {
+        queryConstraints.push(where("amount", "<=", filters.maxAmount));
+      }
+      
+      // Order by category if filtering by it, then by date.
+      if (filters.category && filters.category !== 'all') {
+          queryConstraints.push(orderBy("category"));
+      }
       queryConstraints.push(orderBy("date", "desc"));
       
       let baseQuery = query(collRef, ...queryConstraints);
       
       try {
         const totalCountSnapshot = await getCountFromServer(baseQuery);
-        setTotalPaginatedTransactions(totalCountSnapshot.data().count);
+        const filteredCount = totalCountSnapshot.data().count;
 
-        if (lastVisible && !reset) {
-          baseQuery = query(baseQuery, startAfter(lastVisible));
+        let newTransactions = [];
+        let lastDoc = null;
+
+        if (filteredCount > 0) {
+          if (lastVisible && !reset) {
+            baseQuery = query(baseQuery, startAfter(lastVisible));
+          }
+          
+          const finalQuery = query(baseQuery, limit(TRANSACTIONS_PAGE_SIZE));
+        
+          const documentSnapshots = await getDocs(finalQuery);
+          newTransactions = documentSnapshots.docs.map(doc => doc.data() as Transaction);
+          
+          // Client-side filtering for description 'contains'
+          if (filters.description) {
+              newTransactions = newTransactions.filter(t => 
+                  t.description.toLowerCase().includes(filters.description.toLowerCase())
+              );
+          }
+      
+          lastDoc = documentSnapshots.docs[documentSnapshots.docs.length-1];
+          setHasMore(documentSnapshots.docs.length === TRANSACTIONS_PAGE_SIZE);
+        } else {
+            setHasMore(false);
         }
         
-        const finalQuery = query(baseQuery, limit(TRANSACTIONS_PAGE_SIZE));
-      
-        const documentSnapshots = await getDocs(finalQuery);
-        let newTransactions = documentSnapshots.docs.map(doc => doc.data() as Transaction);
-
-        // Client-side filtering for description 'contains'
-        if (filters.description) {
-            newTransactions = newTransactions.filter(t => 
-                t.description.toLowerCase().includes(filters.description.toLowerCase())
-            );
-        }
-    
-        const lastDoc = documentSnapshots.docs[documentSnapshots.docs.length-1];
+        // When resetting, also update the total count based on the filtered query
+        setTotalPaginatedTransactions(filteredCount);
         setLastVisible(lastDoc);
-        setHasMore(documentSnapshots.docs.length === TRANSACTIONS_PAGE_SIZE);
-
         setPaginatedTransactions(prev => reset ? newTransactions : [...prev, ...newTransactions]);
 
       } catch (error) {
@@ -618,3 +628,5 @@ export const useUserData = () => {
   }
   return context;
 };
+
+    
