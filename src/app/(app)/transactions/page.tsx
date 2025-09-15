@@ -100,6 +100,7 @@ export default function TransactionsPage() {
   const allCategories = useMemo(() => {
     const flattenCategories = (cats: (Category | SubCategory)[]): string[] => {
         return cats.flatMap(c => {
+            if (!c.name) return [];
             const names = [c.name];
             if(c.subCategories) {
                 return names.concat(flattenCategories(c.subCategories))
