@@ -1,29 +1,11 @@
+
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // Helper function to check if a user is authenticated
-    function isAuthenticated() {
-      return request.auth != null;
-    }
-
-    // Helper function to check if the requesting user is the owner of the document
-    function isOwner(userId) {
-      return request.auth.uid == userId;
-    }
-
-    // Match the `users` collection, where each user's data is stored under their unique ID
-    match /users/{userId} {
-      
-      // A user can only access documents under their own user ID path.
-      allow read, write: if isAuthenticated() && isOwner(userId);
-      
-      // Apply the same ownership rule to all sub-collections within a user's document.
-      // This grants a user full control over their own transactions, categories, settings, etc.,
-      // while completely denying access to any other user.
-      match /{collection}/{docId} {
-        allow read, write: if isAuthenticated() && isOwner(userId);
-      }
+    // Users can only access documents within their own user-specific collection
+    match /users/{userId}/{document=**} {
+      allow read, write, delete: if request.auth != null && request.auth.uid == userId;
     }
   }
 }
