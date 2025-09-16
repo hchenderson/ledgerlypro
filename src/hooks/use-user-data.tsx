@@ -80,13 +80,10 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   
       const queryConstraints: QueryConstraint[] = [];
       
+      // Apply filters
       if (filters.category && filters.category !== 'all') {
         queryConstraints.push(where("category", "==", filters.category));
-        queryConstraints.push(orderBy("category"));
       }
-      
-      queryConstraints.push(orderBy("date", "desc"));
-      
       if (filters.dateRange?.from) {
         queryConstraints.push(where("date", ">=", filters.dateRange.from.toISOString()));
       }
@@ -99,11 +96,21 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (filters.maxAmount) {
         queryConstraints.push(where("amount", "<=", filters.maxAmount));
       }
+
+      // Apply ordering
+      if (filters.category && filters.category !== 'all') {
+        // If filtering by category, we must order by it first for the query to be valid
+        queryConstraints.push(orderBy("category"));
+      }
+      queryConstraints.push(orderBy("date", "desc"));
       
       let baseQuery = query(collRef, ...queryConstraints);
       
       try {
-        const totalCountSnapshot = await getCountFromServer(query(collRef, ...queryConstraints.filter(c => c.type !== 'orderBy'))); // Count without ordering
+        // Create a separate query for counting that doesn't include orderBy or pagination clauses
+        const countQueryConstraints = queryConstraints.filter(c => c.type !== 'orderBy' && c.type !== 'limit' && c.type !== 'startAfter');
+        const countQuery = query(collRef, ...countQueryConstraints);
+        const totalCountSnapshot = await getCountFromServer(countQuery);
         let filteredCount = totalCountSnapshot.data().count;
 
         let newTransactions = [];
@@ -127,7 +134,9 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               );
               // Note: client-side filtering changes the count. This is a simplification.
               // For perfect count, this filter would also need to be done server-side if possible.
-              filteredCount = docsData.length;
+              if (reset) { // Only adjust count on the initial filtered fetch
+                filteredCount = docsData.length;
+              }
           }
 
           newTransactions = docsData;
@@ -145,6 +154,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       } catch (error) {
         console.error("Error fetching paginated transactions:", error);
+        // Handle the error, maybe show a toast to the user
       } finally {
         setLoading(false);
       }
@@ -621,7 +631,5 @@ export const useUserData = () => {
   }
   return context;
 };
-
-    
 
     
