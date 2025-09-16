@@ -62,7 +62,10 @@ export async function getDashboardAnalytics({
     
     const monthlyData: Record<string, { income: number, expense: number }> = {};
     
-    transactions.forEach(t => {
+    // Sort transactions by date ascending to process them in order for overview
+    const sortedTransactions = [...transactions].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    sortedTransactions.forEach(t => {
       const month = new Date(t.date).toLocaleString('default', { month: 'short' });
       if (!monthlyData[month]) {
         monthlyData[month] = { income: 0, expense: 0 };
@@ -73,7 +76,7 @@ export async function getDashboardAnalytics({
     const overviewData = Object.entries(monthlyData).map(([name, values]) => ({
       name,
       ...values
-    })).reverse();
+    }));
     
     const savingsRate = totalIncome > 0 ? ((totalIncome - totalExpenses) / totalIncome) * 100 : 0;
 

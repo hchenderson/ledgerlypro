@@ -11,8 +11,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useUserData } from "@/hooks/use-user-data";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/use-auth";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import { InstructionsGuide } from "@/components/dashboard/instructions-guide";
 import { getDashboardAnalytics } from "@/lib/actions";
 import type { DashboardAnalytics } from "@/lib/actions";
@@ -42,29 +40,17 @@ function DashboardSkeleton() {
 export default function DashboardPage() {
   const { allTransactions, loading, getBudgetDetails, goals } = useUserData();
   const { user, showInstructions } = useAuth();
-  const [startingBalance, setStartingBalance] = useState(0);
   const [analytics, setAnalytics] = useState<DashboardAnalytics | null>(null);
   const [isAnalyticsLoading, setIsAnalyticsLoading] = useState(true);
 
   useEffect(() => {
-    if (user) {
-        const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'main');
-        getDoc(settingsDocRef).then(docSnap => {
-            if (docSnap.exists()) {
-                setStartingBalance(docSnap.data().startingBalance || 0);
-            }
-        });
-    }
-  }, [user]);
-
-  useEffect(() => {
-    if (!loading) {
+    if (!loading && user) {
       setIsAnalyticsLoading(true);
-      getDashboardAnalytics({ transactions: allTransactions, startingBalance })
+      getDashboardAnalytics({ transactions: allTransactions, userId: user.uid })
         .then(setAnalytics)
         .finally(() => setIsAnalyticsLoading(false));
     }
-  }, [allTransactions, startingBalance, loading]);
+  }, [allTransactions, loading, user]);
 
 
   const favoritedBudgets = useMemo(() => {
