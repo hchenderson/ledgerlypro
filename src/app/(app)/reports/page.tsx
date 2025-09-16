@@ -1,15 +1,16 @@
 
 "use client";
 
-import { useRef, useMemo, useState, lazy, Suspense } from 'react';
+import { useRef, useMemo, useState, lazy, Suspense, useEffect } from 'react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { DateRange } from 'react-day-picker';
-import { addDays, format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
+import { startOfMonth, endOfMonth, subMonths } from 'date-fns';
+import { format } from 'date-fns';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Upload, Calendar as CalendarIcon, Loader2 } from "lucide-react";
+import { Upload, Calendar as CalendarIcon, Loader2, BarChart } from "lucide-react";
 import {
   ChartContainer,
   ChartTooltip,
@@ -22,7 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import type { Transaction } from '@/types';
 
 const OverviewChart = lazy(() => import('@/components/dashboard/overview-chart').then(module => ({ default: module.OverviewChart })));
 const CategoryPieChart = lazy(() => import('@/components/reports/category-pie-chart').then(module => ({ default: module.CategoryPieChart })));
@@ -35,6 +36,17 @@ function ChartSuspenseFallback() {
     )
 }
 
+function EmptyReportState() {
+    return (
+        <div className="flex flex-col items-center justify-center text-center text-muted-foreground h-[300px] bg-muted/50 rounded-lg">
+            <BarChart className="h-12 w-12 mb-4" />
+            <p className="font-semibold">No data available for the selected filters.</p>
+            <p className="text-sm">Try adjusting your date range or category selection.</p>
+        </div>
+    )
+}
+
+
 export default function ReportsPage() {
     const reportRef = useRef<HTMLDivElement>(null);
     const { toast } = useToast();
@@ -45,28 +57,44 @@ export default function ReportsPage() {
       to: endOfMonth(new Date()),
     });
     const [categoryFilter, setCategoryFilter] = useState<string>('all');
+    
+    useEffect(() => {
+        if (dateRange?.from && dateRange?.to && dateRange.from > dateRange.to) {
+            toast({
+                variant: 'destructive',
+                title: 'Invalid Date Range',
+                description: 'The "from" date cannot be after the "to" date. Swapping dates for you.',
+            });
+            setDateRange({ from: dateRange.to, to: dateRange.from });
+        }
+    }, [dateRange, toast]);
 
     const filteredTransactions = useMemo(() => {
+        if (!dateRange?.from || !dateRange?.to) {
+            return [];
+        }
         return allTransactions.filter(t => {
             const transactionDate = new Date(t.date);
-            const isInDateRange = dateRange?.from && dateRange?.to ? 
-                (transactionDate >= dateRange.from && transactionDate <= dateRange.to) : true;
+            const isInDateRange = transactionDate >= dateRange.from! && transactionDate <= dateRange.to!;
             const isInCategory = categoryFilter === 'all' || t.category === categoryFilter;
             return isInDateRange && isInCategory;
         });
     }, [allTransactions, dateRange, categoryFilter]);
 
     const { overviewData, categoryData } = useMemo(() => {
+        const data: { overview: any[], categories: any[] } = { overview: [], categories: [] };
+        if (filteredTransactions.length === 0) return data;
+
         const monthlyData: Record<string, { income: number, expense: number }> = {};
         filteredTransactions.forEach(t => {
-            const month = new Date(t.date).toLocaleString('default', { month: 'short' });
+            const month = format(new Date(t.date), 'MMM');
             if (!monthlyData[month]) {
                 monthlyData[month] = { income: 0, expense: 0 };
             }
             monthlyData[month][t.type] += t.amount;
         });
 
-        const overviewData = Object.entries(monthlyData).map(([name, values]) => ({
+        data.overview = Object.entries(monthlyData).map(([name, values]) => ({
             name,
             ...values
         })).reverse();
@@ -79,16 +107,17 @@ export default function ReportsPage() {
             categorySpending[t.category] += t.amount;
         });
         
-        const categoryData = Object.entries(categorySpending).map(([category, amount], index) => ({
+        data.categories = Object.entries(categorySpending).map(([category, amount], index) => ({
             category,
             amount,
             fill: `hsl(var(--chart-${(index % 5) + 1}))`
         }));
         
-        return { overviewData, categoryData };
+        return data;
     }, [filteredTransactions]);
     
     const balanceTrendData = useMemo(() => {
+        if (overviewData.length === 0) return [];
         let currentBalance = 0;
         const trend = overviewData.map(d => {
             currentBalance += d.income - d.expense;
@@ -147,7 +176,7 @@ export default function ReportsPage() {
         }
     };
     
-    const allCategories = useMemo(() => [...new Set(allTransactions.map(t => t.category))], [allTransactions]);
+    const allCategories = useMemo(() => [...new Set(allTransactions.map(t => t.category).filter(Boolean))], [allTransactions]);
 
     const handlePresetDateRange = (preset: string) => {
         const now = new Date();
@@ -162,14 +191,14 @@ export default function ReportsPage() {
 
   return (
     <div className="space-y-6">
-       <div className="flex items-center justify-between">
+       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
             <h2 className="text-2xl font-bold tracking-tight font-headline">Financial Reports</h2>
             <p className="text-muted-foreground">
-                Your monthly financial overview.
+                Analyze your financial overview with detailed reports.
             </p>
         </div>
-        <Button variant="outline" onClick={handleExportPdf}>
+        <Button variant="outline" onClick={handleExportPdf} disabled={filteredTransactions.length === 0}>
             <Upload className="mr-2 h-4 w-4" />
             Export PDF
         </Button>
@@ -179,14 +208,14 @@ export default function ReportsPage() {
            <CardHeader>
                <CardTitle>Filters</CardTitle>
            </CardHeader>
-           <CardContent className="flex flex-col md:flex-row gap-4">
+           <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                <Popover>
                   <PopoverTrigger asChild>
                     <Button
                       id="date"
                       variant={"outline"}
                       className={cn(
-                        "w-[300px] justify-start text-left font-normal",
+                        "w-full justify-start text-left font-normal",
                         !dateRange && "text-muted-foreground"
                       )}
                     >
@@ -206,7 +235,7 @@ export default function ReportsPage() {
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
-                    <div className="p-2">
+                    <div className="p-2 border-b">
                         <Button variant="link" size="sm" onClick={() => handlePresetDateRange('this-month')}>This Month</Button>
                         <Button variant="link" size="sm" onClick={() => handlePresetDateRange('last-month')}>Last Month</Button>
                     </div>
@@ -217,11 +246,12 @@ export default function ReportsPage() {
                       selected={dateRange}
                       onSelect={setDateRange}
                       numberOfMonths={2}
+                      disabled={(date) => date > new Date()}
                     />
                   </PopoverContent>
                 </Popover>
                <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                   <SelectTrigger className="w-full md:w-[200px]">
+                   <SelectTrigger className="w-full">
                        <SelectValue placeholder="Filter by category" />
                    </SelectTrigger>
                    <SelectContent>
@@ -239,22 +269,22 @@ export default function ReportsPage() {
             <Card>
             <CardHeader>
                 <CardTitle>Income vs. Expense</CardTitle>
-                <CardDescription>A breakdown of your income and expenses over the last few months.</CardDescription>
+                <CardDescription>A breakdown of your income and expenses for the selected period.</CardDescription>
             </CardHeader>
             <CardContent>
                 <Suspense fallback={<ChartSuspenseFallback />}>
-                    <OverviewChart data={overviewData} />
+                    {overviewData.length > 0 ? <OverviewChart data={overviewData} /> : <EmptyReportState />}
                 </Suspense>
             </CardContent>
             </Card>
             <Card>
             <CardHeader>
                 <CardTitle>Category Breakdown</CardTitle>
-                <CardDescription>How your spending is distributed across different categories this month.</CardDescription>
+                <CardDescription>How your spending is distributed across different categories.</CardDescription>
             </CardHeader>
             <CardContent>
                  <Suspense fallback={<ChartSuspenseFallback />}>
-                    <CategoryPieChart data={categoryData} />
+                    {categoryData.length > 0 ? <CategoryPieChart data={categoryData} /> : <EmptyReportState />}
                 </Suspense>
             </CardContent>
             </Card>
@@ -262,47 +292,53 @@ export default function ReportsPage() {
         <Card>
             <CardHeader>
                 <CardTitle>Balance Trend</CardTitle>
-                <CardDescription>Your account balance over time.</CardDescription>
+                <CardDescription>Your account balance trend based on the filtered transactions.</CardDescription>
             </CardHeader>
             <CardContent>
-                <ChartContainer
-                    config={{
-                        balance: {
-                        label: "Balance",
-                        color: "hsl(var(--chart-1))",
-                        },
-                    }}
-                    className="h-[300px] w-full"
-                    >
-                    <AreaChart
-                        accessibilityLayer
-                        data={balanceTrendData}
-                        margin={{
-                        left: 12,
-                        right: 12,
+                 {balanceTrendData.length > 0 ? (
+                    <ChartContainer
+                        config={{
+                            balance: {
+                            label: "Balance",
+                            color: "hsl(var(--chart-1))",
+                            },
                         }}
-                    >
-                        <CartesianGrid vertical={false} />
-                        <XAxis
-                        dataKey="name"
-                        tickLine={false}
-                        axisLine={false}
-                        tickMargin={8}
-                        tickFormatter={(value) => value.slice(0, 3)}
-                        />
-                        <ChartTooltip cursor={false} content={<ChartTooltipContent indicator="line" />} />
-                        <Area
-                        dataKey="balance"
-                        type="natural"
-                        fill="var(--color-balance)"
-                        fillOpacity={0.4}
-                        stroke="var(--color-balance)"
-                        />
-                    </AreaChart>
-                </ChartContainer>
+                        className="h-[300px] w-full"
+                        >
+                        <AreaChart
+                            accessibilityLayer
+                            data={balanceTrendData}
+                            aria-label="Balance trend over time"
+                            role="img"
+                            margin={{
+                            left: 12,
+                            right: 12,
+                            }}
+                        >
+                            <CartesianGrid vertical={false} />
+                            <XAxis
+                            dataKey="name"
+                            tickLine={false}
+                            axisLine={false}
+                            tickMargin={8}
+                            tickFormatter={(value) => value.slice(0, 3)}
+                            />
+                            <ChartTooltip cursor={false} content={<ChartTooltipContent indicator="line" />} />
+                            <Area
+                            dataKey="balance"
+                            type="natural"
+                            fill="var(--color-balance)"
+                            fillOpacity={0.4}
+                            stroke="var(--color-balance)"
+                            />
+                        </AreaChart>
+                    </ChartContainer>
+                ) : <EmptyReportState />}
             </CardContent>
             </Card>
         </div>
     </div>
   );
 }
+
+    
