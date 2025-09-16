@@ -16,7 +16,7 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart"
-import { Area, AreaChart, CartesianGrid, XAxis } from "recharts"
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts"
 import { useToast } from '@/hooks/use-toast';
 import { useUserData } from '@/hooks/use-user-data';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -24,6 +24,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import type { Transaction } from '@/types';
+import { getDashboardAnalytics } from '@/lib/actions';
 
 const OverviewChart = lazy(() => import('@/components/dashboard/overview-chart').then(module => ({ default: module.OverviewChart })));
 const CategoryPieChart = lazy(() => import('@/components/reports/category-pie-chart').then(module => ({ default: module.CategoryPieChart })));
@@ -51,12 +52,18 @@ export default function ReportsPage() {
     const reportRef = useRef<HTMLDivElement>(null);
     const { toast } = useToast();
     const { allTransactions } = useUserData();
+    const [startingBalance, setStartingBalance] = useState(0);
 
     const [dateRange, setDateRange] = useState<DateRange | undefined>({
       from: startOfMonth(new Date()),
       to: endOfMonth(new Date()),
     });
     const [categoryFilter, setCategoryFilter] = useState<string>('all');
+    
+    useEffect(() => {
+        getDashboardAnalytics({ transactions: allTransactions, startingBalance: 0})
+            .then(analytics => setStartingBalance(analytics.currentBalance));
+    }, [allTransactions]);
     
     useEffect(() => {
         if (dateRange?.from && dateRange?.to && dateRange.from > dateRange.to) {
@@ -117,17 +124,37 @@ export default function ReportsPage() {
     }, [filteredTransactions]);
     
     const balanceTrendData = useMemo(() => {
-        if (overviewData.length === 0) return [];
-        let currentBalance = 0;
-        const trend = overviewData.map(d => {
-            currentBalance += d.income - d.expense;
+        if (!dateRange?.from) return [];
+    
+        const balanceBeforeRange = allTransactions
+            .filter(t => new Date(t.date) < dateRange.from!)
+            .reduce((acc, t) => acc + (t.type === 'income' ? t.amount : -t.amount), startingBalance);
+    
+        if (filteredTransactions.length === 0) {
+            return [{ name: format(dateRange.from, 'MMM'), balance: balanceBeforeRange }];
+        }
+    
+        const monthlyChanges: Record<string, number> = {};
+        filteredTransactions.forEach(t => {
+            const month = format(new Date(t.date), 'MMM');
+            if (!monthlyChanges[month]) {
+                monthlyChanges[month] = 0;
+            }
+            monthlyChanges[month] += (t.type === 'income' ? t.amount : -t.amount);
+        });
+    
+        let currentBalance = balanceBeforeRange;
+        const trendData = overviewData.map(d => {
+            currentBalance += (monthlyChanges[d.name] || 0);
             return {
                 name: d.name,
                 balance: currentBalance,
-            }
+            };
         });
-        return trend.reverse();
-    }, [overviewData]);
+        
+        return trendData.reverse();
+
+    }, [filteredTransactions, allTransactions, dateRange, startingBalance, overviewData]);
 
     const handleExportPdf = async () => {
         const input = reportRef.current;
@@ -317,19 +344,26 @@ export default function ReportsPage() {
                         >
                             <CartesianGrid vertical={false} />
                             <XAxis
-                            dataKey="name"
-                            tickLine={false}
-                            axisLine={false}
-                            tickMargin={8}
-                            tickFormatter={(value) => value.slice(0, 3)}
+                                dataKey="name"
+                                tickLine={false}
+                                axisLine={false}
+                                tickMargin={8}
+                                tickFormatter={(value) => value.slice(0, 3)}
+                            />
+                            <YAxis 
+                                dataKey="balance"
+                                tickLine={false}
+                                axisLine={false}
+                                tickMargin={8}
+                                tickFormatter={(value) => `$${value}`}
                             />
                             <ChartTooltip cursor={false} content={<ChartTooltipContent indicator="line" />} />
                             <Area
-                            dataKey="balance"
-                            type="natural"
-                            fill="var(--color-balance)"
-                            fillOpacity={0.4}
-                            stroke="var(--color-balance)"
+                                dataKey="balance"
+                                type="natural"
+                                fill="var(--color-balance)"
+                                fillOpacity={0.4}
+                                stroke="var(--color-balance)"
                             />
                         </AreaChart>
                     </ChartContainer>
