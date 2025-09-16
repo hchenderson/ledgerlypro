@@ -9,10 +9,6 @@
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
-import type {Transaction} from '@/types';
-import {doc, getDoc} from 'firebase/firestore';
-import {db} from '@/lib/firebase';
-import {genkit} from 'genkit/ai';
 
 const GetDashboardAnalyticsInputSchema = z.object({
   transactions: z
@@ -27,7 +23,7 @@ const GetDashboardAnalyticsInputSchema = z.object({
       })
     )
     .describe('An array of user transactions.'),
-  userId: z.string().describe('The UID of the user.'),
+  startingBalance: z.number().describe('The user\'s starting balance.'),
 });
 export type GetDashboardAnalyticsInput = z.infer<
   typeof GetDashboardAnalyticsInputSchema
@@ -64,18 +60,7 @@ const getDashboardAnalyticsFlow = ai.defineFlow(
     inputSchema: GetDashboardAnalyticsInputSchema,
     outputSchema: GetDashboardAnalyticsOutputSchema,
   },
-  async ({transactions, userId}) => {
-    let startingBalance = 0;
-    if (userId) {
-      // IMPORTANT: This call requires an authenticated context when running on the server.
-      // Genkit flows called from the client automatically provide this.
-      const settingsDocRef = doc(db, 'users', userId, 'settings', 'main');
-      const docSnap = await getDoc(settingsDocRef);
-      if (docSnap.exists()) {
-        startingBalance = docSnap.data().startingBalance || 0;
-      }
-    }
-
+  async ({transactions, startingBalance}) => {
     const now = new Date();
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();

@@ -15,6 +15,8 @@ import { InstructionsGuide } from "@/components/dashboard/instructions-guide";
 import { getDashboardAnalytics } from "@/ai/flows/get-dashboard-analytics-flow";
 import type { GetDashboardAnalyticsOutput } from "@/ai/flows/get-dashboard-analytics-flow";
 import { GoalProgress } from "@/components/dashboard/goal-progress";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 
 function DashboardSkeleton() {
@@ -38,26 +40,37 @@ function DashboardSkeleton() {
 }
 
 export default function DashboardPage() {
-  const { allTransactions, loading, getBudgetDetails, goals } = useUserData();
-  const { user, showInstructions } = useAuth();
+  const { allTransactions, loading: userDataLoading, getBudgetDetails, goals } = useUserData();
+  const { user, showInstructions, loading: authLoading } = useAuth();
   const [analytics, setAnalytics] = useState<GetDashboardAnalyticsOutput | null>(null);
   const [isAnalyticsLoading, setIsAnalyticsLoading] = useState(true);
 
   useEffect(() => {
-    if (!loading && user) {
-      setIsAnalyticsLoading(true);
-      getDashboardAnalytics({ transactions: allTransactions, userId: user.uid })
-        .then(setAnalytics)
-        .finally(() => setIsAnalyticsLoading(false));
+    if (!userDataLoading && !authLoading && user) {
+      const fetchAnalytics = async () => {
+        setIsAnalyticsLoading(true);
+        
+        let startingBalance = 0;
+        const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'main');
+        const docSnap = await getDoc(settingsDocRef);
+        if (docSnap.exists()) {
+          startingBalance = docSnap.data().startingBalance || 0;
+        }
+
+        getDashboardAnalytics({ transactions: allTransactions, startingBalance })
+          .then(setAnalytics)
+          .finally(() => setIsAnalyticsLoading(false));
+      }
+      fetchAnalytics();
     }
-  }, [allTransactions, loading, user]);
+  }, [allTransactions, userDataLoading, authLoading, user]);
 
 
   const favoritedBudgets = useMemo(() => {
     return getBudgetDetails().filter(b => b.isFavorite);
   }, [getBudgetDetails]);
   
-  if (loading || isAnalyticsLoading || !analytics) {
+  if (userDataLoading || authLoading || isAnalyticsLoading || !analytics) {
     return <DashboardSkeleton />;
   }
   
