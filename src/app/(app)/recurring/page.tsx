@@ -35,7 +35,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { CalendarIcon } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
-import { format, addDays, addWeeks, addMonths, addYears, parseISO, isBefore, startOfToday, isToday } from 'date-fns';
+import { format, addDays, addWeeks, addMonths, addYears, parseISO, isBefore, startOfToday } from 'date-fns';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -192,41 +192,33 @@ function RecurringDialog({ transaction, onSave, children }: { transaction?: Recu
 
 function calculateNextOccurrence(rt: RecurringTransaction): Date {
   const today = startOfToday();
-  let nextDate = parseISO(rt.startDate);
+  const startDate = parseISO(rt.startDate);
 
   // If start date is in the future, that's the next date.
-  if (isBefore(today, nextDate)) {
-    return nextDate;
+  if (isBefore(today, startDate)) {
+    return startDate;
   }
 
-  // Use last added date if available and it's after the start date
-  const baseDate = rt.lastAddedDate && isBefore(nextDate, parseISO(rt.lastAddedDate))
-    ? parseISO(rt.lastAddedDate)
-    : nextDate;
-
-  nextDate = baseDate;
-
-  while (isBefore(nextDate, today)) {
+  let nextDate = startDate;
+  const advanceDate = () => {
     switch (rt.frequency) {
-      case 'daily': nextDate = addDays(nextDate, 1); break;
-      case 'weekly': nextDate = addWeeks(nextDate, 1); break;
+      case 'daily':   nextDate = addDays(nextDate, 1); break;
+      case 'weekly':  nextDate = addWeeks(nextDate, 1); break;
       case 'monthly': nextDate = addMonths(nextDate, 1); break;
-      case 'yearly': nextDate = addYears(nextDate, 1); break;
+      case 'yearly':  nextDate = addYears(nextDate, 1); break;
     }
   }
-  
-   // If the calculated next date is still the same as the base date (and it's in the past), advance it once.
-  if (isBefore(nextDate, today) || isToday(nextDate)) {
-     if(rt.lastAddedDate || isBefore(parseISO(rt.startDate), today)){
-        switch(rt.frequency) {
-            case 'daily': nextDate = addDays(nextDate, 1); break;
-            case 'weekly': nextDate = addWeeks(nextDate, 1); break;
-            case 'monthly': nextDate = addMonths(nextDate, 1); break;
-            case 'yearly': nextDate = addYears(nextDate, 1); break;
-        }
-     }
-  }
 
+  // If there's a record of the last time it was added, start calculating from there.
+  if (rt.lastAddedDate) {
+      nextDate = parseISO(rt.lastAddedDate);
+      advanceDate(); // The next occurrence is one period after the last one.
+  }
+  
+  // Fast-forward to the first occurrence that is on or after today.
+  while (isBefore(nextDate, today)) {
+    advanceDate();
+  }
 
   return nextDate;
 }
@@ -328,3 +320,5 @@ export default function RecurringPage() {
     </FeatureGate>
   );
 }
+
+    
