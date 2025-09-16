@@ -2,6 +2,8 @@
 'use server';
 
 import type { Transaction } from "@/types";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "./firebase";
 
 export type DashboardAnalytics = {
   totalIncome: number;
@@ -14,12 +16,21 @@ export type DashboardAnalytics = {
 }
 
 export async function getDashboardAnalytics({ 
-    transactions, 
-    startingBalance 
+    transactions,
+    userId
 }: { 
     transactions: Transaction[], 
-    startingBalance: number 
+    userId: string
 }): Promise<DashboardAnalytics> {
+    
+    let startingBalance = 0;
+    if (userId) {
+        const settingsDocRef = doc(db, 'users', userId, 'settings', 'main');
+        const docSnap = await getDoc(settingsDocRef);
+        if (docSnap.exists()) {
+            startingBalance = docSnap.data().startingBalance || 0;
+        }
+    }
     
     const now = new Date();
     const currentMonth = now.getMonth();

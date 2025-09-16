@@ -25,6 +25,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import type { Transaction } from '@/types';
 import { getDashboardAnalytics } from '@/lib/actions';
+import { useAuth } from '@/hooks/use-auth';
 
 const OverviewChart = lazy(() => import('@/components/dashboard/overview-chart').then(module => ({ default: module.OverviewChart })));
 const CategoryPieChart = lazy(() => import('@/components/reports/category-pie-chart').then(module => ({ default: module.CategoryPieChart })));
@@ -52,7 +53,9 @@ export default function ReportsPage() {
     const reportRef = useRef<HTMLDivElement>(null);
     const { toast } = useToast();
     const { allTransactions } = useUserData();
-    const [startingBalance, setStartingBalance] = useState(0);
+    const { user } = useAuth();
+    const [overallBalance, setOverallBalance] = useState(0);
+    const [isAnalyticsLoading, setIsAnalyticsLoading] = useState(true);
 
     const [dateRange, setDateRange] = useState<DateRange | undefined>({
       from: startOfMonth(new Date()),
@@ -61,9 +64,15 @@ export default function ReportsPage() {
     const [categoryFilter, setCategoryFilter] = useState<string>('all');
     
     useEffect(() => {
-        getDashboardAnalytics({ transactions: allTransactions, startingBalance: 0})
-            .then(analytics => setStartingBalance(analytics.currentBalance));
-    }, [allTransactions]);
+      if (user) {
+        setIsAnalyticsLoading(true);
+        getDashboardAnalytics({ transactions: allTransactions, userId: user.uid })
+          .then(analytics => {
+            setOverallBalance(analytics.currentBalance);
+            setIsAnalyticsLoading(false);
+          });
+      }
+    }, [allTransactions, user]);
     
     useEffect(() => {
         if (dateRange?.from && dateRange?.to && dateRange.from > dateRange.to) {
@@ -124,11 +133,11 @@ export default function ReportsPage() {
     }, [filteredTransactions]);
     
     const balanceTrendData = useMemo(() => {
-        if (!dateRange?.from) return [];
+        if (!dateRange?.from || isAnalyticsLoading) return [];
     
         const balanceBeforeRange = allTransactions
             .filter(t => new Date(t.date) < dateRange.from!)
-            .reduce((acc, t) => acc + (t.type === 'income' ? t.amount : -t.amount), startingBalance);
+            .reduce((acc, t) => acc + (t.type === 'income' ? t.amount : -t.amount), overallBalance - allTransactions.reduce((acc, t) => acc + (t.type === 'income' ? t.amount : -t.amount), 0));
     
         if (filteredTransactions.length === 0) {
             return [{ name: format(dateRange.from, 'MMM'), balance: balanceBeforeRange }];
@@ -154,7 +163,7 @@ export default function ReportsPage() {
         
         return trendData.reverse();
 
-    }, [filteredTransactions, allTransactions, dateRange, startingBalance, overviewData]);
+    }, [filteredTransactions, allTransactions, dateRange, overallBalance, overviewData, isAnalyticsLoading]);
 
     const handleExportPdf = async () => {
         const input = reportRef.current;
@@ -292,87 +301,89 @@ export default function ReportsPage() {
        </Card>
 
       <div ref={reportRef} className="space-y-6">
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <Card>
-            <CardHeader>
-                <CardTitle>Income vs. Expense</CardTitle>
-                <CardDescription>A breakdown of your income and expenses for the selected period.</CardDescription>
-            </CardHeader>
-            <CardContent>
-                <Suspense fallback={<ChartSuspenseFallback />}>
-                    {overviewData.length > 0 ? <OverviewChart data={overviewData} /> : <EmptyReportState />}
-                </Suspense>
-            </CardContent>
-            </Card>
-            <Card>
-            <CardHeader>
-                <CardTitle>Category Breakdown</CardTitle>
-                <CardDescription>How your spending is distributed across different categories.</CardDescription>
-            </CardHeader>
-            <CardContent>
-                 <Suspense fallback={<ChartSuspenseFallback />}>
-                    {categoryData.length > 0 ? <CategoryPieChart data={categoryData} /> : <EmptyReportState />}
-                </Suspense>
-            </CardContent>
-            </Card>
-        </div>
-        <Card>
-            <CardHeader>
-                <CardTitle>Balance Trend</CardTitle>
-                <CardDescription>Your account balance trend based on the filtered transactions.</CardDescription>
-            </CardHeader>
-            <CardContent>
-                 {balanceTrendData.length > 0 ? (
-                    <ChartContainer
-                        config={{
-                            balance: {
-                            label: "Balance",
-                            color: "hsl(var(--chart-1))",
-                            },
-                        }}
-                        className="h-[300px] w-full"
-                        >
-                        <AreaChart
-                            accessibilityLayer
-                            data={balanceTrendData}
-                            aria-label="Balance trend over time"
-                            role="img"
-                            margin={{
-                            left: 12,
-                            right: 12,
-                            }}
-                        >
-                            <CartesianGrid vertical={false} />
-                            <XAxis
-                                dataKey="name"
-                                tickLine={false}
-                                axisLine={false}
-                                tickMargin={8}
-                                tickFormatter={(value) => value.slice(0, 3)}
-                            />
-                            <YAxis 
-                                dataKey="balance"
-                                tickLine={false}
-                                axisLine={false}
-                                tickMargin={8}
-                                tickFormatter={(value) => `$${value}`}
-                            />
-                            <ChartTooltip cursor={false} content={<ChartTooltipContent indicator="line" />} />
-                            <Area
-                                dataKey="balance"
-                                type="natural"
-                                fill="var(--color-balance)"
-                                fillOpacity={0.4}
-                                stroke="var(--color-balance)"
-                            />
-                        </AreaChart>
-                    </ChartContainer>
-                ) : <EmptyReportState />}
-            </CardContent>
-            </Card>
+        {isAnalyticsLoading ? <ChartSuspenseFallback /> : (
+            <>
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                    <Card>
+                    <CardHeader>
+                        <CardTitle>Income vs. Expense</CardTitle>
+                        <CardDescription>A breakdown of your income and expenses for the selected period.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <Suspense fallback={<ChartSuspenseFallback />}>
+                            {overviewData.length > 0 ? <OverviewChart data={overviewData} /> : <EmptyReportState />}
+                        </Suspense>
+                    </CardContent>
+                    </Card>
+                    <Card>
+                    <CardHeader>
+                        <CardTitle>Category Breakdown</CardTitle>
+                        <CardDescription>How your spending is distributed across different categories.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <Suspense fallback={<ChartSuspenseFallback />}>
+                            {categoryData.length > 0 ? <CategoryPieChart data={categoryData} /> : <EmptyReportState />}
+                        </Suspense>
+                    </CardContent>
+                    </Card>
+                </div>
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Balance Trend</CardTitle>
+                        <CardDescription>Your account balance trend based on the filtered transactions.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        {balanceTrendData.length > 0 ? (
+                            <ChartContainer
+                                config={{
+                                    balance: {
+                                    label: "Balance",
+                                    color: "hsl(var(--chart-1))",
+                                    },
+                                }}
+                                className="h-[300px] w-full"
+                                >
+                                <AreaChart
+                                    accessibilityLayer
+                                    data={balanceTrendData}
+                                    aria-label="Balance trend over time"
+                                    role="img"
+                                    margin={{
+                                    left: 12,
+                                    right: 12,
+                                    }}
+                                >
+                                    <CartesianGrid vertical={false} />
+                                    <XAxis
+                                        dataKey="name"
+                                        tickLine={false}
+                                        axisLine={false}
+                                        tickMargin={8}
+                                        tickFormatter={(value) => value.slice(0, 3)}
+                                    />
+                                    <YAxis 
+                                        dataKey="balance"
+                                        tickLine={false}
+                                        axisLine={false}
+                                        tickMargin={8}
+                                        tickFormatter={(value) => `$${value}`}
+                                    />
+                                    <ChartTooltip cursor={false} content={<ChartTooltipContent indicator="line" />} />
+                                    <Area
+                                        dataKey="balance"
+                                        type="natural"
+                                        fill="var(--color-balance)"
+                                        fillOpacity={0.4}
+                                        stroke="var(--color-balance)"
+                                    />
+                                </AreaChart>
+                            </ChartContainer>
+                        ) : <EmptyReportState />}
+                    </CardContent>
+                </Card>
+            </>
+        )}
         </div>
     </div>
   );
 }
-
-    
