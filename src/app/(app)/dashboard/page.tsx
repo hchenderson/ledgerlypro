@@ -12,8 +12,8 @@ import { useUserData } from "@/hooks/use-user-data";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/use-auth";
 import { InstructionsGuide } from "@/components/dashboard/instructions-guide";
-import { getDashboardAnalytics } from "@/lib/actions";
-import type { DashboardAnalytics } from "@/lib/actions";
+import { getDashboardAnalytics } from "@/ai/flows/get-dashboard-analytics-flow";
+import type { GetDashboardAnalyticsOutput } from "@/ai/flows/get-dashboard-analytics-flow";
 import { GoalProgress } from "@/components/dashboard/goal-progress";
 
 
@@ -40,7 +40,7 @@ function DashboardSkeleton() {
 export default function DashboardPage() {
   const { allTransactions, loading, getBudgetDetails, goals } = useUserData();
   const { user, showInstructions } = useAuth();
-  const [analytics, setAnalytics] = useState<DashboardAnalytics | null>(null);
+  const [analytics, setAnalytics] = useState<GetDashboardAnalyticsOutput | null>(null);
   const [isAnalyticsLoading, setIsAnalyticsLoading] = useState(true);
 
   useEffect(() => {
