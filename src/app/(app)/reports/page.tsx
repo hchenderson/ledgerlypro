@@ -204,7 +204,7 @@ export default function CustomizableReports() {
   // Process data for different chart types
   const processedData = useMemo(() => {
     if (filteredTransactions.length === 0) {
-      return { monthly: [], category: [], balance: [] };
+      return { monthly: [], category: [], totalExpense: 0 };
     }
     
     // Monthly data for income vs expense
@@ -223,12 +223,11 @@ export default function CustomizableReports() {
             if (parent.name === subCategoryName) {
                 return parent; // It's a parent category itself
             }
-            const found = parent.subCategories?.some(sub => sub.name === subCategoryName);
-            if (found) {
+            if (parent.subCategories?.some(sub => sub.name === subCategoryName)) {
                 return parent;
             }
         }
-        return null; // Should not happen if data is consistent
+        return null;
     };
 
     const categoryTotals: { [key: string]: number } = {};
@@ -252,42 +251,42 @@ export default function CustomizableReports() {
     let categoryData;
     const MAX_PIE_SLICES = 7;
     if (sortedCategories.length > MAX_PIE_SLICES) {
-        const mainSlices = sortedCategories.slice(0, MAX_PIE_SLICES -1);
+        const mainSlices = sortedCategories.slice(0, MAX_PIE_SLICES - 1);
         const otherSliceValue = sortedCategories.slice(MAX_PIE_SLICES - 1).reduce((sum, cat) => sum + cat.value, 0);
         categoryData = [...mainSlices, { name: 'Other', value: otherSliceValue }];
     } else {
         categoryData = sortedCategories;
     }
-    
 
-    // Calculate balance trend correctly
-    const balanceStartDate = dateRange?.from || new Date(Math.min(...allTransactions.map(t => new Date(t.date).getTime())));
-    
-    const initialBalance = allTransactions
-      .filter(t => new Date(t.date) < balanceStartDate)
-      .reduce((acc, t) => acc + (t.type === 'income' ? t.amount : -t.amount), startingBalance);
-
-    let runningBalance = initialBalance;
     const sortedMonths = Object.values(monthlyData).sort((a,b) => new Date(`1 ${a.month}`).getTime() - new Date(`1 ${b.month}`).getTime());
-
-    const balanceData = sortedMonths.map(monthData => {
-      runningBalance += monthData.income - monthData.expense;
-      return { month: monthData.month, balance: runningBalance };
-    });
-
+    
     return {
       monthly: sortedMonths,
       category: categoryData.map((item, index) => ({
         ...item,
         fill: CHART_COLORS[index % CHART_COLORS.length]
       })),
-      balance: balanceData,
       totalExpense
     };
-  }, [filteredTransactions, allTransactions, dateRange, startingBalance, userCategories]);
+  }, [filteredTransactions, userCategories]);
 
   const renderChart = (widget: any) => {
-    const data = processedData[widget.dataKey as keyof typeof processedData];
+    let data;
+
+    if (widget.dataKey === 'balance') {
+      const balanceStartDate = dateRange?.from || new Date(Math.min(...allTransactions.map(t => new Date(t.date).getTime())));
+      const initialBalance = allTransactions
+        .filter(t => new Date(t.date) < balanceStartDate)
+        .reduce((acc, t) => acc + (t.type === 'income' ? t.amount : -t.amount), startingBalance);
+      
+      let runningBalance = initialBalance;
+      data = processedData.monthly.map(monthData => {
+        runningBalance += monthData.income - monthData.expense;
+        return { month: monthData.month, balance: runningBalance };
+      });
+    } else {
+      data = processedData[widget.dataKey as keyof typeof processedData];
+    }
     
     if (!data || data.length === 0) {
       return <div className="flex h-[300px] items-center justify-center text-muted-foreground">No data available for this chart.</div>;
@@ -781,5 +780,3 @@ export default function CustomizableReports() {
     </div>
   );
 }
-
-    
