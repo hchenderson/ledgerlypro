@@ -8,18 +8,13 @@ import { useAuth } from './use-auth';
 import { db } from '@/lib/firebase';
 import { addDays, addWeeks, addMonths, addYears, isBefore, startOfDay, parseISO, isToday } from 'date-fns';
 
-const TRANSACTIONS_PAGE_SIZE = 25;
-
 interface UserDataContextType {
   allTransactions: Transaction[];
-  paginatedTransactions: Transaction[];
-  totalPaginatedTransactions: number;
   categories: Category[];
   budgets: Budget[];
   recurringTransactions: RecurringTransaction[];
   goals: Goal[];
   loading: boolean;
-  hasMore: boolean;
   addTransaction: (transaction: Omit<Transaction, 'id'>) => Promise<void>;
   updateTransaction: (id: string, values: Partial<Omit<Transaction, 'id'>>) => Promise<void>;
   deleteTransaction: (id: string) => Promise<void>;
@@ -43,7 +38,6 @@ interface UserDataContextType {
   addContributionToGoal: (goalId: string, amount: number) => Promise<void>;
   clearTransactions: () => Promise<void>;
   clearAllData: () => Promise<void>;
-  fetchPaginatedTransactions: (reset: boolean, filters?: any) => void;
 }
 
 const UserDataContext = createContext<UserDataContextType | undefined>(undefined);
@@ -51,114 +45,16 @@ const UserDataContext = createContext<UserDataContextType | undefined>(undefined
 export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
   const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
-  const [paginatedTransactions, setPaginatedTransactions] = useState<Transaction[]>([]);
-  const [totalPaginatedTransactions, setTotalPaginatedTransactions] = useState(0);
   const [categories, setCategories] = useState<Category[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [recurringTransactions, setRecurringTransactions] = useState<RecurringTransaction[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
-  
-  // Pagination state
-  const [lastVisible, setLastVisible] = useState<any>(null);
-  const [hasMore, setHasMore] = useState(true);
 
   const getCollectionRef = useCallback((collectionName: string) => {
     if (!user) return null;
     return collection(db, 'users', user.uid, collectionName);
   }, [user]);
-
-  const fetchPaginatedTransactions = useCallback(async (reset: boolean, filters: any = {}) => {
-      const collRef = getCollectionRef('transactions');
-      if (!collRef) return;
-  
-      setLoading(true);
-      if (reset) {
-          setLastVisible(null);
-          setPaginatedTransactions([]);
-      }
-  
-      const queryConstraints: QueryConstraint[] = [];
-      
-      // Apply filters
-      if (filters.category && filters.category !== 'all') {
-        queryConstraints.push(where("category", "==", filters.category));
-      }
-      if (filters.dateRange?.from) {
-        queryConstraints.push(where("date", ">=", filters.dateRange.from.toISOString()));
-      }
-      if (filters.dateRange?.to) {
-        queryConstraints.push(where("date", "<=", filters.dateRange.to.toISOString()));
-      }
-      if (filters.minAmount) {
-        queryConstraints.push(where("amount", ">=", filters.minAmount));
-      }
-      if (filters.maxAmount) {
-        queryConstraints.push(where("amount", "<=", filters.maxAmount));
-      }
-
-      // Apply ordering
-      if (filters.category && filters.category !== 'all') {
-        // If filtering by category, we must order by it first for the query to be valid
-        queryConstraints.push(orderBy("category"));
-      }
-      queryConstraints.push(orderBy("date", "desc"));
-      
-      let baseQuery = query(collRef, ...queryConstraints);
-      
-      try {
-        // Create a separate query for counting that doesn't include orderBy or pagination clauses
-        const countQueryConstraints = queryConstraints.filter(c => c.type !== 'orderBy' && c.type !== 'limit' && c.type !== 'startAfter');
-        const countQuery = query(collRef, ...countQueryConstraints);
-        const totalCountSnapshot = await getCountFromServer(countQuery);
-        let filteredCount = totalCountSnapshot.data().count;
-
-        let newTransactions = [];
-        let lastDoc = null;
-
-        if (filteredCount > 0) {
-          if (lastVisible && !reset) {
-            baseQuery = query(baseQuery, startAfter(lastVisible));
-          }
-          
-          const finalQuery = query(baseQuery, limit(TRANSACTIONS_PAGE_SIZE));
-        
-          const documentSnapshots = await getDocs(finalQuery);
-          let docsData = documentSnapshots.docs.map(doc => doc.data() as Transaction);
-          
-          // Client-side filtering for description 'contains'
-          if (filters.description) {
-              const lowercasedDescription = filters.description.toLowerCase();
-              docsData = docsData.filter(t => 
-                  t.description.toLowerCase().includes(lowercasedDescription)
-              );
-              // Note: client-side filtering changes the count. This is a simplification.
-              // For perfect count, this filter would also need to be done server-side if possible.
-              if (reset) { // Only adjust count on the initial filtered fetch
-                filteredCount = docsData.length;
-              }
-          }
-
-          newTransactions = docsData;
-      
-          lastDoc = documentSnapshots.docs[documentSnapshots.docs.length-1];
-          setHasMore(documentSnapshots.docs.length === TRANSACTIONS_PAGE_SIZE);
-        } else {
-            setHasMore(false);
-        }
-        
-        // When resetting, also update the total count based on the filtered query
-        setTotalPaginatedTransactions(filteredCount);
-        setLastVisible(lastDoc);
-        setPaginatedTransactions(prev => reset ? newTransactions : [...prev, ...newTransactions]);
-
-      } catch (error) {
-        console.error("Error fetching paginated transactions:", error);
-        // Handle the error, maybe show a toast to the user
-      } finally {
-        setLoading(false);
-      }
-  }, [getCollectionRef, lastVisible]);
 
   const processRecurringTransactions = useCallback(async () => {
     if (!user || recurringTransactions.length === 0) return;
@@ -246,7 +142,6 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!user) {
       setLoading(false);
       setAllTransactions([]);
-      setPaginatedTransactions([]);
       setCategories([]);
       setBudgets([]);
       setRecurringTransactions([]);
@@ -272,10 +167,10 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           case 'recurringTransactions': setRecurringTransactions(data as RecurringTransaction[]); break;
           case 'goals': setGoals(data as Goal[]); break;
         }
-        if (name === 'transactions') setLoading(false);
+        setLoading(false);
       }, (error) => {
         console.error(`Error fetching ${name}:`, error);
-        if (name === 'transactions') setLoading(false);
+        setLoading(false);
       });
     });
 
@@ -583,14 +478,11 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const value = { 
         allTransactions, 
-        paginatedTransactions,
-        totalPaginatedTransactions,
         categories, 
         budgets,
         recurringTransactions,
         goals,
         loading, 
-        hasMore,
         addTransaction, 
         updateTransaction,
         deleteTransaction,
@@ -614,7 +506,6 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         addContributionToGoal,
         clearTransactions,
         clearAllData,
-        fetchPaginatedTransactions,
     };
 
   return (
@@ -631,5 +522,3 @@ export const useUserData = () => {
   }
   return context;
 };
-
-    

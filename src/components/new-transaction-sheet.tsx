@@ -80,8 +80,8 @@ interface NewTransactionSheetProps {
     isOpen?: boolean;
     onOpenChange?: (isOpen: boolean) => void;
     transaction?: Partial<Omit<Transaction, 'id'>> & { id: string } | null;
-    onTransactionCreated?: (values: FormValues) => void;
-    onTransactionUpdated?: (id: string, values: FormValues) => void;
+    onTransactionCreated?: () => void;
+    onTransactionUpdated?: () => void;
     children?: React.ReactNode;
     categories: Category[];
 }
@@ -188,6 +188,7 @@ export function NewTransactionSheet({
     children,
     categories,
 }: NewTransactionSheetProps) {
+  const { addTransaction, updateTransaction } = useUserData();
   const { toast } = useToast()
   
   const form = useForm<FormValues>({
@@ -217,19 +218,17 @@ export function NewTransactionSheet({
 
   const transactionType = useWatch({ control: form.control, name: 'type' });
 
-  function onSubmit(values: FormValues) {
-    if (transaction && transaction.id && onTransactionUpdated) {
-        onTransactionUpdated(transaction.id, values);
-         toast({
-            title: "Transaction Updated",
-            description: "Your transaction has been successfully updated.",
-        });
-    } else if(onTransactionCreated) {
-        onTransactionCreated(values);
-        toast({
-            title: "Transaction Created",
-            description: "Your new transaction has been successfully recorded.",
-        });
+  async function onSubmit(values: FormValues) {
+    const data = {
+        ...values,
+        date: values.date.toISOString(),
+    };
+    if (transaction && transaction.id && updateTransaction) {
+        await updateTransaction(transaction.id, data);
+        if (onTransactionUpdated) onTransactionUpdated();
+    } else if(addTransaction) {
+        await addTransaction(data);
+        if (onTransactionCreated) onTransactionCreated();
     }
 
     if(onOpenChange) onOpenChange(false)

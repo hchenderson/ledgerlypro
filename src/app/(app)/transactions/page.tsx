@@ -22,6 +22,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { DateRange } from "react-day-picker";
 import { cn } from "@/lib/utils";
 import { Calendar } from "@/components/ui/calendar";
+import { useAuth } from "@/hooks/use-auth";
+import { collection, query, orderBy, limit, startAfter, where, getDocs, getCountFromServer, QueryConstraint } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+
 
 // Custom hook with proper typing
 const useDebounce = <T>(value: T, delay: number): T => {
@@ -67,19 +71,23 @@ interface TransactionFilters {
   maxAmount?: number;
 }
 
+const TRANSACTIONS_PAGE_SIZE = 25;
+
 export default function TransactionsPage() {
+  const { user } = useAuth();
   const { 
-    paginatedTransactions = [], 
-    loading = false, 
     addTransaction, 
     updateTransaction, 
     deleteTransaction, 
     categories = [], 
-    fetchPaginatedTransactions, 
-    hasMore = false, 
-    totalPaginatedTransactions = 0 
   } = useUserData();
   
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [hasMore, setHasMore] = useState(true);
+  const [lastVisible, setLastVisible] = useState<any>(null);
+  const [totalTransactions, setTotalTransactions] = useState(0);
+
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const { toast } = useToast();
@@ -105,12 +113,74 @@ export default function TransactionsPage() {
     maxAmount: debouncedMaxAmount && !isNaN(parseFloat(debouncedMaxAmount)) ? parseFloat(debouncedMaxAmount) : undefined,
   }), [debouncedDescription, categoryFilter, dateRange, debouncedMinAmount, debouncedMaxAmount]);
   
+  const fetchTransactions = useCallback(async (reset: boolean = false) => {
+    if (!user) return;
+    setLoading(true);
+
+    const collRef = collection(db, 'users', user.uid, 'transactions');
+    const queryConstraints: QueryConstraint[] = [];
+    
+    // Apply server-side filters
+    if (filters.category) {
+      queryConstraints.push(where("category", "==", filters.category));
+    }
+    if (filters.dateRange?.from) {
+      queryConstraints.push(where("date", ">=", filters.dateRange.from.toISOString()));
+    }
+    if (filters.dateRange?.to) {
+      queryConstraints.push(where("date", "<=", filters.dateRange.to.toISOString()));
+    }
+     if (filters.minAmount) {
+        queryConstraints.push(where("amount", ">=", filters.minAmount));
+      }
+      if (filters.maxAmount) {
+        queryConstraints.push(where("amount", "<=", filters.maxAmount));
+      }
+
+    if (filters.category) {
+      queryConstraints.push(orderBy("category"), orderBy("date", "desc"));
+    } else {
+      queryConstraints.push(orderBy("date", "desc"));
+    }
+
+    let q = query(collRef, ...queryConstraints);
+    let countQuery = query(collRef, ...queryConstraints.filter(c => c.type !== 'orderBy'));
+
+    if (!reset && lastVisible) {
+      q = query(q, startAfter(lastVisible));
+    }
+    q = query(q, limit(TRANSACTIONS_PAGE_SIZE));
+
+    try {
+      const [docsSnap, totalCountSnap] = await Promise.all([
+        getDocs(q),
+        getCountFromServer(countQuery)
+      ]);
+      
+      let docsData = docsSnap.docs.map(doc => doc.data() as Transaction);
+
+      // Client-side filtering for description
+      if (filters.description) {
+        docsData = docsData.filter(t => t.description.toLowerCase().includes(filters.description!.toLowerCase()));
+      }
+
+      setTotalTransactions(totalCountSnap.data().count);
+      setHasMore(docsSnap.docs.length === TRANSACTIONS_PAGE_SIZE);
+      setLastVisible(docsSnap.docs[docsSnap.docs.length - 1]);
+      setTransactions(prev => (reset ? docsData : [...prev, ...docsData]));
+    } catch (error) {
+      console.error("Error fetching transactions:", error);
+      toast({ variant: "destructive", title: "Error", description: "Could not fetch transactions." });
+    } finally {
+      setLoading(false);
+    }
+  }, [user, filters, lastVisible, toast]);
+
   // Fetch transactions when filters change
   useEffect(() => {
-    if (fetchPaginatedTransactions) {
-      fetchPaginatedTransactions(true, filters);
-    }
-  }, [filters, fetchPaginatedTransactions]);
+    fetchTransactions(true);
+  }, [filters]);
+
 
   // Flatten categories safely
   const allCategories = useMemo(() => {
@@ -142,11 +212,7 @@ export default function TransactionsPage() {
     setDateRange(undefined);
     setMinAmount('');
     setMaxAmount('');
-    
-    if (fetchPaginatedTransactions) {
-      fetchPaginatedTransactions(true, {});
-    }
-  }, [fetchPaginatedTransactions]);
+  }, []);
 
   // Handle edit transaction
   const handleEdit = useCallback((transaction: Transaction) => {
@@ -162,57 +228,16 @@ export default function TransactionsPage() {
     setIsSheetOpen(open);
   }, []);
   
-  // Handle transaction creation
-  const handleTransactionCreated = useCallback((values: Omit<Transaction, 'id' | 'type'> & { type: "income" | "expense" }) => {
-    if (addTransaction) {
-      try {
-        addTransaction({
-          ...values,
-          date: values.date instanceof Date ? values.date.toISOString() : values.date
-        });
-        
-        toast({
-          title: "Transaction Added",
-          description: "The transaction has been successfully created.",
-        });
-      } catch (error) {
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: "Failed to create transaction. Please try again.",
-        });
-      }
-    }
-  }, [addTransaction, toast]);
+  // Handle transaction creation/update
+  const handleSaveTransaction = useCallback(async () => {
+    await fetchTransactions(true);
+  }, [fetchTransactions]);
 
-  // Handle transaction update
-  const handleTransactionUpdated = useCallback((id: string, values: Omit<Transaction, 'id' | 'type'> & { type: "income" | "expense" }) => {
-    if (updateTransaction) {
-      try {
-        updateTransaction(id, { 
-          ...values, 
-          date: values.date instanceof Date ? values.date.toISOString() : values.date 
-        });
-        
-        toast({
-          title: "Transaction Updated",
-          description: "The transaction has been successfully updated.",
-        });
-      } catch (error) {
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: "Failed to update transaction. Please try again.",
-        });
-      }
-    }
-  }, [updateTransaction, toast]);
-  
   // Handle delete transaction
-  const handleDelete = useCallback((id: string) => {
-    if (deleteTransaction) {
+  const handleDelete = useCallback(async (id: string) => {
       try {
-        deleteTransaction(id);
+        await deleteTransaction(id);
+        setTransactions(prev => prev.filter(t => t.id !== id));
         toast({
           title: "Transaction Deleted",
           description: "The transaction has been successfully deleted.",
@@ -224,13 +249,12 @@ export default function TransactionsPage() {
           description: "Failed to delete transaction. Please try again.",
         });
       }
-    }
   }, [deleteTransaction, toast]);
   
   // Handle CSV export
   const handleExport = useCallback(() => {
     try {
-      if (!paginatedTransactions || paginatedTransactions.length === 0) {
+      if (!transactions || transactions.length === 0) {
         toast({
           variant: "destructive",
           title: "No Data",
@@ -239,7 +263,7 @@ export default function TransactionsPage() {
         return;
       }
 
-      const exportData = paginatedTransactions.map(transaction => ({
+      const exportData = transactions.map(transaction => ({
         Description: transaction.description || '',
         Category: transaction.category || '',
         Date: transaction.date ? format(new Date(transaction.date), "yyyy-MM-dd") : '',
@@ -274,14 +298,14 @@ export default function TransactionsPage() {
         description: "An error occurred while exporting transactions.",
       });
     }
-  }, [paginatedTransactions, toast]);
+  }, [transactions, toast]);
 
   // Load more transactions
   const handleLoadMore = useCallback(() => {
-    if (fetchPaginatedTransactions && hasMore && !loading) {
-      fetchPaginatedTransactions(false, filters);
+    if (hasMore && !loading) {
+      fetchTransactions(false);
     }
-  }, [fetchPaginatedTransactions, hasMore, loading, filters]);
+  }, [fetchTransactions, hasMore, loading]);
 
   // Format currency safely
   const formatCurrency = useCallback((amount: number) => {
@@ -305,7 +329,7 @@ export default function TransactionsPage() {
   }, []);
   
   // Show loading skeleton on initial load
-  if (loading && paginatedTransactions.length === 0) {
+  if (loading && transactions.length === 0) {
     return <TransactionsSkeleton />;
   }
 
@@ -400,13 +424,13 @@ export default function TransactionsPage() {
           <div>
             <CardTitle>Transactions</CardTitle>
             <CardDescription>
-              Showing {paginatedTransactions.length} of {totalPaginatedTransactions} transactions.
+              Showing {transactions.length} of {totalTransactions} transactions.
             </CardDescription>
           </div>
           <Button 
             onClick={handleExport} 
             variant="outline"
-            disabled={paginatedTransactions.length === 0}
+            disabled={transactions.length === 0}
           >
             <Upload className="mr-2 h-4 w-4" />
             Export CSV
@@ -427,7 +451,7 @@ export default function TransactionsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {paginatedTransactions.map((transaction) => (
+              {transactions.map((transaction) => (
                 <TableRow key={transaction.id}>
                   <TableCell className="font-medium">
                     {transaction.description || 'No description'}
@@ -490,7 +514,7 @@ export default function TransactionsPage() {
                 </TableRow>
               ))}
               
-              {paginatedTransactions.length === 0 && !loading && (
+              {transactions.length === 0 && !loading && (
                 <TableRow>
                   <TableCell colSpan={5} className="h-24 text-center">
                     No transactions found matching your filters.
@@ -520,8 +544,14 @@ export default function TransactionsPage() {
         isOpen={isSheetOpen}
         onOpenChange={handleSheetClose}
         transaction={selectedTransaction}
-        onTransactionCreated={handleTransactionCreated}
-        onTransactionUpdated={handleTransactionUpdated}
+        onTransactionCreated={() => {
+            handleSaveTransaction();
+            toast({ title: "Transaction Added", description: "The transaction has been successfully created." });
+        }}
+        onTransactionUpdated={() => {
+            handleSaveTransaction();
+            toast({ title: "Transaction Updated", description: "The transaction has been successfully updated." });
+        }}
         categories={categories}
       />
     </div>

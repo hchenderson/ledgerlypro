@@ -70,9 +70,18 @@ export default function DashboardPage() {
     return getBudgetDetails().filter(b => b.isFavorite);
   }, [getBudgetDetails]);
   
-  if (userDataLoading || authLoading || isAnalyticsLoading || !analytics) {
+  const isLoading = userDataLoading || authLoading || isAnalyticsLoading || !analytics;
+
+  if (isLoading && allTransactions.length === 0) {
     return <DashboardSkeleton />;
   }
+  
+  if (isLoading && allTransactions.length > 0) {
+     // Show skeleton but keep previous data if available
+  } else if (isLoading) {
+     return <DashboardSkeleton />;
+  }
+
   
   const currentMonthName = new Date().toLocaleString('default', { month: 'long' });
 
@@ -80,81 +89,85 @@ export default function DashboardPage() {
     <div className="space-y-6">
       {(allTransactions.length === 0 || showInstructions) && <InstructionsGuide />}
       
-      <div className="grid gap-4 md:grid-cols-1">
-         <StatCard
-          title="Current Balance"
-          value={analytics.currentBalance}
-          icon="Wallet"
-          trendValue="Your real-time balance"
-        />
-      </div>
+      {analytics ? (
+        <>
+           <div className="grid gap-4 md:grid-cols-1">
+            <StatCard
+              title="Current Balance"
+              value={analytics.currentBalance}
+              icon="Wallet"
+              trendValue="Your real-time balance"
+            />
+          </div>
 
-       <div className="grid gap-4 md:grid-cols-2">
-        <StatCard
-          title="Total Income"
-          value={analytics.totalIncome}
-          icon="TrendingUp"
-          trendValue="All-time income"
-          variant="success"
-        />
-        <StatCard
-          title="Total Expenses"
-          value={analytics.totalExpenses}
-          icon="TrendingDown"
-          trendValue="All-time expenses"
-          variant="danger"
-        />
-      </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <StatCard
+              title="Total Income"
+              value={analytics.totalIncome}
+              icon="TrendingUp"
+              trendValue="All-time income"
+              variant="success"
+            />
+            <StatCard
+              title="Total Expenses"
+              value={analytics.totalExpenses}
+              icon="TrendingDown"
+              trendValue="All-time expenses"
+              variant="danger"
+            />
+          </div>
 
-       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        <StatCard
-          title={`${currentMonthName} Income`}
-          value={analytics.currentMonthIncome}
-          icon="CalendarClock"
-          trendValue="Income this month"
-          variant="success"
-        />
-        <StatCard
-          title={`${currentMonthName} Expenses`}
-          value={analytics.currentMonthExpenses}
-          icon="CalendarClock"
-          trendValue="Expenses this month"
-          variant="danger"
-        />
-        <StatCard
-          title="Savings Rate"
-          value={analytics.savingsRate}
-          icon="DollarSign"
-          trendValue="Based on all-time data"
-          isPercentage
-        />
-      </div>
-      
-       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-        <Card className="lg:col-span-3">
-          <CardHeader>
-            <CardTitle>Income vs. Expense</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <OverviewChart data={analytics.overviewData}/>
-          </CardContent>
-        </Card>
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Recent Transactions</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {allTransactions.length > 0 ? (
-                 <RecentTransactions transactions={allTransactions.slice(0, 5)} />
-            ) : (
-                <div className="flex flex-col items-center justify-center h-full text-center">
-                    <p className="text-muted-foreground">No transactions yet.</p>
-                    <p className="text-sm text-muted-foreground">Add your first transaction to get started.</p>
-                </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <StatCard
+              title={`${currentMonthName} Income`}
+              value={analytics.currentMonthIncome}
+              icon="CalendarClock"
+              trendValue="Income this month"
+              variant="success"
+            />
+            <StatCard
+              title={`${currentMonthName} Expenses`}
+              value={analytics.currentMonthExpenses}
+              icon="CalendarClock"
+              trendValue="Expenses this month"
+              variant="danger"
+            />
+            <StatCard
+              title="Savings Rate"
+              value={analytics.savingsRate}
+              icon="DollarSign"
+              trendValue="Based on all-time data"
+              isPercentage
+            />
+          </div>
+          
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+            <Card className="lg:col-span-3">
+              <CardHeader>
+                <CardTitle>Income vs. Expense</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <OverviewChart data={analytics.overviewData}/>
+              </CardContent>
+            </Card>
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle>Recent Transactions</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {allTransactions.length > 0 ? (
+                    <RecentTransactions transactions={allTransactions.slice(0, 5)} />
+                ) : (
+                    <div className="flex flex-col items-center justify-center h-full text-center">
+                        <p className="text-muted-foreground">No transactions yet.</p>
+                        <p className="text-sm text-muted-foreground">Add your first transaction to get started.</p>
+                    </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </>
+      ): <DashboardSkeleton />}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
