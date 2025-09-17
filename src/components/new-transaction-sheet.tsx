@@ -1,11 +1,11 @@
 
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { z } from "zod"
 import { useForm, useWatch } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { format } from "date-fns"
+import { format, isValid, parse } from "date-fns"
 import * as icons from "lucide-react"
 import { Calendar as CalendarIcon, PlusCircle } from "lucide-react"
 
@@ -194,24 +194,31 @@ export function NewTransactionSheet({
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
   })
+
+  // State for the text input for the date
+  const [dateInput, setDateInput] = useState("");
   
   useEffect(() => {
     if (isOpen) {
       if (transaction) {
+        const transactionDate = transaction.date ? new Date(transaction.date) : new Date();
         form.reset({
           ...transaction,
-          date: transaction.date ? new Date(transaction.date) : new Date(),
+          date: transactionDate,
           amount: transaction.amount || ('' as any),
           category: transaction.category || undefined,
         });
+        setDateInput(format(transactionDate, "MM/dd/yyyy"));
       } else {
+        const today = new Date();
         form.reset({
           type: 'expense',
           description: '',
           amount: '' as any,
           category: undefined,
-          date: new Date(),
+          date: today,
         });
+        setDateInput(format(today, "MM/dd/yyyy"));
       }
     }
   }, [transaction, form, isOpen]);
@@ -390,28 +397,34 @@ export function NewTransactionSheet({
                   <FormLabel>Date</FormLabel>
                   <Popover>
                     <PopoverTrigger asChild>
-                      <FormControl>
-                        <Button
-                          variant={"outline"}
-                          className={cn(
-                            "w-full pl-3 text-left font-normal",
-                            !field.value && "text-muted-foreground"
-                          )}
-                        >
-                          {field.value ? (
-                            format(field.value, "PPP")
-                          ) : (
-                            <span>Pick a date</span>
-                          )}
-                          <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                        </Button>
-                      </FormControl>
+                      <div className="relative">
+                        <FormControl>
+                          <Input
+                            placeholder="MM/dd/yyyy"
+                            value={dateInput}
+                            onChange={(e) => {
+                                const val = e.target.value;
+                                setDateInput(val);
+                                const parsedDate = parse(val, "MM/dd/yyyy", new Date());
+                                if (isValid(parsedDate)) {
+                                    field.onChange(parsedDate);
+                                }
+                            }}
+                          />
+                        </FormControl>
+                        <CalendarIcon className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 opacity-50" />
+                      </div>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0" align="start">
                       <Calendar
                         mode="single"
                         selected={field.value}
-                        onSelect={field.onChange}
+                        onSelect={(selectedDate) => {
+                            if(selectedDate) {
+                                field.onChange(selectedDate);
+                                setDateInput(format(selectedDate, "MM/dd/yyyy"));
+                            }
+                        }}
                         disabled={(date) =>
                           date > new Date() || date < new Date("1900-01-01")
                         }
