@@ -1,389 +1,559 @@
 
-"use client";
+'use client';
 
-import { useRef, useMemo, useState, lazy, Suspense, useEffect } from 'react';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
-import { DateRange } from 'react-day-picker';
-import { startOfMonth, endOfMonth, subMonths } from 'date-fns';
-import { format } from 'date-fns';
+import React, { useState, useMemo, useRef } from 'react';
+import { 
+  Card, 
+  CardContent, 
+  CardDescription, 
+  CardHeader, 
+  CardTitle 
+} from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from '@/components/ui/select';
+import { 
+  Tabs, 
+  TabsContent, 
+  TabsList, 
+  TabsTrigger 
+} from '@/components/ui/tabs';
+import { 
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Badge } from '@/components/ui/badge';
+import { 
+  Settings, 
+  Save, 
+  Download, 
+  Eye, 
+  BarChart3, 
+  PieChart, 
+  TrendingUp,
+  Grid,
+  List,
+  Calendar,
+  Filter,
+  Plus,
+  X
+} from 'lucide-react';
+import { 
+  AreaChart, 
+  Area, 
+  BarChart, 
+  Bar, 
+  LineChart, 
+  Line,
+  PieChart as RechartsPieChart,
+  Cell,
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  Legend,
+  ResponsiveContainer
+} from 'recharts';
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Upload, Calendar as CalendarIcon, Loader2, BarChart } from "lucide-react";
-import {
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-} from "@/components/ui/chart"
-import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts"
-import { useToast } from '@/hooks/use-toast';
-import { useUserData } from '@/hooks/use-user-data';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
-import { Calendar } from '@/components/ui/calendar';
-import { cn } from '@/lib/utils';
-import type { Transaction } from '@/types';
-import { getDashboardAnalytics } from '@/lib/actions';
-import { useAuth } from '@/hooks/use-auth';
+// Mock data - replace with your actual data
+const mockTransactions = [
+  { id: 1, amount: 1200, category: 'Salary', type: 'income', date: '2024-01-15' },
+  { id: 2, amount: 800, category: 'Food', type: 'expense', date: '2024-01-16' },
+  { id: 3, amount: 300, category: 'Transportation', type: 'expense', date: '2024-01-17' },
+  { id: 4, amount: 150, category: 'Entertainment', type: 'expense', date: '2024-01-18' },
+  { id: 5, amount: 2000, category: 'Salary', type: 'income', date: '2024-02-15' },
+  { id: 6, amount: 900, category: 'Food', type: 'expense', date: '2024-02-16' },
+];
 
-const OverviewChart = lazy(() => import('@/components/dashboard/overview-chart').then(module => ({ default: module.OverviewChart })));
-const CategoryPieChart = lazy(() => import('@/components/reports/category-pie-chart').then(module => ({ default: module.CategoryPieChart })));
+const CHART_TYPES = {
+  bar: { name: 'Bar Chart', icon: BarChart3, component: 'BarChart' },
+  line: { name: 'Line Chart', icon: TrendingUp, component: 'LineChart' },
+  area: { name: 'Area Chart', icon: BarChart3, component: 'AreaChart' },
+  pie: { name: 'Pie Chart', icon: PieChart, component: 'PieChart' }
+};
 
-function ChartSuspenseFallback() {
-    return (
-        <div className="flex items-center justify-center h-[300px] w-full">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
-    )
-}
+const CHART_COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff7c7c', '#8dd1e1'];
 
-function EmptyReportState() {
-    return (
-        <div className="flex flex-col items-center justify-center text-center text-muted-foreground h-[300px] bg-muted/50 rounded-lg">
-            <BarChart className="h-12 w-12 mb-4" />
-            <p className="font-semibold">No data available for the selected filters.</p>
-            <p className="text-sm">Try adjusting your date range or category selection.</p>
-        </div>
-    )
-}
+const DEFAULT_WIDGETS = [
+  {
+    id: 'income-expense',
+    title: 'Income vs Expense',
+    type: 'bar',
+    size: 'large',
+    dataKey: 'monthly',
+    enabled: true,
+    position: 0
+  },
+  {
+    id: 'category-breakdown',
+    title: 'Category Breakdown',
+    type: 'pie',
+    size: 'medium',
+    dataKey: 'category',
+    enabled: true,
+    position: 1
+  },
+  {
+    id: 'balance-trend',
+    title: 'Balance Trend',
+    type: 'area',
+    size: 'large',
+    dataKey: 'balance',
+    enabled: true,
+    position: 2
+  }
+];
 
+export default function CustomizableReports() {
+  const [widgets, setWidgets] = useState(DEFAULT_WIDGETS);
+  const [isCustomizing, setIsCustomizing] = useState(false);
+  const [savedReports, setSavedReports] = useState([
+    { id: 1, name: 'Monthly Overview', widgets: DEFAULT_WIDGETS },
+    { id: 2, name: 'Expense Analysis', widgets: DEFAULT_WIDGETS.filter(w => w.id !== 'balance-trend') }
+  ]);
+  const [newReportName, setNewReportName] = useState('');
+  const [selectedReport, setSelectedReport] = useState(null);
+  const [layout, setLayout] = useState('grid');
+  const reportRef = useRef(null);
 
-export default function ReportsPage() {
-    const reportRef = useRef<HTMLDivElement>(null);
-    const { toast } = useToast();
-    const { allTransactions } = useUserData();
-    const { user } = useAuth();
-    const [overallBalance, setOverallBalance] = useState(0);
-    const [isAnalyticsLoading, setIsAnalyticsLoading] = useState(true);
-
-    const [dateRange, setDateRange] = useState<DateRange | undefined>({
-      from: startOfMonth(new Date()),
-      to: endOfMonth(new Date()),
-    });
-    const [categoryFilter, setCategoryFilter] = useState<string>('all');
-    
-    useEffect(() => {
-      if (user) {
-        setIsAnalyticsLoading(true);
-        getDashboardAnalytics({ transactions: allTransactions, userId: user.uid })
-          .then(analytics => {
-            setOverallBalance(analytics.currentBalance);
-            setIsAnalyticsLoading(false);
-          });
+  // Process data for different chart types
+  const processedData = useMemo(() => {
+    const monthlyData = mockTransactions.reduce((acc, transaction) => {
+      const month = new Date(transaction.date).toLocaleDateString('en', { month: 'short' });
+      if (!acc[month]) {
+        acc[month] = { month, income: 0, expense: 0 };
       }
-    }, [allTransactions, user]);
-    
-    useEffect(() => {
-        if (dateRange?.from && dateRange?.to && dateRange.from > dateRange.to) {
-            toast({
-                variant: 'destructive',
-                title: 'Invalid Date Range',
-                description: 'The "from" date cannot be after the "to" date. Swapping dates for you.',
-            });
-            setDateRange({ from: dateRange.to, to: dateRange.from });
+      acc[month][transaction.type] += transaction.amount;
+      return acc;
+    }, {});
+
+    const categoryData = mockTransactions
+      .filter(t => t.type === 'expense')
+      .reduce((acc, transaction) => {
+        if (!acc[transaction.category]) {
+          acc[transaction.category] = 0;
         }
-    }, [dateRange, toast]);
+        acc[transaction.category] += transaction.amount;
+        return acc;
+      }, {});
 
-    const filteredTransactions = useMemo(() => {
-        if (!dateRange?.from || !dateRange?.to) {
-            return [];
-        }
-        return allTransactions.filter(t => {
-            const transactionDate = new Date(t.date);
-            const isInDateRange = transactionDate >= dateRange.from! && transactionDate <= dateRange.to!;
-            const isInCategory = categoryFilter === 'all' || t.category === categoryFilter;
-            return isInDateRange && isInCategory;
-        });
-    }, [allTransactions, dateRange, categoryFilter]);
+    let runningBalance = 0;
+    const balanceData = Object.values(monthlyData).map(month => {
+      runningBalance += month.income - month.expense;
+      return { ...month, balance: runningBalance };
+    });
 
-    const { overviewData, categoryData } = useMemo(() => {
-        const data: { overview: any[], categories: any[] } = { overview: [], categories: [] };
-        if (filteredTransactions.length === 0) return data;
+    return {
+      monthly: Object.values(monthlyData),
+      category: Object.entries(categoryData).map(([name, value], index) => ({
+        name,
+        value,
+        fill: CHART_COLORS[index % CHART_COLORS.length]
+      })),
+      balance: balanceData
+    };
+  }, []);
 
-        const monthlyData: Record<string, { income: number, expense: number }> = {};
-        filteredTransactions.forEach(t => {
-            const month = format(new Date(t.date), 'MMM');
-            if (!monthlyData[month]) {
-                monthlyData[month] = { income: 0, expense: 0 };
-            }
-            monthlyData[month][t.type] += t.amount;
-        });
-
-        data.overview = Object.entries(monthlyData).map(([name, values]) => ({
-            name,
-            ...values
-        })).reverse();
-
-        const categorySpending: Record<string, number> = {};
-        filteredTransactions.filter(t => t.type === 'expense').forEach(t => {
-            if (!categorySpending[t.category]) {
-                categorySpending[t.category] = 0;
-            }
-            categorySpending[t.category] += t.amount;
-        });
-        
-        data.categories = Object.entries(categorySpending).map(([category, amount], index) => ({
-            category,
-            amount,
-            fill: `hsl(var(--chart-${(index % 5) + 1}))`
-        }));
-        
-        return data;
-    }, [filteredTransactions]);
+  const renderChart = (widget) => {
+    const data = processedData[widget.dataKey];
     
-    const balanceTrendData = useMemo(() => {
-        if (!dateRange?.from || isAnalyticsLoading) return [];
+    switch (widget.type) {
+      case 'bar':
+        return (
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={data}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="month" />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              <Bar dataKey="income" fill="#82ca9d" />
+              <Bar dataKey="expense" fill="#ff7c7c" />
+            </BarChart>
+          </ResponsiveContainer>
+        );
+      
+      case 'line':
+        return (
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={data}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="month" />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              <Line type="monotone" dataKey="income" stroke="#82ca9d" />
+              <Line type="monotone" dataKey="expense" stroke="#ff7c7c" />
+            </LineChart>
+          </ResponsiveContainer>
+        );
+      
+      case 'area':
+        return (
+          <ResponsiveContainer width="100%" height={300}>
+            <AreaChart data={data} accessibilityLayer role="img" aria-label="Balance trend over time">
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="month" />
+              <YAxis />
+              <Tooltip />
+              <Area type="monotone" dataKey="balance" stroke="#8884d8" fill="#8884d8" fillOpacity={0.6} />
+            </AreaChart>
+          </ResponsiveContainer>
+        );
+      
+      case 'pie':
+        return (
+          <ResponsiveContainer width="100%" height={300}>
+            <RechartsPieChart>
+              <RechartsPieChart data={data} cx="50%" cy="50%" outerRadius={80}>
+                {data.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.fill} />
+                ))}
+              </RechartsPieChart>
+              <Tooltip />
+              <Legend />
+            </RechartsPieChart>
+          </ResponsiveContainer>
+        );
+      
+      default:
+        return <div>Unsupported chart type</div>;
+    }
+  };
+
+  const updateWidget = (widgetId, updates) => {
+    setWidgets(widgets.map(w => 
+      w.id === widgetId ? { ...w, ...updates } : w
+    ));
+  };
+
+  const addWidget = () => {
+    const newWidget = {
+      id: `widget-${Date.now()}`,
+      title: 'New Widget',
+      type: 'bar',
+      size: 'medium',
+      dataKey: 'monthly',
+      enabled: true,
+      position: widgets.length
+    };
+    setWidgets([...widgets, newWidget]);
+  };
+
+  const removeWidget = (widgetId) => {
+    setWidgets(widgets.filter(w => w.id !== widgetId));
+  };
+
+  const saveReport = () => {
+    if (!newReportName.trim()) return;
     
-        const balanceBeforeRange = allTransactions
-            .filter(t => new Date(t.date) < dateRange.from!)
-            .reduce((acc, t) => acc + (t.type === 'income' ? t.amount : -t.amount), overallBalance - allTransactions.reduce((acc, t) => acc + (t.type === 'income' ? t.amount : -t.amount), 0));
-    
-        if (filteredTransactions.length === 0) {
-            return [{ name: format(dateRange.from, 'MMM'), balance: balanceBeforeRange }];
-        }
-    
-        const monthlyChanges: Record<string, number> = {};
-        filteredTransactions.forEach(t => {
-            const month = format(new Date(t.date), 'MMM');
-            if (!monthlyChanges[month]) {
-                monthlyChanges[month] = 0;
-            }
-            monthlyChanges[month] += (t.type === 'income' ? t.amount : -t.amount);
-        });
-    
-        let currentBalance = balanceBeforeRange;
-        const trendData = overviewData.map(d => {
-            currentBalance += (monthlyChanges[d.name] || 0);
-            return {
-                name: d.name,
-                balance: currentBalance,
-            };
-        });
-        
-        return trendData.reverse();
-
-    }, [filteredTransactions, allTransactions, dateRange, overallBalance, overviewData, isAnalyticsLoading]);
-
-    const handleExportPdf = async () => {
-        const input = reportRef.current;
-        if (!input) {
-            toast({
-                variant: 'destructive',
-                title: 'Error',
-                description: 'Could not find the report element to export.',
-            });
-            return;
-        }
-
-        toast({
-            title: 'Exporting PDF...',
-            description: 'Please wait while we generate your report.',
-        });
-
-        try {
-            const canvas = await html2canvas(input, {
-                scale: 2,
-                useCORS: true,
-                backgroundColor: null, 
-            });
-
-            const imgData = canvas.toDataURL('image/png');
-            const pdf = new jsPDF({
-                orientation: 'portrait',
-                unit: 'px',
-                format: [canvas.width, canvas.height],
-            });
-
-            pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
-            pdf.save('financial-report.pdf');
-            
-            toast({
-                title: 'Export Successful',
-                description: 'Your report has been downloaded.',
-            });
-        } catch (error) {
-            console.error('Failed to export PDF:', error);
-            toast({
-                variant: 'destructive',
-                title: 'Export Failed',
-                description: 'An unexpected error occurred while generating the PDF.',
-            });
-        }
+    const newReport = {
+      id: Date.now(),
+      name: newReportName,
+      widgets: [...widgets]
     };
     
-    const allCategories = useMemo(() => [...new Set(allTransactions.map(t => t.category).filter(Boolean))], [allTransactions]);
+    setSavedReports([...savedReports, newReport]);
+    setNewReportName('');
+  };
 
-    const handlePresetDateRange = (preset: string) => {
-        const now = new Date();
-        if (preset === 'this-month') {
-            setDateRange({ from: startOfMonth(now), to: endOfMonth(now) });
-        } else if (preset === 'last-month') {
-            const lastMonth = subMonths(now, 1);
-            setDateRange({ from: startOfMonth(lastMonth), to: endOfMonth(lastMonth) });
-        }
-    }
+  const loadReport = (report) => {
+    setWidgets(report.widgets);
+    setSelectedReport(report);
+  };
 
+  const enabledWidgets = widgets.filter(w => w.enabled).sort((a, b) => a.position - b.position);
 
   return (
     <div className="space-y-6">
-       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
         <div>
-            <h2 className="text-2xl font-bold tracking-tight font-headline">Financial Reports</h2>
-            <p className="text-muted-foreground">
-                Analyze your financial overview with detailed reports.
-            </p>
+          <h2 className="text-2xl font-bold">Customizable Reports</h2>
+          <p className="text-gray-600">Design your perfect financial dashboard</p>
         </div>
-        <Button variant="outline" onClick={handleExportPdf} disabled={filteredTransactions.length === 0}>
-            <Upload className="mr-2 h-4 w-4" />
-            Export PDF
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setLayout(layout === 'grid' ? 'list' : 'grid')}
+          >
+            {layout === 'grid' ? <List className="h-4 w-4" /> : <Grid className="h-4 w-4" />}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setIsCustomizing(!isCustomizing)}
+          >
+            <Settings className="h-4 w-4 mr-2" />
+            Customize
+          </Button>
+          <Button variant="outline">
+            <Download className="h-4 w-4 mr-2" />
+            Export
+          </Button>
+        </div>
       </div>
 
-       <Card>
-           <CardHeader>
-               <CardTitle>Filters</CardTitle>
-           </CardHeader>
-           <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-               <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      id="date"
-                      variant={"outline"}
-                      className={cn(
-                        "w-full justify-start text-left font-normal",
-                        !dateRange && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {dateRange?.from ? (
-                        dateRange.to ? (
-                          <>
-                            {format(dateRange.from, "LLL dd, y")} -{" "}
-                            {format(dateRange.to, "LLL dd, y")}
-                          </>
-                        ) : (
-                          format(dateRange.from, "LLL dd, y")
-                        )
-                      ) : (
-                        <span>Pick a date</span>
-                      )}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <div className="p-2 border-b">
-                        <Button variant="link" size="sm" onClick={() => handlePresetDateRange('this-month')}>This Month</Button>
-                        <Button variant="link" size="sm" onClick={() => handlePresetDateRange('last-month')}>Last Month</Button>
-                    </div>
-                    <Calendar
-                      initialFocus
-                      mode="range"
-                      defaultMonth={dateRange?.from}
-                      selected={dateRange}
-                      onSelect={setDateRange}
-                      numberOfMonths={2}
-                      disabled={(date) => date > new Date()}
-                    />
-                  </PopoverContent>
-                </Popover>
-               <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                   <SelectTrigger className="w-full">
-                       <SelectValue placeholder="Filter by category" />
-                   </SelectTrigger>
-                   <SelectContent>
-                       <SelectItem value="all">All Categories</SelectItem>
-                       {allCategories.map(cat => (
-                           <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                       ))}
-                   </SelectContent>
-               </Select>
-           </CardContent>
-       </Card>
-
-      <div ref={reportRef} className="space-y-6">
-        {isAnalyticsLoading ? <ChartSuspenseFallback /> : (
-            <>
-                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                    <Card>
-                    <CardHeader>
-                        <CardTitle>Income vs. Expense</CardTitle>
-                        <CardDescription>A breakdown of your income and expenses for the selected period.</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <Suspense fallback={<ChartSuspenseFallback />}>
-                            {overviewData.length > 0 ? <OverviewChart data={overviewData} /> : <EmptyReportState />}
-                        </Suspense>
-                    </CardContent>
-                    </Card>
-                    <Card>
-                    <CardHeader>
-                        <CardTitle>Category Breakdown</CardTitle>
-                        <CardDescription>How your spending is distributed across different categories.</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <Suspense fallback={<ChartSuspenseFallback />}>
-                            {categoryData.length > 0 ? <CategoryPieChart data={categoryData} /> : <EmptyReportState />}
-                        </Suspense>
-                    </CardContent>
-                    </Card>
+      {/* Customization Panel */}
+      {isCustomizing && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Report Configuration</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Tabs defaultValue="widgets" className="w-full">
+              <TabsList>
+                <TabsTrigger value="widgets">Widgets</TabsTrigger>
+                <TabsTrigger value="layout">Layout</TabsTrigger>
+                <TabsTrigger value="templates">Templates</TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="widgets" className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-lg font-medium">Manage Widgets</h3>
+                  <Button size="sm" onClick={addWidget}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Widget
+                  </Button>
                 </div>
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Balance Trend</CardTitle>
-                        <CardDescription>Your account balance trend based on the filtered transactions.</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        {balanceTrendData.length > 0 ? (
-                            <ChartContainer
-                                config={{
-                                    balance: {
-                                    label: "Balance",
-                                    color: "hsl(var(--chart-1))",
-                                    },
-                                }}
-                                className="h-[300px] w-full"
-                                >
-                                <AreaChart
-                                    accessibilityLayer
-                                    data={balanceTrendData}
-                                    aria-label="Balance trend over time"
-                                    role="img"
-                                    margin={{
-                                    left: 12,
-                                    right: 12,
-                                    }}
-                                >
-                                    <CartesianGrid vertical={false} />
-                                    <XAxis
-                                        dataKey="name"
-                                        tickLine={false}
-                                        axisLine={false}
-                                        tickMargin={8}
-                                        tickFormatter={(value) => value.slice(0, 3)}
-                                    />
-                                    <YAxis 
-                                        dataKey="balance"
-                                        tickLine={false}
-                                        axisLine={false}
-                                        tickMargin={8}
-                                        tickFormatter={(value) => `$${value}`}
-                                    />
-                                    <ChartTooltip cursor={false} content={<ChartTooltipContent indicator="line" />} />
-                                    <Area
-                                        dataKey="balance"
-                                        type="natural"
-                                        fill="var(--color-balance)"
-                                        fillOpacity={0.4}
-                                        stroke="var(--color-balance)"
-                                    />
-                                </AreaChart>
-                            </ChartContainer>
-                        ) : <EmptyReportState />}
-                    </CardContent>
-                </Card>
-            </>
+                
+                <div className="grid gap-4">
+                  {widgets.map((widget) => (
+                    <Card key={widget.id} className="p-4">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            checked={widget.enabled}
+                            onCheckedChange={(checked) =>
+                              updateWidget(widget.id, { enabled: checked })
+                            }
+                          />
+                          <Input
+                            value={widget.title}
+                            onChange={(e) =>
+                              updateWidget(widget.id, { title: e.target.value })
+                            }
+                            className="font-medium"
+                          />
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeWidget(widget.id)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                        <div>
+                          <Label>Chart Type</Label>
+                          <Select
+                            value={widget.type}
+                            onValueChange={(value) =>
+                              updateWidget(widget.id, { type: value })
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {Object.entries(CHART_TYPES).map(([key, type]) => (
+                                <SelectItem key={key} value={key}>
+                                  {type.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        
+                        <div>
+                          <Label>Size</Label>
+                          <Select
+                            value={widget.size}
+                            onValueChange={(value) =>
+                              updateWidget(widget.id, { size: value })
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="small">Small</SelectItem>
+                              <SelectItem value="medium">Medium</SelectItem>
+                              <SelectItem value="large">Large</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        
+                        <div>
+                          <Label>Data Source</Label>
+                          <Select
+                            value={widget.dataKey}
+                            onValueChange={(value) =>
+                              updateWidget(widget.id, { dataKey: value })
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="monthly">Monthly Data</SelectItem>
+                              <SelectItem value="category">Category Data</SelectItem>
+                              <SelectItem value="balance">Balance Data</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              </TabsContent>
+              
+              <TabsContent value="layout" className="space-y-4">
+                <div>
+                  <h3 className="text-lg font-medium mb-2">Layout Options</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <Button
+                      variant={layout === 'grid' ? 'default' : 'outline'}
+                      onClick={() => setLayout('grid')}
+                    >
+                      <Grid className="h-4 w-4 mr-2" />
+                      Grid Layout
+                    </Button>
+                    <Button
+                      variant={layout === 'list' ? 'default' : 'outline'}
+                      onClick={() => setLayout('list')}
+                    >
+                      <List className="h-4 w-4 mr-2" />
+                      List Layout
+                    </Button>
+                  </div>
+                </div>
+              </TabsContent>
+              
+              <TabsContent value="templates" className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-medium">Saved Reports</h3>
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <Button size="sm">
+                        <Save className="h-4 w-4 mr-2" />
+                        Save Current
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Save Report Template</DialogTitle>
+                        <DialogDescription>
+                          Give your custom report a name to save it for later use.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div>
+                        <Label htmlFor="report-name">Report Name</Label>
+                        <Input
+                          id="report-name"
+                          value={newReportName}
+                          onChange={(e) => setNewReportName(e.target.value)}
+                          placeholder="My Custom Report"
+                        />
+                      </div>
+                      <DialogFooter>
+                        <Button onClick={saveReport} disabled={!newReportName.trim()}>
+                          Save Report
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                </div>
+                
+                <div className="grid gap-2">
+                  {savedReports.map((report) => (
+                    <div key={report.id} className="flex items-center justify-between p-3 border rounded-lg">
+                      <div>
+                        <h4 className="font-medium">{report.name}</h4>
+                        <p className="text-sm text-gray-600">
+                          {report.widgets.filter(w => w.enabled).length} widgets
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => loadReport(report)}
+                      >
+                        <Eye className="h-4 w-4 mr-2" />
+                        Load
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Report Display */}
+      <div ref={reportRef}>
+        {selectedReport && (
+          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-center justify-between">
+              <span className="text-blue-800 font-medium">
+                Viewing: {selectedReport.name}
+              </span>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setSelectedReport(null)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
         )}
+
+        <div className={`grid gap-6 ${
+          layout === 'grid' 
+            ? 'grid-cols-1 lg:grid-cols-2 xl:grid-cols-3' 
+            : 'grid-cols-1'
+        }`}>
+          {enabledWidgets.map((widget) => {
+            const sizeClasses = {
+              small: layout === 'grid' ? 'lg:col-span-1' : '',
+              medium: layout === 'grid' ? 'lg:col-span-1' : '',
+              large: layout === 'grid' ? 'lg:col-span-2' : ''
+            };
+
+            return (
+              <Card key={widget.id} className={sizeClasses[widget.size]}>
+                <CardHeader>
+                  <CardTitle className="flex items-center justify-between">
+                    {widget.title}
+                    <Badge variant="outline">
+                      {CHART_TYPES[widget.type]?.name}
+                    </Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {renderChart(widget)}
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
+      </div>
     </div>
   );
 }
