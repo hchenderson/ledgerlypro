@@ -13,7 +13,6 @@ import { NewTransactionSheet } from "@/components/new-transaction-sheet";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import type { Transaction, Category, SubCategory } from "@/types";
 import { useToast } from "@/hooks/use-toast";
-import Papa from "papaparse";
 import { useUserData } from "@/hooks/use-user-data";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
@@ -25,6 +24,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { useAuth } from "@/hooks/use-auth";
 import { collection, query, orderBy, limit, startAfter, where, getDocs, getCountFromServer, QueryConstraint, DocumentData, QueryDocumentSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { ExportTransactionsDialog } from "@/components/export-transactions-dialog";
 
 
 // Custom hook with proper typing
@@ -82,12 +82,14 @@ export default function TransactionsPage() {
   } = useUserData();
   
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [allTransactionsForExport, setAllTransactionsForExport] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [hasMore, setHasMore] = useState(true);
   const [lastVisible, setLastVisible] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
   const [totalTransactions, setTotalTransactions] = useState(0);
 
   const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const { toast } = useToast();
 
@@ -122,21 +124,28 @@ export default function TransactionsPage() {
     // Server-side filtering
     if (filters.category) queryConstraints.push(where("category", "==", filters.category));
     if (filters.dateRange?.from) queryConstraints.push(where("date", ">=", filters.dateRange.from.toISOString()));
-    if (filters.dateRange?.to) queryConstraints.push(where("date", "<=", filters.dateRange.to.toISOString()));
-    if (filters.minAmount) queryConstraints.push(where("amount", ">=", filters.minAmount));
-    if (filters.maxAmount) queryConstraints.push(where("amount", "<=", filters.maxAmount));
+    if (filters.dateRange?.to) {
+        // Adjust to to be end of day
+        const toDate = new Date(filters.dateRange.to);
+        toDate.setHours(23, 59, 59, 999);
+        queryConstraints.push(where("date", "<=", toDate.toISOString()));
+    }
+    if (filters.minAmount !== undefined) queryConstraints.push(where("amount", ">=", filters.minAmount));
+    if (filters.maxAmount !== undefined) queryConstraints.push(where("amount", "<=", filters.maxAmount));
     
-    // Client-side filtering for description because Firestore doesn't support partial text search
+    // Server-side filtering for description with prefix search
     if (filters.description) {
-        // Firestore doesn't support 'contains' or 'like' queries efficiently. 
-        // We will fetch based on other filters and then filter by description client-side.
+        queryConstraints.push(where("description", ">=", filters.description));
+        queryConstraints.push(where("description", "<=", filters.description + '\uf8ff'));
     }
 
-    queryConstraints.push(orderBy("date", "desc"));
+    const countQuery = query(collRef, ...queryConstraints.filter(c => c.type !== 'orderBy' && c.type !== 'limit' && c.type !== 'startAfter'));
+    
+    let q = query(collRef, ...queryConstraints);
+    q = query(q, orderBy("date", "desc"));
     
     const currentLastVisible = reset ? null : lastVisible;
 
-    let q = query(collRef, ...queryConstraints);
     if (currentLastVisible) {
       q = query(q, startAfter(currentLastVisible));
     }
@@ -144,21 +153,13 @@ export default function TransactionsPage() {
 
     try {
       if (reset) {
-        const countQuery = query(collRef, ...queryConstraints.filter(c => c.type !== 'orderBy' && c.type !== 'limit' && c.type !== 'startAfter'));
         const totalCountSnap = await getCountFromServer(countQuery);
-        // Note: This count may be slightly off if there's a description filter, but it's a reasonable server-side estimate.
         setTotalTransactions(totalCountSnap.data().count);
       }
 
       const docsSnap = await getDocs(q);
+      const docsData = docsSnap.docs.map(doc => doc.data() as Transaction);
       
-      let docsData = docsSnap.docs.map(doc => doc.data() as Transaction);
-
-      // Apply client-side filtering for description
-      if (filters.description) {
-        docsData = docsData.filter(t => t.description.toLowerCase().includes(filters.description!.toLowerCase()));
-      }
-
       setHasMore(docsSnap.docs.length === TRANSACTIONS_PAGE_SIZE);
       setLastVisible(docsSnap.docs[docsSnap.docs.length - 1] || null);
       setTransactions(prev => (reset ? docsData : [...prev, ...docsData]));
@@ -170,37 +171,34 @@ export default function TransactionsPage() {
     }
   }, [user, filters, lastVisible, toast]);
 
-  // Fetch transactions when filters change
   useEffect(() => {
     fetchTransactions(true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters, user]);
 
+  useEffect(() => {
+    if (!user) return;
+    const fetchAllForExport = async () => {
+        const collRef = collection(db, 'users', user.uid, 'transactions');
+        const q = query(collRef, orderBy('date', 'desc'));
+        const querySnapshot = await getDocs(q);
+        setAllTransactionsForExport(querySnapshot.docs.map(doc => doc.data() as Transaction));
+    }
+    fetchAllForExport();
+  }, [user]);
 
-  // Flatten categories safely
-  const allCategories = useMemo(() => {
-    const flattenCategories = (cats: (Category | SubCategory)[]): string[] => {
-      if (!Array.isArray(cats)) return [];
-      
-      return cats.reduce<string[]>((acc, c) => {
-        if (!c || typeof c !== 'object') return acc;
-        
-        if (c.name && typeof c.name === 'string') {
-          acc.push(c.name);
-        }
-        
-        if (c.subCategories && Array.isArray(c.subCategories)) {
-          acc.push(...flattenCategories(c.subCategories));
-        }
-        
-        return acc;
-      }, []);
+  const allCategoryOptions = useMemo(() => {
+    const options: { value: string; label: string }[] = [];
+    const recurse = (cats: (Category | SubCategory)[]) => {
+      cats.forEach(c => {
+        options.push({ value: c.name, label: c.name });
+        if(c.subCategories) recurse(c.subCategories);
+      });
     };
-    
-    return flattenCategories(categories);
+    recurse(categories);
+    return options;
   }, [categories]);
 
-  // Reset filters function
   const resetFilters = useCallback(() => {
     setDescriptionFilter('');
     setCategoryFilter('all');
@@ -209,13 +207,11 @@ export default function TransactionsPage() {
     setMaxAmount('');
   }, []);
 
-  // Handle edit transaction
   const handleEdit = useCallback((transaction: Transaction) => {
     setSelectedTransaction(transaction);
     setIsSheetOpen(true);
   }, []);
   
-  // Handle sheet close
   const handleSheetClose = useCallback((open: boolean) => {
     if (!open) {
       setSelectedTransaction(null);
@@ -223,12 +219,10 @@ export default function TransactionsPage() {
     setIsSheetOpen(open);
   }, []);
   
-  // Handle transaction creation/update
   const handleSaveTransaction = useCallback(async () => {
     await fetchTransactions(true);
   }, [fetchTransactions]);
 
-  // Handle delete transaction
   const handleDelete = useCallback(async (id: string) => {
       try {
         await deleteTransaction(id);
@@ -246,63 +240,12 @@ export default function TransactionsPage() {
       }
   }, [deleteTransaction, toast]);
   
-  // Handle CSV export
-  const handleExport = useCallback(() => {
-    try {
-      if (!transactions || transactions.length === 0) {
-        toast({
-          variant: "destructive",
-          title: "No Data",
-          description: "No transactions available to export.",
-        });
-        return;
-      }
-
-      const exportData = transactions.map(transaction => ({
-        Description: transaction.description || '',
-        Category: transaction.category || '',
-        Date: transaction.date ? format(new Date(transaction.date), "yyyy-MM-dd") : '',
-        Amount: transaction.amount || 0,
-        Type: transaction.type || ''
-      }));
-
-      const csv = Papa.unparse(exportData);
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement('a');
-      const url = URL.createObjectURL(blob);
-      
-      link.setAttribute('href', url);
-      link.setAttribute('download', `transactions-${format(new Date(), "yyyy-MM-dd")}.csv`);
-      link.style.visibility = 'hidden';
-      
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      URL.revokeObjectURL(url);
-      
-      toast({
-        title: "Export Successful",
-        description: "Your transactions have been exported successfully.",
-      });
-    } catch (error) {
-      console.error('Export error:', error);
-      toast({
-        variant: "destructive",
-        title: "Export Failed",
-        description: "An error occurred while exporting transactions.",
-      });
-    }
-  }, [transactions, toast]);
-
-  // Load more transactions
   const handleLoadMore = useCallback(() => {
     if (hasMore && !loading) {
       fetchTransactions(false);
     }
   }, [fetchTransactions, hasMore, loading]);
 
-  // Format currency safely
   const formatCurrency = useCallback((amount: number) => {
     try {
       return new Intl.NumberFormat("en-US", { 
@@ -314,7 +257,6 @@ export default function TransactionsPage() {
     }
   }, []);
 
-  // Format date safely
   const formatDate = useCallback((dateString: string) => {
     try {
       return format(new Date(dateString), "MMMM d, yyyy");
@@ -323,14 +265,12 @@ export default function TransactionsPage() {
     }
   }, []);
   
-  // Show loading skeleton on initial load
   if (loading && transactions.length === 0) {
     return <TransactionsSkeleton />;
   }
 
   return (
     <div className="space-y-6">
-      {/* Filters Card */}
       <Card>
         <CardHeader>
           <CardTitle>Filters</CardTitle>
@@ -348,8 +288,8 @@ export default function TransactionsPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Categories</SelectItem>
-              {allCategories.sort().map(cat => (
-                <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+              {allCategoryOptions.sort((a,b) => a.label.localeCompare(b.label)).map(cat => (
+                <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -413,7 +353,6 @@ export default function TransactionsPage() {
         </CardContent>
       </Card>
 
-      {/* Transactions Table Card */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
@@ -422,14 +361,19 @@ export default function TransactionsPage() {
               Showing {transactions.length} of {totalTransactions} transactions.
             </CardDescription>
           </div>
-          <Button 
-            onClick={handleExport} 
-            variant="outline"
-            disabled={transactions.length === 0}
-          >
-            <Upload className="mr-2 h-4 w-4" />
-            Export CSV
-          </Button>
+          <ExportTransactionsDialog
+            transactions={allTransactionsForExport}
+            categories={categories}
+            triggerButton={
+                 <Button 
+                    variant="outline"
+                    disabled={allTransactionsForExport.length === 0}
+                  >
+                    <Upload className="mr-2 h-4 w-4" />
+                    Export
+                  </Button>
+            }
+           />
         </CardHeader>
         
         <CardContent>
@@ -519,7 +463,6 @@ export default function TransactionsPage() {
             </TableBody>
           </Table>
           
-          {/* Load More Button */}
           {hasMore && (
             <div className="flex justify-center mt-4">
               <Button 
@@ -534,7 +477,6 @@ export default function TransactionsPage() {
         </CardContent>
       </Card>
 
-      {/* New/Edit Transaction Sheet */}
       <NewTransactionSheet 
         isOpen={isSheetOpen}
         onOpenChange={handleSheetClose}
