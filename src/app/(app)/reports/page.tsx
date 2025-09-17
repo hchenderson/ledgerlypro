@@ -2,6 +2,7 @@
 'use client';
 
 import React, { useState, useMemo, useRef } from 'react';
+import { useUserData } from '@/hooks/use-user-data';
 import { 
   Card, 
   CardContent, 
@@ -42,12 +43,10 @@ import {
   Download, 
   Eye, 
   BarChart3, 
-  PieChart, 
+  PieChart as PieChartIcon, 
   TrendingUp,
   Grid,
   List,
-  Calendar,
-  Filter,
   Plus,
   X
 } from 'lucide-react';
@@ -59,6 +58,7 @@ import {
   LineChart, 
   Line,
   PieChart as RechartsPieChart,
+  Pie,
   Cell,
   XAxis, 
   YAxis, 
@@ -68,24 +68,14 @@ import {
   ResponsiveContainer
 } from 'recharts';
 
-// Mock data - replace with your actual data
-const mockTransactions = [
-  { id: 1, amount: 1200, category: 'Salary', type: 'income', date: '2024-01-15' },
-  { id: 2, amount: 800, category: 'Food', type: 'expense', date: '2024-01-16' },
-  { id: 3, amount: 300, category: 'Transportation', type: 'expense', date: '2024-01-17' },
-  { id: 4, amount: 150, category: 'Entertainment', type: 'expense', date: '2024-01-18' },
-  { id: 5, amount: 2000, category: 'Salary', type: 'income', date: '2024-02-15' },
-  { id: 6, amount: 900, category: 'Food', type: 'expense', date: '2024-02-16' },
-];
-
 const CHART_TYPES = {
-  bar: { name: 'Bar Chart', icon: BarChart3, component: 'BarChart' },
-  line: { name: 'Line Chart', icon: TrendingUp, component: 'LineChart' },
-  area: { name: 'Area Chart', icon: BarChart3, component: 'AreaChart' },
-  pie: { name: 'Pie Chart', icon: PieChart, component: 'PieChart' }
+  bar: { name: 'Bar Chart', icon: BarChart3 },
+  line: { name: 'Line Chart', icon: TrendingUp },
+  area: { name: 'Area Chart', icon: BarChart3 },
+  pie: { name: 'Pie Chart', icon: PieChartIcon }
 };
 
-const CHART_COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff7c7c', '#8dd1e1'];
+const CHART_COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff7c7c', '#8dd1e1', '#a4de6c', '#d0ed57', '#ffc0cb'];
 
 const DEFAULT_WIDGETS = [
   {
@@ -118,6 +108,7 @@ const DEFAULT_WIDGETS = [
 ];
 
 export default function CustomizableReports() {
+  const { allTransactions } = useUserData();
   const [widgets, setWidgets] = useState(DEFAULT_WIDGETS);
   const [isCustomizing, setIsCustomizing] = useState(false);
   const [savedReports, setSavedReports] = useState([
@@ -125,39 +116,46 @@ export default function CustomizableReports() {
     { id: 2, name: 'Expense Analysis', widgets: DEFAULT_WIDGETS.filter(w => w.id !== 'balance-trend') }
   ]);
   const [newReportName, setNewReportName] = useState('');
-  const [selectedReport, setSelectedReport] = useState(null);
+  const [selectedReport, setSelectedReport] = useState<{ id: number, name: string, widgets: any[] } | null>(null);
   const [layout, setLayout] = useState('grid');
   const reportRef = useRef(null);
 
   // Process data for different chart types
   const processedData = useMemo(() => {
-    const monthlyData = mockTransactions.reduce((acc, transaction) => {
-      const month = new Date(transaction.date).toLocaleDateString('en', { month: 'short' });
-      if (!acc[month]) {
-        acc[month] = { month, income: 0, expense: 0 };
-      }
-      acc[month][transaction.type] += transaction.amount;
-      return acc;
-    }, {});
+    if (!allTransactions || allTransactions.length === 0) {
+      return { monthly: [], category: [], balance: [] };
+    }
+    
+    const monthlyData: { [key: string]: { month: string; income: number; expense: number } } = {};
 
-    const categoryData = mockTransactions
+    allTransactions.forEach(transaction => {
+      const month = new Date(transaction.date).toLocaleDateString('en', { month: 'short', year: '2-digit' });
+      if (!monthlyData[month]) {
+        monthlyData[month] = { month, income: 0, expense: 0 };
+      }
+      monthlyData[month][transaction.type] += transaction.amount;
+    });
+
+    const categoryData: { [key: string]: number } = {};
+    allTransactions
       .filter(t => t.type === 'expense')
-      .reduce((acc, transaction) => {
-        if (!acc[transaction.category]) {
-          acc[transaction.category] = 0;
+      .forEach(transaction => {
+        if (!categoryData[transaction.category]) {
+          categoryData[transaction.category] = 0;
         }
-        acc[transaction.category] += transaction.amount;
-        return acc;
-      }, {});
+        categoryData[transaction.category] += transaction.amount;
+      });
 
     let runningBalance = 0;
-    const balanceData = Object.values(monthlyData).map(month => {
-      runningBalance += month.income - month.expense;
-      return { ...month, balance: runningBalance };
+    const sortedMonths = Object.values(monthlyData).sort((a,b) => new Date(a.month).getTime() - new Date(b.month).getTime());
+
+    const balanceData = sortedMonths.map(monthData => {
+      runningBalance += monthData.income - monthData.expense;
+      return { ...monthData, balance: runningBalance };
     });
 
     return {
-      monthly: Object.values(monthlyData),
+      monthly: sortedMonths,
       category: Object.entries(categoryData).map(([name, value], index) => ({
         name,
         value,
@@ -165,11 +163,15 @@ export default function CustomizableReports() {
       })),
       balance: balanceData
     };
-  }, []);
+  }, [allTransactions]);
 
-  const renderChart = (widget) => {
-    const data = processedData[widget.dataKey];
+  const renderChart = (widget: any) => {
+    const data = processedData[widget.dataKey as keyof typeof processedData];
     
+    if (!data || data.length === 0) {
+      return <div className="flex h-[300px] items-center justify-center text-muted-foreground">No data available for this chart.</div>;
+    }
+
     switch (widget.type) {
       case 'bar':
         return (
@@ -218,11 +220,11 @@ export default function CustomizableReports() {
         return (
           <ResponsiveContainer width="100%" height={300}>
             <RechartsPieChart>
-              <RechartsPieChart data={data} cx="50%" cy="50%" outerRadius={80}>
-                {data.map((entry, index) => (
+              <Pie data={data} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80}>
+                {(data as any[]).map((entry, index) => (
                   <Cell key={`cell-${index}`} fill={entry.fill} />
                 ))}
-              </RechartsPieChart>
+              </Pie>
               <Tooltip />
               <Legend />
             </RechartsPieChart>
@@ -234,7 +236,7 @@ export default function CustomizableReports() {
     }
   };
 
-  const updateWidget = (widgetId, updates) => {
+  const updateWidget = (widgetId: string, updates: any) => {
     setWidgets(widgets.map(w => 
       w.id === widgetId ? { ...w, ...updates } : w
     ));
@@ -253,7 +255,7 @@ export default function CustomizableReports() {
     setWidgets([...widgets, newWidget]);
   };
 
-  const removeWidget = (widgetId) => {
+  const removeWidget = (widgetId: string) => {
     setWidgets(widgets.filter(w => w.id !== widgetId));
   };
 
@@ -270,7 +272,7 @@ export default function CustomizableReports() {
     setNewReportName('');
   };
 
-  const loadReport = (report) => {
+  const loadReport = (report: any) => {
     setWidgets(report.widgets);
     setSelectedReport(report);
   };
@@ -280,10 +282,10 @@ export default function CustomizableReports() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold">Customizable Reports</h2>
-          <p className="text-gray-600">Design your perfect financial dashboard</p>
+          <h2 className="text-2xl font-bold tracking-tight font-headline">Customizable Reports</h2>
+          <p className="text-muted-foreground">Design your perfect financial dashboard.</p>
         </div>
         <div className="flex gap-2">
           <Button
@@ -314,13 +316,13 @@ export default function CustomizableReports() {
           </CardHeader>
           <CardContent>
             <Tabs defaultValue="widgets" className="w-full">
-              <TabsList>
+              <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="widgets">Widgets</TabsTrigger>
                 <TabsTrigger value="layout">Layout</TabsTrigger>
                 <TabsTrigger value="templates">Templates</TabsTrigger>
               </TabsList>
               
-              <TabsContent value="widgets" className="space-y-4">
+              <TabsContent value="widgets" className="space-y-4 pt-4">
                 <div className="flex justify-between items-center">
                   <h3 className="text-lg font-medium">Manage Widgets</h3>
                   <Button size="sm" onClick={addWidget}>
@@ -335,9 +337,10 @@ export default function CustomizableReports() {
                       <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center space-x-2">
                           <Checkbox
+                            id={`enabled-${widget.id}`}
                             checked={widget.enabled}
                             onCheckedChange={(checked) =>
-                              updateWidget(widget.id, { enabled: checked })
+                              updateWidget(widget.id, { enabled: !!checked })
                             }
                           />
                           <Input
@@ -350,14 +353,14 @@ export default function CustomizableReports() {
                         </div>
                         <Button
                           variant="ghost"
-                          size="sm"
+                          size="icon"
                           onClick={() => removeWidget(widget.id)}
                         >
                           <X className="h-4 w-4" />
                         </Button>
                       </div>
                       
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         <div>
                           <Label>Chart Type</Label>
                           <Select
@@ -422,7 +425,7 @@ export default function CustomizableReports() {
                 </div>
               </TabsContent>
               
-              <TabsContent value="layout" className="space-y-4">
+              <TabsContent value="layout" className="space-y-4 pt-4">
                 <div>
                   <h3 className="text-lg font-medium mb-2">Layout Options</h3>
                   <div className="grid grid-cols-2 gap-4">
@@ -444,7 +447,7 @@ export default function CustomizableReports() {
                 </div>
               </TabsContent>
               
-              <TabsContent value="templates" className="space-y-4">
+              <TabsContent value="templates" className="space-y-4 pt-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-medium">Saved Reports</h3>
                   <Dialog>
@@ -484,7 +487,7 @@ export default function CustomizableReports() {
                     <div key={report.id} className="flex items-center justify-between p-3 border rounded-lg">
                       <div>
                         <h4 className="font-medium">{report.name}</h4>
-                        <p className="text-sm text-gray-600">
+                        <p className="text-sm text-muted-foreground">
                           {report.widgets.filter(w => w.enabled).length} widgets
                         </p>
                       </div>
@@ -508,9 +511,9 @@ export default function CustomizableReports() {
       {/* Report Display */}
       <div ref={reportRef}>
         {selectedReport && (
-          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="mb-4 p-3 bg-primary/5 border-primary/20 rounded-lg">
             <div className="flex items-center justify-between">
-              <span className="text-blue-800 font-medium">
+              <span className="text-primary font-medium">
                 Viewing: {selectedReport.name}
               </span>
               <Button
@@ -523,36 +526,52 @@ export default function CustomizableReports() {
             </div>
           </div>
         )}
+        
+        {enabledWidgets.length === 0 ? (
+           <Card className="flex flex-col items-center justify-center py-12">
+             <CardHeader className="text-center">
+                <PieChartIcon className="mx-auto h-12 w-12 text-muted-foreground" />
+                <CardTitle className="mt-4">No Widgets Enabled</CardTitle>
+                <CardDescription>Enable some widgets in the customization panel to see your report.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                 <Button onClick={() => setIsCustomizing(true)}>
+                    <Settings className="mr-2 h-4 w-4" />
+                    Customize Report
+                </Button>
+            </CardContent>
+        </Card>
+        ) : (
+          <div className={`grid gap-6 ${
+            layout === 'grid' 
+              ? 'grid-cols-1 md:grid-cols-2' 
+              : 'grid-cols-1'
+          }`}>
+            {enabledWidgets.map((widget) => {
+              const sizeClasses = {
+                small: layout === 'grid' ? 'md:col-span-1' : '',
+                medium: layout === 'grid' ? 'md:col-span-1' : '',
+                large: layout === 'grid' ? 'md:col-span-2' : ''
+              };
 
-        <div className={`grid gap-6 ${
-          layout === 'grid' 
-            ? 'grid-cols-1 lg:grid-cols-2 xl:grid-cols-3' 
-            : 'grid-cols-1'
-        }`}>
-          {enabledWidgets.map((widget) => {
-            const sizeClasses = {
-              small: layout === 'grid' ? 'lg:col-span-1' : '',
-              medium: layout === 'grid' ? 'lg:col-span-1' : '',
-              large: layout === 'grid' ? 'lg:col-span-2' : ''
-            };
-
-            return (
-              <Card key={widget.id} className={sizeClasses[widget.size]}>
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
-                    {widget.title}
-                    <Badge variant="outline">
-                      {CHART_TYPES[widget.type]?.name}
-                    </Badge>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {renderChart(widget)}
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+              return (
+                <Card key={widget.id} className={sizeClasses[widget.size as keyof typeof sizeClasses]}>
+                  <CardHeader>
+                    <CardTitle className="flex items-center justify-between">
+                      {widget.title}
+                      <Badge variant="outline">
+                        {CHART_TYPES[widget.type as keyof typeof CHART_TYPES]?.name}
+                      </Badge>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {renderChart(widget)}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
