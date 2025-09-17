@@ -71,7 +71,7 @@ export function ImportTransactionsDialog({
   const [processedTransactions, setProcessedTransactions] = useState<ProcessedTransaction[]>([]);
 
   const { toast } = useToast();
-  const { categories } = useUserData();
+  const { categories, addCategory } = useUserData();
 
   const resetState = () => {
     setStep("upload");
@@ -145,60 +145,78 @@ export function ImportTransactionsDialog({
   useEffect(() => {
     if (step !== "review") return;
 
-    const transactions = parsedData
-      .map((row) => {
-        const dateStr = row[mapping.date];
-        const descriptionStr = row[mapping.description];
-
-        if (!dateStr || !descriptionStr || descriptionStr.trim() === "") {
-          return null;
+    const processAndSetTransactions = async () => {
+        let uncategorizedExists = allCategoryNames.has("Uncategorized");
+        if (!uncategorizedExists) {
+            // Check again in case it was just added in another async operation
+            const currentCats = categories;
+            if (!currentCats.some(c => c.name === 'Uncategorized' && c.type === 'expense')) {
+                await addCategory({
+                    name: 'Uncategorized',
+                    type: 'expense',
+                    icon: 'HelpCircle'
+                });
+                allCategoryNames.add("Uncategorized");
+            }
         }
-        
-        let amountVal: number | null = null;
-        let type: 'income' | 'expense' | null = null;
-        
-        const creditStr = (row[mapping.credit] || "0").replace(/[^0-9.-]+/g,"");
-        const debitStr = (row[mapping.debit] || "0").replace(/[^0-9.-]+/g,"");
-        const creditAmount = parseFloat(creditStr);
-        const debitAmount = parseFloat(debitStr);
+    
+        const transactions = parsedData
+          .map((row) => {
+            const dateStr = row[mapping.date];
+            const descriptionStr = row[mapping.description];
+    
+            if (!dateStr || !descriptionStr || descriptionStr.trim() === "") {
+              return null;
+            }
+            
+            let amountVal: number | null = null;
+            let type: 'income' | 'expense' | null = null;
+            
+            const creditStr = (row[mapping.credit] || "0").replace(/[^0-9.-]+/g,"");
+            const debitStr = (row[mapping.debit] || "0").replace(/[^0-9.-]+/g,"");
+            const creditAmount = parseFloat(creditStr);
+            const debitAmount = parseFloat(debitStr);
+    
+            if (isNaN(creditAmount) || isNaN(debitAmount)) return null;
+    
+            if (creditAmount > 0 && debitAmount === 0) {
+                type = 'income';
+                amountVal = creditAmount;
+            } else if (debitAmount > 0 && creditAmount === 0) {
+                type = 'expense';
+                amountVal = debitAmount;
+            } else {
+                return null; // Skip if both are > 0 or both are 0
+            }
+            
+            if (type === null || amountVal === null) return null;
+    
+            const date = new Date(dateStr);
+            if (isNaN(date.getTime())) {
+              return null;
+            }
+            
+            const importedCategory = row[mapping.category] || "";
+            const finalCategory = allCategoryNames.has(importedCategory) ? importedCategory : "Uncategorized";
+    
+            return {
+              transaction: {
+                amount: amountVal,
+                date: date.toISOString(),
+                description: descriptionStr,
+                type: type,
+                category: finalCategory,
+              },
+            };
+          })
+          .filter(Boolean) as ProcessedTransaction[];
+    
+        setProcessedTransactions(transactions);
+    }
 
-        if (isNaN(creditAmount) || isNaN(debitAmount)) return null;
+    processAndSetTransactions();
 
-        if (creditAmount > 0 && debitAmount === 0) {
-            type = 'income';
-            amountVal = creditAmount;
-        } else if (debitAmount > 0 && creditAmount === 0) {
-            type = 'expense';
-            amountVal = debitAmount;
-        } else {
-            return null; // Skip if both are > 0 or both are 0
-        }
-        
-        if (type === null || amountVal === null) return null;
-
-        const date = new Date(dateStr);
-        if (isNaN(date.getTime())) {
-          return null;
-        }
-        
-        const importedCategory = row[mapping.category] || "";
-        const finalCategory = allCategoryNames.has(importedCategory) ? importedCategory : "";
-
-        return {
-          transaction: {
-            amount: amountVal,
-            date: date.toISOString(),
-            description: descriptionStr,
-            type: type,
-            category: finalCategory,
-          },
-        };
-      })
-      .filter(Boolean) as ProcessedTransaction[];
-
-      setProcessedTransactions(transactions);
-
-  }, [step, parsedData, mapping, allCategoryNames]);
+  }, [step, parsedData, mapping, allCategoryNames, categories, addCategory]);
 
 
   const handleImport = () => {
