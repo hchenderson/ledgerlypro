@@ -14,14 +14,21 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Switch } from '@/components/ui/switch';
+import { CalendarIcon } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { DateRange } from 'react-day-picker';
+import { format } from 'date-fns';
+import { cn } from '@/lib/utils';
 
 export default function SettingsPage() {
     const { toast } = useToast();
     const { user, showInstructions, setShowInstructions } = useAuth();
-    const { clearTransactions, clearAllData } = useUserData();
+    const { clearTransactions, clearAllData, clearTransactionsByDateRange } = useUserData();
     const [name, setName] = useState('');
     const [startingBalance, setStartingBalance] = useState('');
     const [email, setEmail] = useState('');
+    const [dateRange, setDateRange] = useState<DateRange | undefined>();
 
     useEffect(() => {
         if (user) {
@@ -88,6 +95,23 @@ export default function SettingsPage() {
             title: "All Data Cleared",
             description: "All transaction and category data has been reset.",
         });
+    }
+
+    const handleClearTransactionsByDate = async () => {
+        if (!dateRange?.from || !dateRange?.to) {
+            toast({
+                variant: "destructive",
+                title: "Date Range Required",
+                description: "Please select a start and end date.",
+            });
+            return;
+        }
+        await clearTransactionsByDateRange(dateRange.from, dateRange.to);
+        toast({
+            title: "Transactions Cleared",
+            description: `Transactions between ${format(dateRange.from, "PPP")} and ${format(dateRange.to, "PPP")} have been deleted.`,
+        });
+        setDateRange(undefined);
     }
 
     return (
@@ -158,6 +182,69 @@ export default function SettingsPage() {
                     <CardDescription>These actions are permanent and cannot be undone.</CardDescription>
                 </CardHeader>
                  <CardContent className="space-y-4">
+                     <div className="flex flex-col gap-4 rounded-lg border border-destructive/50 p-4">
+                        <div>
+                            <p className="font-medium">Clear Transactions by Date Range</p>
+                            <p className="text-sm text-muted-foreground">Permanently delete all transactions within a specific period.</p>
+                        </div>
+                        <div className="flex flex-col sm:flex-row items-center gap-2">
+                             <Popover>
+                                <PopoverTrigger asChild>
+                                <Button
+                                    id="date"
+                                    variant={"outline"}
+                                    className={cn(
+                                    "w-full sm:w-[300px] justify-start text-left font-normal",
+                                    !dateRange && "text-muted-foreground"
+                                    )}
+                                >
+                                    <CalendarIcon className="mr-2 h-4 w-4" />
+                                    {dateRange?.from ? (
+                                    dateRange.to ? (
+                                        <>
+                                        {format(dateRange.from, "LLL dd, y")} -{" "}
+                                        {format(dateRange.to, "LLL dd, y")}
+                                        </>
+                                    ) : (
+                                        format(dateRange.from, "LLL dd, y")
+                                    )
+                                    ) : (
+                                    <span>Pick a date range</span>
+                                    )}
+                                </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-0" align="start">
+                                <Calendar
+                                    initialFocus
+                                    mode="range"
+                                    defaultMonth={dateRange?.from}
+                                    selected={dateRange}
+                                    onSelect={setDateRange}
+                                    numberOfMonths={2}
+                                />
+                                </PopoverContent>
+                            </Popover>
+                            <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                    <Button variant="destructive" outline disabled={!dateRange?.from || !dateRange?.to}>Clear Period</Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                        This action will permanently delete all transactions between <strong>{dateRange?.from ? format(dateRange.from, "PPP") : ''}</strong> and <strong>{dateRange?.to ? format(dateRange.to, "PPP") : ''}</strong>. This cannot be undone.
+                                    </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction onClick={handleClearTransactionsByDate} className="bg-red-600 hover:bg-red-700">
+                                        Yes, delete transactions
+                                    </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                </AlertDialogContent>
+                            </AlertDialog>
+                        </div>
+                    </div>
                     <div className="flex items-center justify-between rounded-lg border border-destructive/50 p-4">
                         <div>
                             <p className="font-medium">Clear All Transaction Data</p>
@@ -165,7 +252,7 @@ export default function SettingsPage() {
                         </div>
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
-                            <Button variant="destructive" outline>Clear Transactions</Button>
+                            <Button variant="destructive" outline>Clear All Transactions</Button>
                           </AlertDialogTrigger>
                           <AlertDialogContent>
                             <AlertDialogHeader>

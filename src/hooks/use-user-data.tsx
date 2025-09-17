@@ -38,6 +38,7 @@ interface UserDataContextType {
   addContributionToGoal: (goalId: string, amount: number) => Promise<void>;
   clearTransactions: () => Promise<void>;
   clearAllData: () => Promise<void>;
+  clearTransactionsByDateRange: (startDate: Date, endDate: Date) => Promise<void>;
 }
 
 const UserDataContext = createContext<UserDataContextType | undefined>(undefined);
@@ -450,10 +451,11 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }
 
-  const clearCollection = async (collectionName: string) => {
+  const clearCollection = async (collectionName: string, constraints: QueryConstraint[] = []) => {
     const collRef = getCollectionRef(collectionName);
     if (!collRef) return;
-    const snapshot = await getDocs(collRef);
+    const q = query(collRef, ...constraints);
+    const snapshot = await getDocs(q);
     const batch = writeBatch(db);
     snapshot.docs.forEach(doc => {
         batch.delete(doc.ref);
@@ -463,6 +465,14 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const clearTransactions = async () => {
     await clearCollection('transactions');
+  }
+
+  const clearTransactionsByDateRange = async (startDate: Date, endDate: Date) => {
+    const constraints: QueryConstraint[] = [
+      where("date", ">=", startDate.toISOString()),
+      where("date", "<=", endDate.toISOString()),
+    ];
+    await clearCollection('transactions', constraints);
   }
 
   const clearAllData = async () => {
@@ -506,6 +516,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         addContributionToGoal,
         clearTransactions,
         clearAllData,
+        clearTransactionsByDateRange,
     };
 
   return (
