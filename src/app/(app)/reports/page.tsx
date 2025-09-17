@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useCallback } from 'react';
 import { useUserData } from '@/hooks/use-user-data';
 import { 
   Card, 
@@ -32,6 +32,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogClose,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -48,7 +49,9 @@ import {
   Grid,
   List,
   Plus,
-  X
+  X,
+  Filter,
+  Calendar as CalendarIcon,
 } from 'lucide-react';
 import { 
   AreaChart, 
@@ -67,6 +70,17 @@ import {
   Legend,
   ResponsiveContainer
 } from 'recharts';
+import { useAuth } from '@/hooks/use-auth';
+import { getDoc, doc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { DateRange } from 'react-day-picker';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { format, subDays } from 'date-fns';
+import { cn } from '@/lib/utils';
+import { MultiSelect } from '@/components/ui/multi-select';
+import type { Category, SubCategory } from '@/types';
+
 
 const CHART_TYPES = {
   bar: { name: 'Bar Chart', icon: BarChart3 },
@@ -108,7 +122,8 @@ const DEFAULT_WIDGETS = [
 ];
 
 export default function CustomizableReports() {
-  const { allTransactions } = useUserData();
+  const { allTransactions, categories: userCategories } = useUserData();
+  const { user } = useAuth();
   const [widgets, setWidgets] = useState(DEFAULT_WIDGETS);
   const [isCustomizing, setIsCustomizing] = useState(false);
   const [savedReports, setSavedReports] = useState([
@@ -120,15 +135,60 @@ export default function CustomizableReports() {
   const [layout, setLayout] = useState('grid');
   const reportRef = useRef(null);
 
+  // Filter states
+  const [dateRange, setDateRange] = useState<DateRange | undefined>({
+    from: subDays(new Date(), 29),
+    to: new Date()
+  });
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [startingBalance, setStartingBalance] = useState(0);
+
+  React.useEffect(() => {
+    if (user) {
+      const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'main');
+      getDoc(settingsDocRef).then(docSnap => {
+        if (docSnap.exists()) {
+          setStartingBalance(docSnap.data().startingBalance || 0);
+        }
+      });
+    }
+  }, [user]);
+  
+  const allCategoryOptions = useMemo(() => {
+    const options: { value: string; label: string }[] = [];
+    const recurse = (cats: (Category | SubCategory)[]) => {
+      cats.forEach(c => {
+        options.push({ value: c.name, label: c.name });
+        if(c.subCategories) recurse(c.subCategories);
+      });
+    };
+    recurse(userCategories);
+    return options;
+  }, [userCategories]);
+
+  // Filtered transactions
+  const filteredTransactions = useMemo(() => {
+    return allTransactions.filter(t => {
+      const transactionDate = new Date(t.date);
+      const inDateRange = dateRange?.from && dateRange?.to ? 
+        (transactionDate >= dateRange.from && transactionDate <= dateRange.to) : true;
+      
+      const inCategory = selectedCategories.length > 0 ? selectedCategories.includes(t.category) : true;
+      
+      return inDateRange && inCategory;
+    });
+  }, [allTransactions, dateRange, selectedCategories]);
+
+
   // Process data for different chart types
   const processedData = useMemo(() => {
-    if (!allTransactions || allTransactions.length === 0) {
+    if (filteredTransactions.length === 0) {
       return { monthly: [], category: [], balance: [] };
     }
     
     const monthlyData: { [key: string]: { month: string; income: number; expense: number } } = {};
 
-    allTransactions.forEach(transaction => {
+    filteredTransactions.forEach(transaction => {
       const month = new Date(transaction.date).toLocaleDateString('en', { month: 'short', year: '2-digit' });
       if (!monthlyData[month]) {
         monthlyData[month] = { month, income: 0, expense: 0 };
@@ -137,7 +197,7 @@ export default function CustomizableReports() {
     });
 
     const categoryData: { [key: string]: number } = {};
-    allTransactions
+    filteredTransactions
       .filter(t => t.type === 'expense')
       .forEach(transaction => {
         if (!categoryData[transaction.category]) {
@@ -146,12 +206,19 @@ export default function CustomizableReports() {
         categoryData[transaction.category] += transaction.amount;
       });
 
-    let runningBalance = 0;
+    // Calculate balance trend correctly
+    const balanceStartDate = dateRange?.from || new Date(Math.min(...allTransactions.map(t => new Date(t.date).getTime())));
+    
+    const initialBalance = allTransactions
+      .filter(t => new Date(t.date) < balanceStartDate)
+      .reduce((acc, t) => acc + (t.type === 'income' ? t.amount : -t.amount), startingBalance);
+
+    let runningBalance = initialBalance;
     const sortedMonths = Object.values(monthlyData).sort((a,b) => new Date(a.month).getTime() - new Date(b.month).getTime());
 
     const balanceData = sortedMonths.map(monthData => {
       runningBalance += monthData.income - monthData.expense;
-      return { ...monthData, balance: runningBalance };
+      return { month: monthData.month, balance: runningBalance };
     });
 
     return {
@@ -163,7 +230,7 @@ export default function CustomizableReports() {
       })),
       balance: balanceData
     };
-  }, [allTransactions]);
+  }, [filteredTransactions, allTransactions, dateRange, startingBalance]);
 
   const renderChart = (widget: any) => {
     const data = processedData[widget.dataKey as keyof typeof processedData];
@@ -279,6 +346,11 @@ export default function CustomizableReports() {
 
   const enabledWidgets = widgets.filter(w => w.enabled).sort((a, b) => a.position - b.position);
 
+  const resetFilters = useCallback(() => {
+    setDateRange({ from: subDays(new Date(), 29), to: new Date() });
+    setSelectedCategories([]);
+  }, []);
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -295,7 +367,7 @@ export default function CustomizableReports() {
             {layout === 'grid' ? <List className="h-4 w-4" /> : <Grid className="h-4 w-4" />}
           </Button>
           <Button
-            variant="outline"
+            variant={isCustomizing ? "default" : "outline"}
             onClick={() => setIsCustomizing(!isCustomizing)}
           >
             <Settings className="h-4 w-4 mr-2" />
@@ -307,6 +379,63 @@ export default function CustomizableReports() {
           </Button>
         </div>
       </div>
+
+      {/* Filters */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Filter className="h-5 w-5"/> Report Filters</CardTitle>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+          <div>
+              <Label className="mb-2 block">Date Range</Label>
+               <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    id="date"
+                    variant={"outline"}
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !dateRange && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {dateRange?.from ? (
+                      dateRange.to ? (
+                        <>
+                          {format(dateRange.from, "LLL dd, y")} -{" "}
+                          {format(dateRange.to, "LLL dd, y")}
+                        </>
+                      ) : (
+                        format(dateRange.from, "LLL dd, y")
+                      )
+                    ) : (
+                      <span>Pick a date</span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    initialFocus
+                    mode="range"
+                    defaultMonth={dateRange?.from}
+                    selected={dateRange}
+                    onSelect={setDateRange}
+                    numberOfMonths={2}
+                  />
+                </PopoverContent>
+              </Popover>
+          </div>
+          <div className="md:col-span-2">
+            <Label className="mb-2 block">Categories</Label>
+            <MultiSelect
+              options={allCategoryOptions}
+              selected={selectedCategories}
+              onChange={setSelectedCategories}
+              placeholder="All categories"
+            />
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Customization Panel */}
       {isCustomizing && (
@@ -474,9 +603,11 @@ export default function CustomizableReports() {
                         />
                       </div>
                       <DialogFooter>
-                        <Button onClick={saveReport} disabled={!newReportName.trim()}>
-                          Save Report
-                        </Button>
+                        <DialogClose asChild>
+                          <Button onClick={saveReport} disabled={!newReportName.trim()}>
+                            Save Report
+                          </Button>
+                        </DialogClose>
                       </DialogFooter>
                     </DialogContent>
                   </Dialog>
