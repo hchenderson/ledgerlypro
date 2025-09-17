@@ -80,8 +80,8 @@ interface NewTransactionSheetProps {
     isOpen?: boolean;
     onOpenChange?: (isOpen: boolean) => void;
     transaction?: Partial<Omit<Transaction, 'id'>> & { id: string } | null;
-    onTransactionCreated?: () => void;
-    onTransactionUpdated?: () => void;
+    onTransactionCreated?: (values: FormValues) => void;
+    onTransactionUpdated?: (values: FormValues) => void;
     children?: React.ReactNode;
     categories: Category[];
 }
@@ -219,16 +219,18 @@ export function NewTransactionSheet({
   const transactionType = useWatch({ control: form.control, name: 'type' });
 
   async function onSubmit(values: FormValues) {
-    const data = {
-        ...values,
-        date: values.date.toISOString(),
-    };
-    if (transaction && transaction.id && updateTransaction) {
-        await updateTransaction(transaction.id, data);
-        if (onTransactionUpdated) onTransactionUpdated();
-    } else if(addTransaction) {
-        await addTransaction(data);
-        if (onTransactionCreated) onTransactionCreated();
+    if (transaction && transaction.id) {
+        if(onTransactionUpdated) {
+            onTransactionUpdated(values);
+        } else if (updateTransaction) {
+            await updateTransaction(transaction.id, {...values, date: values.date.toISOString()});
+        }
+    } else {
+        if (onTransactionCreated) {
+            onTransactionCreated(values);
+        } else if (addTransaction) {
+            await addTransaction({...values, date: values.date.toISOString()});
+        }
     }
 
     if(onOpenChange) onOpenChange(false)

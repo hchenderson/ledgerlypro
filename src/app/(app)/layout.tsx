@@ -69,7 +69,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
       })
   }
 
-  const handleTransactionCreated = (values: Omit<Transaction, 'id' | 'type'> & { type: "income" | "expense" }) => {
+  const handleTransactionCreated = (values: Omit<Transaction, 'id' | 'date'> & { date: Date, type: "income" | "expense" }) => {
      addTransaction({
       ...values,
       date: values.date.toISOString()
