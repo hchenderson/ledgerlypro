@@ -23,7 +23,7 @@ import { DateRange } from "react-day-picker";
 import { cn } from "@/lib/utils";
 import { Calendar } from "@/components/ui/calendar";
 import { useAuth } from "@/hooks/use-auth";
-import { collection, query, orderBy, limit, startAfter, where, getDocs, getCountFromServer, QueryConstraint } from "firebase/firestore";
+import { collection, query, orderBy, limit, startAfter, where, getDocs, getCountFromServer, QueryConstraint, DocumentData, QueryDocumentSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 
@@ -76,7 +76,6 @@ const TRANSACTIONS_PAGE_SIZE = 25;
 export default function TransactionsPage() {
   const { user } = useAuth();
   const { 
-    addTransaction, 
     updateTransaction, 
     deleteTransaction, 
     categories = [], 
@@ -85,7 +84,7 @@ export default function TransactionsPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [hasMore, setHasMore] = useState(true);
-  const [lastVisible, setLastVisible] = useState<any>(null);
+  const [lastVisible, setLastVisible] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
   const [totalTransactions, setTotalTransactions] = useState(0);
 
   const [isSheetOpen, setIsSheetOpen] = useState(false);
@@ -120,53 +119,48 @@ export default function TransactionsPage() {
     const collRef = collection(db, 'users', user.uid, 'transactions');
     const queryConstraints: QueryConstraint[] = [];
     
-    // Apply server-side filters
-    if (filters.category) {
-      queryConstraints.push(where("category", "==", filters.category));
+    // Server-side filtering
+    if (filters.category) queryConstraints.push(where("category", "==", filters.category));
+    if (filters.dateRange?.from) queryConstraints.push(where("date", ">=", filters.dateRange.from.toISOString()));
+    if (filters.dateRange?.to) queryConstraints.push(where("date", "<=", filters.dateRange.to.toISOString()));
+    if (filters.minAmount) queryConstraints.push(where("amount", ">=", filters.minAmount));
+    if (filters.maxAmount) queryConstraints.push(where("amount", "<=", filters.maxAmount));
+    
+    // Client-side filtering for description because Firestore doesn't support partial text search
+    if (filters.description) {
+        // Firestore doesn't support 'contains' or 'like' queries efficiently. 
+        // We will fetch based on other filters and then filter by description client-side.
     }
-    if (filters.dateRange?.from) {
-      queryConstraints.push(where("date", ">=", filters.dateRange.from.toISOString()));
-    }
-    if (filters.dateRange?.to) {
-      queryConstraints.push(where("date", "<=", filters.dateRange.to.toISOString()));
-    }
-     if (filters.minAmount) {
-        queryConstraints.push(where("amount", ">=", filters.minAmount));
-      }
-      if (filters.maxAmount) {
-        queryConstraints.push(where("amount", "<=", filters.maxAmount));
-      }
 
-    if (filters.category) {
-      queryConstraints.push(orderBy("category"), orderBy("date", "desc"));
-    } else {
-      queryConstraints.push(orderBy("date", "desc"));
-    }
+    queryConstraints.push(orderBy("date", "desc"));
+    
+    const currentLastVisible = reset ? null : lastVisible;
 
     let q = query(collRef, ...queryConstraints);
-    let countQuery = query(collRef, ...queryConstraints.filter(c => c.type !== 'orderBy'));
-
-    if (!reset && lastVisible) {
-      q = query(q, startAfter(lastVisible));
+    if (currentLastVisible) {
+      q = query(q, startAfter(currentLastVisible));
     }
     q = query(q, limit(TRANSACTIONS_PAGE_SIZE));
 
     try {
-      const [docsSnap, totalCountSnap] = await Promise.all([
-        getDocs(q),
-        getCountFromServer(countQuery)
-      ]);
+      if (reset) {
+        const countQuery = query(collRef, ...queryConstraints.filter(c => c.type !== 'orderBy' && c.type !== 'limit' && c.type !== 'startAfter'));
+        const totalCountSnap = await getCountFromServer(countQuery);
+        // Note: This count may be slightly off if there's a description filter, but it's a reasonable server-side estimate.
+        setTotalTransactions(totalCountSnap.data().count);
+      }
+
+      const docsSnap = await getDocs(q);
       
       let docsData = docsSnap.docs.map(doc => doc.data() as Transaction);
 
-      // Client-side filtering for description
+      // Apply client-side filtering for description
       if (filters.description) {
         docsData = docsData.filter(t => t.description.toLowerCase().includes(filters.description!.toLowerCase()));
       }
 
-      setTotalTransactions(totalCountSnap.data().count);
       setHasMore(docsSnap.docs.length === TRANSACTIONS_PAGE_SIZE);
-      setLastVisible(docsSnap.docs[docsSnap.docs.length - 1]);
+      setLastVisible(docsSnap.docs[docsSnap.docs.length - 1] || null);
       setTransactions(prev => (reset ? docsData : [...prev, ...docsData]));
     } catch (error) {
       console.error("Error fetching transactions:", error);
@@ -179,7 +173,8 @@ export default function TransactionsPage() {
   // Fetch transactions when filters change
   useEffect(() => {
     fetchTransactions(true);
-  }, [filters]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters, user]);
 
 
   // Flatten categories safely

@@ -30,7 +30,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import type { RecurringTransaction, Category } from '@/types';
+import type { RecurringTransaction, Category, SubCategory } from '@/types';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { CalendarIcon } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
@@ -71,9 +71,11 @@ function RecurringForm({ transaction, onSave, categories, closeDialog }: { trans
   };
 
   const type = form.watch('type');
+  
   const availableCategories = useMemo(() => {
-    const flattenCategories = (cats: Category[]): string[] => {
-        return cats.flatMap(c => [c.name, ...(c.subCategories ? flattenCategories(c.subCategories as any) : [])]);
+    const flattenCategories = (cats: (Category | SubCategory)[]): string[] => {
+      if (!Array.isArray(cats)) return [];
+      return cats.flatMap(c => [c.name, ...(c.subCategories ? flattenCategories(c.subCategories) : [])]);
     };
     return flattenCategories(categories.filter(c => c.type === type));
   }, [categories, type]);
@@ -194,30 +196,28 @@ function calculateNextOccurrence(rt: RecurringTransaction): Date {
   const today = startOfToday();
   const startDate = parseISO(rt.startDate);
 
-  // If start date is in the future, that's the next date.
-  if (isBefore(today, startDate)) {
-    return startDate;
+  let nextDate = startDate;
+  
+  // If a lastAddedDate exists, start the calculation from there
+  if (rt.lastAddedDate) {
+    nextDate = parseISO(rt.lastAddedDate);
+    // Move to the next period after the last one was added
+    switch (rt.frequency) {
+        case 'daily':   nextDate = addDays(nextDate, 1); break;
+        case 'weekly':  nextDate = addWeeks(nextDate, 1); break;
+        case 'monthly': nextDate = addMonths(nextDate, 1); break;
+        case 'yearly':  nextDate = addYears(nextDate, 1); break;
+    }
   }
 
-  let nextDate = startDate;
-  const advanceDate = () => {
+  // Fast-forward to the first occurrence that is on or after today.
+  while (isBefore(nextDate, today)) {
     switch (rt.frequency) {
       case 'daily':   nextDate = addDays(nextDate, 1); break;
       case 'weekly':  nextDate = addWeeks(nextDate, 1); break;
       case 'monthly': nextDate = addMonths(nextDate, 1); break;
       case 'yearly':  nextDate = addYears(nextDate, 1); break;
     }
-  }
-
-  // If there's a record of the last time it was added, start calculating from there.
-  if (rt.lastAddedDate) {
-      nextDate = parseISO(rt.lastAddedDate);
-      advanceDate(); // The next occurrence is one period after the last one.
-  }
-  
-  // Fast-forward to the first occurrence that is on or after today.
-  while (isBefore(nextDate, today)) {
-    advanceDate();
   }
 
   return nextDate;
@@ -320,5 +320,3 @@ export default function RecurringPage() {
     </FeatureGate>
   );
 }
-
-    

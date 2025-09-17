@@ -39,7 +39,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  SelectGroup
+  SelectGroup,
+  SelectLabel,
 } from "@/components/ui/select"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { useToast } from "@/hooks/use-toast"
@@ -260,33 +261,49 @@ export function NewTransactionSheet({
   const buttonText = isEditing ? "Save Changes" : "Create Transaction";
 
   const availableCategories = useMemo(() => {
-      const filtered = categories.filter(c => c.type === transactionType);
-      
-      const groupedCategories: Record<string, {name: string, id: string}[]> = {};
+    const filtered = categories.filter(c => c.type === transactionType);
+    
+    const getCategoryOptions = (categories: (Category | SubCategory)[]) => {
+      let options: { label: string; value: string }[] = [];
+      categories.forEach(c => {
+        options.push({ label: c.name, value: c.name });
+      });
+      return options;
+    }
 
-      const processCategories = (cats: Category[] | SubCategory[], groupName: string) => {
-          cats.forEach(c => {
-              if (c.subCategories && c.subCategories.length > 0) {
-                  processCategories(c.subCategories, c.name);
-              } 
-              if (!groupedCategories[groupName]) {
-                  groupedCategories[groupName] = [];
-              }
-               groupedCategories[groupName].push({ name: c.name, id: c.id });
-          })
+    const groupedCategories: { group: string; items: { label: string; value: string }[] }[] = [];
+    
+    filtered.forEach(mainCategory => {
+      groupedCategories.push({
+        group: mainCategory.name,
+        items: getCategoryOptions([mainCategory])
+      });
+      if (mainCategory.subCategories && mainCategory.subCategories.length > 0) {
+        mainCategory.subCategories.forEach(sub1 => {
+           groupedCategories.push({
+             group: `  ${sub1.name}`,
+             items: getCategoryOptions([sub1])
+           });
+           if (sub1.subCategories && sub1.subCategories.length > 0) {
+             sub1.subCategories.forEach(sub2 => {
+                groupedCategories.push({
+                  group: `    ${sub2.name}`,
+                  items: getCategoryOptions([sub2])
+                });
+             });
+           }
+        });
       }
+    });
 
-      filtered.forEach(c => {
-          if (c.subCategories && c.subCategories.length > 0) {
-              processCategories(c.subCategories, c.name);
-          }
-          if (!groupedCategories['Main Categories']) {
-              groupedCategories['Main Categories'] = [];
-          }
-          groupedCategories['Main Categories'].push({ name: c.name, id: c.id });
-      })
+    return filtered.map(mainCategory => ({
+        label: mainCategory.name,
+        options: [
+            { label: mainCategory.name, value: mainCategory.name },
+            ...(mainCategory.subCategories || []).map(sub => ({ label: sub.name, value: sub.name }))
+        ]
+    }));
 
-      return groupedCategories;
   }, [categories, transactionType]);
 
 
@@ -372,12 +389,12 @@ export function NewTransactionSheet({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {Object.entries(availableCategories).map(([groupName, groupCategories]) => (
-                        <SelectGroup key={groupName}>
-                            <Label className="px-2 text-xs text-muted-foreground">{groupName}</Label>
-                            {groupCategories.map(cat => (
-                                <SelectItem key={cat.id} value={cat.name}>
-                                    {cat.name}
+                      {availableCategories.map((group) => (
+                        <SelectGroup key={group.label}>
+                            <SelectLabel>{group.label}</SelectLabel>
+                            {group.options.map(option => (
+                                <SelectItem key={option.value} value={option.value}>
+                                    {option.label}
                                 </SelectItem>
                             ))}
                         </SelectGroup>

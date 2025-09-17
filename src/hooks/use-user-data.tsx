@@ -72,23 +72,19 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const startDate = startOfDay(parseISO(rt.startDate));
       let lastAdded = rt.lastAddedDate ? startOfDay(parseISO(rt.lastAddedDate)) : null;
 
-      // Determine the next date to check from. If it has run before, it's the date after the last one. If not, it's the start date.
-      let nextDate = lastAdded ? lastAdded : startDate;
+      let nextDate = lastAdded;
 
-      // If lastAdded is null, we need to check from the start date
-      if (!lastAdded) {
-         nextDate = startDate;
+      if (!nextDate) {
+        nextDate = startDate;
       } else {
-         // If it has been added, calculate the next scheduled date
-          switch(rt.frequency) {
-            case 'daily': nextDate = addDays(nextDate, 1); break;
-            case 'weekly': nextDate = addWeeks(nextDate, 1); break;
-            case 'monthly': nextDate = addMonths(nextDate, 1); break;
-            case 'yearly': nextDate = addYears(nextDate, 1); break;
-          }
+        switch(rt.frequency) {
+          case 'daily': nextDate = addDays(nextDate, 1); break;
+          case 'weekly': nextDate = addWeeks(nextDate, 1); break;
+          case 'monthly': nextDate = addMonths(nextDate, 1); break;
+          case 'yearly': nextDate = addYears(nextDate, 1); break;
+        }
       }
   
-      // Loop through and add any transactions that should have occurred up to today
       while (isBefore(nextDate, today) || isToday(nextDate)) {
         const newTransactionDoc = doc(transactionsCollRef);
         batch.set(newTransactionDoc, {
@@ -101,10 +97,8 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         });
         transactionsAdded = true;
   
-        // Update lastAddedDate in the batch for this recurring transaction
         lastAdded = nextDate;
   
-        // Calculate the next date
         switch(rt.frequency) {
           case 'daily': nextDate = addDays(nextDate, 1); break;
           case 'weekly': nextDate = addWeeks(nextDate, 1); break;
@@ -113,7 +107,6 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
       }
 
-      // After the loop, if we added any transactions, update the recurring transaction doc with the final lastAdded date
       if (lastAdded && (!rt.lastAddedDate || lastAdded.getTime() !== parseISO(rt.lastAddedDate).getTime())) {
           const recurringDocToUpdate = doc(recurringCollRef, rt.id);
           batch.update(recurringDocToUpdate, { lastAddedDate: lastAdded.toISOString() });
@@ -123,7 +116,6 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     try {
         if(transactionsAdded){
             await batch.commit();
-            // Don't need to refetch here, onSnapshot will handle it.
         }
     } catch(e) {
         console.error("Error processing recurring transactions batch: ", e)
@@ -136,7 +128,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       processRecurringTransactions();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, loading, recurringTransactions]);
+  }, [recurringTransactions, loading]); // Depend on recurringTransactions to re-run if they change
 
 
   useEffect(() => {

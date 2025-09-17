@@ -152,7 +152,7 @@ export default function CustomizableReports() {
     { id: 2, name: 'Expense Analysis', widgets: DEFAULT_WIDGETS.filter(w => w.id !== 'balance-trend') }
   ]);
   const [newReportName, setNewReportName] = useState('');
-  const [selectedReport, setSelectedReport] = useState<{ id: number, name: string, widgets: any[] } | null>(null);
+  const [selectedReport, setSelectedReport] = useState<{ id: number | string, name: string, widgets: any[] } | null>(null);
   const [layout, setLayout] = useState('grid');
   const reportRef = useRef(null);
 
@@ -403,7 +403,7 @@ export default function CustomizableReports() {
     if (!newReportName.trim()) return;
     
     const newReport = {
-      id: Date.now(),
+      id: `report-${Date.now()}`,
       name: newReportName,
       widgets: [...widgets]
     };
@@ -458,8 +458,8 @@ export default function CustomizableReports() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Filter className="h-5 w-5"/> Report Filters</CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-start">
-          <div className="flex flex-col gap-2">
+        <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
+          <div className="flex flex-col gap-2 lg:col-span-2">
               <Label>Date Range</Label>
                <Popover>
                 <PopoverTrigger asChild>
