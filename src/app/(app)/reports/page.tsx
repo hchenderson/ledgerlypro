@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useMemo, useRef, useCallback } from 'react';
@@ -385,9 +384,9 @@ export default function CustomizableReports() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Filter className="h-5 w-5"/> Report Filters</CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
-          <div>
-              <Label className="mb-2 block">Date Range</Label>
+        <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-start">
+          <div className="flex flex-col gap-2">
+              <Label>Date Range</Label>
                <Popover>
                 <PopoverTrigger asChild>
                   <Button
@@ -425,8 +424,8 @@ export default function CustomizableReports() {
                 </PopoverContent>
               </Popover>
           </div>
-          <div className="md:col-span-2">
-            <Label className="mb-2 block">Categories</Label>
+          <div className="flex flex-col gap-2 lg:col-span-2">
+            <Label>Categories</Label>
             <MultiSelect
               options={allCategoryOptions}
               selected={selectedCategories}
