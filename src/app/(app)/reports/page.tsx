@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useMemo, useRef, useCallback } from 'react';
@@ -120,6 +121,27 @@ const DEFAULT_WIDGETS = [
   }
 ];
 
+const CustomTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="rounded-lg border bg-background p-2 shadow-sm">
+        <div className="grid grid-cols-2 gap-2">
+          <div className="flex flex-col space-y-1">
+            <span className="text-[0.7rem] uppercase text-muted-foreground">
+              {label || payload[0].name}
+            </span>
+            <span className="font-bold text-foreground">
+              {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(payload[0].value)}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+};
+
 export default function CustomizableReports() {
   const { allTransactions, categories: userCategories } = useUserData();
   const { user } = useAuth();
@@ -195,15 +217,32 @@ export default function CustomizableReports() {
       monthlyData[month][transaction.type] += transaction.amount;
     });
 
-    const categoryData: { [key: string]: number } = {};
+    const categoryTotals: { [key: string]: number } = {};
     filteredTransactions
       .filter(t => t.type === 'expense')
       .forEach(transaction => {
-        if (!categoryData[transaction.category]) {
-          categoryData[transaction.category] = 0;
+        if (!categoryTotals[transaction.category]) {
+          categoryTotals[transaction.category] = 0;
         }
-        categoryData[transaction.category] += transaction.amount;
+        categoryTotals[transaction.category] += transaction.amount;
       });
+
+    const totalExpense = Object.values(categoryTotals).reduce((sum, val) => sum + val, 0);
+
+    const sortedCategories = Object.entries(categoryTotals)
+        .map(([name, value]) => ({ name, value }))
+        .sort((a, b) => b.value - a.value);
+
+    let categoryData;
+    const MAX_PIE_SLICES = 7;
+    if (sortedCategories.length > MAX_PIE_SLICES) {
+        const mainSlices = sortedCategories.slice(0, MAX_PIE_SLICES -1);
+        const otherSliceValue = sortedCategories.slice(MAX_PIE_SLICES - 1).reduce((sum, cat) => sum + cat.value, 0);
+        categoryData = [...mainSlices, { name: 'Other', value: otherSliceValue }];
+    } else {
+        categoryData = sortedCategories;
+    }
+    
 
     // Calculate balance trend correctly
     const balanceStartDate = dateRange?.from || new Date(Math.min(...allTransactions.map(t => new Date(t.date).getTime())));
@@ -213,7 +252,7 @@ export default function CustomizableReports() {
       .reduce((acc, t) => acc + (t.type === 'income' ? t.amount : -t.amount), startingBalance);
 
     let runningBalance = initialBalance;
-    const sortedMonths = Object.values(monthlyData).sort((a,b) => new Date(a.month).getTime() - new Date(b.month).getTime());
+    const sortedMonths = Object.values(monthlyData).sort((a,b) => new Date(`1 ${a.month}`).getTime() - new Date(`1 ${b.month}`).getTime());
 
     const balanceData = sortedMonths.map(monthData => {
       runningBalance += monthData.income - monthData.expense;
@@ -222,12 +261,12 @@ export default function CustomizableReports() {
 
     return {
       monthly: sortedMonths,
-      category: Object.entries(categoryData).map(([name, value], index) => ({
-        name,
-        value,
+      category: categoryData.map((item, index) => ({
+        ...item,
         fill: CHART_COLORS[index % CHART_COLORS.length]
       })),
-      balance: balanceData
+      balance: balanceData,
+      totalExpense
     };
   }, [filteredTransactions, allTransactions, dateRange, startingBalance]);
 
@@ -244,12 +283,12 @@ export default function CustomizableReports() {
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={data}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="month" />
-              <YAxis />
-              <Tooltip />
+              <XAxis dataKey="month" stroke="hsl(var(--muted-foreground))" fontSize={12} />
+              <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickFormatter={(value) => `$${value}`} />
+              <Tooltip content={<CustomTooltip />} />
               <Legend />
-              <Bar dataKey="income" fill="#82ca9d" />
-              <Bar dataKey="expense" fill="#ff7c7c" />
+              <Bar dataKey="income" fill="hsl(var(--chart-1))" name="Income" />
+              <Bar dataKey="expense" fill="hsl(var(--chart-2))" name="Expense" />
             </BarChart>
           </ResponsiveContainer>
         );
@@ -259,12 +298,12 @@ export default function CustomizableReports() {
           <ResponsiveContainer width="100%" height={300}>
             <LineChart data={data}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="month" />
-              <YAxis />
-              <Tooltip />
+              <XAxis dataKey="month" stroke="hsl(var(--muted-foreground))" fontSize={12} />
+              <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickFormatter={(value) => `$${value}`} />
+              <Tooltip content={<CustomTooltip />} />
               <Legend />
-              <Line type="monotone" dataKey="income" stroke="#82ca9d" />
-              <Line type="monotone" dataKey="expense" stroke="#ff7c7c" />
+              <Line type="monotone" dataKey="income" stroke="hsl(var(--chart-1))" name="Income" />
+              <Line type="monotone" dataKey="expense" stroke="hsl(var(--chart-2))" name="Expense" />
             </LineChart>
           </ResponsiveContainer>
         );
@@ -274,10 +313,10 @@ export default function CustomizableReports() {
           <ResponsiveContainer width="100%" height={300}>
             <AreaChart data={data} accessibilityLayer role="img" aria-label="Balance trend over time">
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="month" />
-              <YAxis />
-              <Tooltip />
-              <Area type="monotone" dataKey="balance" stroke="#8884d8" fill="#8884d8" fillOpacity={0.6} />
+              <XAxis dataKey="month" stroke="hsl(var(--muted-foreground))" fontSize={12} />
+              <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickFormatter={(value) => `$${value}`} />
+              <Tooltip content={<CustomTooltip />} />
+              <Area type="monotone" dataKey="balance" stroke="hsl(var(--chart-1))" fill="hsl(var(--chart-1))" fillOpacity={0.3} name="Balance" />
             </AreaChart>
           </ResponsiveContainer>
         );
@@ -286,13 +325,33 @@ export default function CustomizableReports() {
         return (
           <ResponsiveContainer width="100%" height={300}>
             <RechartsPieChart>
-              <Pie data={data} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80}>
+              <Tooltip content={({ active, payload }) => {
+                if (active && payload && payload.length) {
+                  const data = payload[0];
+                  const percentage = ((data.value / processedData.totalExpense) * 100).toFixed(2);
+                  return (
+                    <div className="rounded-lg border bg-background p-2 shadow-sm">
+                      <p className="text-sm font-medium">{`${data.name}: ${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(data.value)} (${percentage}%)`}</p>
+                    </div>
+                  );
+                }
+                return null;
+              }} />
+              <Pie data={data} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} labelLine={false} label={({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
+                  const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+                  const x = cx + radius * Math.cos(-midAngle * (Math.PI / 180));
+                  const y = cy + radius * Math.sin(-midAngle * (Math.PI / 180));
+                  return (
+                    <text x={x} y={y} fill="white" textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" className="text-xs font-bold">
+                      {`${(percent * 100).toFixed(0)}%`}
+                    </text>
+                  );
+                }}>
                 {(data as any[]).map((entry, index) => (
                   <Cell key={`cell-${index}`} fill={entry.fill} />
                 ))}
               </Pie>
-              <Tooltip />
-              <Legend />
+              <Legend layout="vertical" align="right" verticalAlign="middle" iconSize={10} wrapperStyle={{fontSize: '12px'}}/>
             </RechartsPieChart>
           </ResponsiveContainer>
         );
