@@ -207,8 +207,8 @@ export default function CustomizableReports() {
       return { monthly: [], category: [], balance: [] };
     }
     
+    // Monthly data for income vs expense
     const monthlyData: { [key: string]: { month: string; income: number; expense: number } } = {};
-
     filteredTransactions.forEach(transaction => {
       const month = new Date(transaction.date).toLocaleDateString('en', { month: 'short', year: '2-digit' });
       if (!monthlyData[month]) {
@@ -217,16 +217,32 @@ export default function CustomizableReports() {
       monthlyData[month][transaction.type] += transaction.amount;
     });
 
+    // --- Category data for major categories ---
+    const findParentCategory = (subCategoryName: string): Category | null => {
+        for (const parent of userCategories) {
+            if (parent.name === subCategoryName) {
+                return parent; // It's a parent category itself
+            }
+            const found = parent.subCategories?.some(sub => sub.name === subCategoryName);
+            if (found) {
+                return parent;
+            }
+        }
+        return null; // Should not happen if data is consistent
+    };
+
     const categoryTotals: { [key: string]: number } = {};
     filteredTransactions
-      .filter(t => t.type === 'expense')
+      .filter(t => t.type === 'expense' && t.category)
       .forEach(transaction => {
-        if (!categoryTotals[transaction.category]) {
-          categoryTotals[transaction.category] = 0;
+        const parentCategory = findParentCategory(transaction.category);
+        const parentName = parentCategory?.name || 'Uncategorized';
+        if (!categoryTotals[parentName]) {
+          categoryTotals[parentName] = 0;
         }
-        categoryTotals[transaction.category] += transaction.amount;
+        categoryTotals[parentName] += transaction.amount;
       });
-
+    
     const totalExpense = Object.values(categoryTotals).reduce((sum, val) => sum + val, 0);
 
     const sortedCategories = Object.entries(categoryTotals)
@@ -268,7 +284,7 @@ export default function CustomizableReports() {
       balance: balanceData,
       totalExpense
     };
-  }, [filteredTransactions, allTransactions, dateRange, startingBalance]);
+  }, [filteredTransactions, allTransactions, dateRange, startingBalance, userCategories]);
 
   const renderChart = (widget: any) => {
     const data = processedData[widget.dataKey as keyof typeof processedData];
@@ -765,3 +781,5 @@ export default function CustomizableReports() {
     </div>
   );
 }
+
+    
