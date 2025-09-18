@@ -208,6 +208,18 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
 function BudgetsPageContent() {
   const { addBudget, updateBudget, deleteBudget, toggleFavoriteBudget, loading, getBudgetDetails } = useUserData();
   const [selectedDate, setSelectedDate] = useState(new Date());
+  
+  const initialBudgetDetails = useMemo(() => {
+    return getBudgetDetails(selectedDate);
+  }, [getBudgetDetails, selectedDate]);
+
+  const [budgetDetails, setBudgetDetails] = useState(initialBudgetDetails);
+  const [draggedItem, setDraggedItem] = useState<any>(null);
+
+  useEffect(() => {
+    setBudgetDetails(initialBudgetDetails);
+  }, [initialBudgetDetails]);
+
 
   const handleSaveBudget = (values: BudgetFormValues, id?: string) => {
     if (id) {
@@ -220,10 +232,6 @@ function BudgetsPageContent() {
     }
   };
 
-  const budgetDetails = useMemo(() => {
-    return getBudgetDetails(selectedDate);
-  }, [getBudgetDetails, selectedDate]);
-
 
   const handlePrevMonth = () => {
     setSelectedDate(prev => subMonths(prev, 1));
@@ -232,6 +240,28 @@ function BudgetsPageContent() {
   const handleNextMonth = () => {
     setSelectedDate(prev => addMonths(prev, 1));
   }
+
+  const handleDragStart = (e: React.DragEvent<HTMLDivElement>, item: any, index: number) => {
+    setDraggedItem({ item, index });
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/html', e.currentTarget.outerHTML);
+  };
+  
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>, index: number) => {
+    e.preventDefault();
+    const draggedOverItem = budgetDetails[index];
+    if (draggedItem && draggedOverItem.id === draggedItem.item.id) return;
+    
+    let items = budgetDetails.filter(item => item.id !== draggedItem.item.id);
+    items.splice(index, 0, draggedItem.item);
+    
+    setBudgetDetails(items);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedItem(null);
+    // Here you would typically save the new order to a database
+  };
   
   if (loading) return <div>Loading...</div>
 
@@ -243,7 +273,7 @@ function BudgetsPageContent() {
             <Target/> Budgets
           </h2>
           <p className="text-muted-foreground">
-            Track your spending against your goals.
+            Track your spending against your goals. You can drag and drop cards to reorder them.
           </p>
         </div>
         <BudgetDialog onSave={handleSaveBudget}>
@@ -287,47 +317,56 @@ function BudgetsPageContent() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {budgetDetails.map(budget => (
-            <Card key={budget.id}>
-              <CardHeader>
-                <div className="flex justify-between items-start">
-                    <div>
-                        <CardTitle>{budget.categoryName}</CardTitle>
-                        <CardDescription>
-                            {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(budget.amount)} / {budget.period === 'yearly' ? 'year' : 'month'}
-                        </CardDescription>
+          {budgetDetails.map((budget, index) => (
+            <div
+                key={budget.id}
+                draggable
+                onDragStart={(e) => handleDragStart(e, budget, index)}
+                onDragOver={(e) => handleDragOver(e, index)}
+                onDragEnd={handleDragEnd}
+                className={cn("cursor-move", draggedItem?.item.id === budget.id && "opacity-50")}
+            >
+                <Card>
+                <CardHeader>
+                    <div className="flex justify-between items-start">
+                        <div>
+                            <CardTitle>{budget.categoryName}</CardTitle>
+                            <CardDescription>
+                                {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(budget.amount)} / {budget.period === 'yearly' ? 'year' : 'month'}
+                            </CardDescription>
+                        </div>
+                        <div className="flex gap-1">
+                            <Button variant="ghost" size="icon" onClick={() => toggleFavoriteBudget(budget.id)}>
+                                <Star className={cn("h-4 w-4", budget.isFavorite ? "text-yellow-400 fill-yellow-400" : "text-muted-foreground")}/>
+                            </Button>
+                            <BudgetDialog budget={budget} onSave={handleSaveBudget}>
+                                <Button variant="ghost" size="icon"><Edit className="h-4 w-4"/></Button>
+                            </BudgetDialog>
+                            <Button variant="ghost" size="icon" onClick={() => deleteBudget(budget.id)}>
+                                <Trash2 className="h-4 w-4 text-red-500"/>
+                            </Button>
+                        </div>
                     </div>
-                    <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => toggleFavoriteBudget(budget.id)}>
-                            <Star className={cn("h-4 w-4", budget.isFavorite ? "text-yellow-400 fill-yellow-400" : "text-muted-foreground")}/>
-                        </Button>
-                        <BudgetDialog budget={budget} onSave={handleSaveBudget}>
-                             <Button variant="ghost" size="icon"><Edit className="h-4 w-4"/></Button>
-                        </BudgetDialog>
-                         <Button variant="ghost" size="icon" onClick={() => deleteBudget(budget.id)}>
-                            <Trash2 className="h-4 w-4 text-red-500"/>
-                        </Button>
+                </CardHeader>
+                <CardContent>
+                    <div className="space-y-2">
+                    <div className="mb-2">
+                        <span className="font-bold text-lg">{new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(budget.spent)}</span>
+                        <span className="text-sm text-muted-foreground"> Spent</span>
                     </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  <div className="mb-2">
-                    <span className="font-bold text-lg">{new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(budget.spent)}</span>
-                    <span className="text-sm text-muted-foreground"> Spent</span>
-                  </div>
-                  <Progress value={budget.progress} className={budget.progress > 100 ? '[&>div]:bg-destructive' : ''} />
-                  <div className="flex justify-between text-sm">
-                    <span className="font-medium">
-                      {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(budget.amount)} Goal
-                    </span>
-                    <span className={`font-medium ${budget.remaining < 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
-                      {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(budget.remaining)} {budget.remaining >= 0 ? 'left' : 'over'}
-                    </span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                    <Progress value={budget.progress} className={budget.progress > 100 ? '[&>div]:bg-destructive' : ''} />
+                    <div className="flex justify-between text-sm">
+                        <span className="font-medium">
+                        {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(budget.amount)} Goal
+                        </span>
+                        <span className={`font-medium ${budget.remaining < 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                        {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(budget.remaining)} {budget.remaining >= 0 ? 'left' : 'over'}
+                        </span>
+                    </div>
+                    </div>
+                </CardContent>
+                </Card>
+            </div>
           ))}
         </div>
       )}
@@ -342,3 +381,5 @@ export default function BudgetsPage() {
         </FeatureGate>
     )
 }
+
+    
