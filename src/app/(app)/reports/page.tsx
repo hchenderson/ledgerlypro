@@ -34,6 +34,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogClose,
+  DialogTrigger
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -63,7 +65,9 @@ import {
   Target,
   Calculator,
   Zap,
-  BarChart2
+  BarChart2,
+  Trash2,
+  UploadCloud
 } from 'lucide-react';
 import { 
   AreaChart, 
@@ -92,6 +96,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { MultiSelect } from '@/components/ui/multi-select';
+import { useToast } from '@/hooks/use-toast';
 
 
 const CHART_TYPES = {
@@ -132,6 +137,7 @@ export default function AdvancedCustomizableReports() {
   const { allTransactions, categories: userCategories } = useUserData();
   const { user } = useAuth();
   const [startingBalance, setStartingBalance] = useState(0);
+  const { toast } = useToast();
 
   const [widgets, setWidgets] = useState([
     {
@@ -153,6 +159,10 @@ export default function AdvancedCustomizableReports() {
       annotations: []
     }
   ]);
+  
+  const [savedReports, setSavedReports] = useState<any[]>([]);
+  const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
+  const [newReportName, setNewReportName] = useState("");
 
   const [isCustomizing, setIsCustomizing] = useState(false);
   const [selectedWidget, setSelectedWidget] = useState<any>(null);
@@ -185,6 +195,33 @@ export default function AdvancedCustomizableReports() {
       });
     }
   }, [user]);
+  
+  const handleSaveReport = () => {
+    if (!newReportName.trim()) {
+      toast({ variant: 'destructive', title: "Report name cannot be empty." });
+      return;
+    }
+    const newReport = {
+      id: `report-${Date.now()}`,
+      name: newReportName,
+      widgets: JSON.parse(JSON.stringify(widgets)) // Deep copy
+    };
+    setSavedReports(prev => [...prev, newReport]);
+    toast({ title: "Report Saved!", description: `"${newReportName}" has been saved.` });
+    setIsSaveDialogOpen(false);
+    setNewReportName("");
+  };
+
+  const handleLoadReport = (report: any) => {
+    setWidgets(report.widgets);
+    toast({ title: "Report Loaded", description: `Switched to "${report.name}" report.` });
+  };
+  
+  const handleDeleteReport = (reportId: string) => {
+    setSavedReports(prev => prev.filter(r => r.id !== reportId));
+    toast({ title: "Report Deleted" });
+  };
+
 
   const processedData = useMemo(() => {
     const filtered = allTransactions.filter(t => {
@@ -500,8 +537,9 @@ export default function AdvancedCustomizableReports() {
           </CardHeader>
           <CardContent>
             <Tabs defaultValue="widgets" className="w-full">
-              <TabsList className="grid w-full grid-cols-4">
+              <TabsList className="grid w-full grid-cols-5">
                 <TabsTrigger value="widgets">Widgets</TabsTrigger>
+                <TabsTrigger value="templates">Templates</TabsTrigger>
                 <TabsTrigger value="styling">Styling</TabsTrigger>
                 <TabsTrigger value="formulas">Formulas</TabsTrigger>
                 <TabsTrigger value="export">Export</TabsTrigger>
@@ -511,6 +549,25 @@ export default function AdvancedCustomizableReports() {
                 <div className="flex justify-between items-center">
                   <h3 className="text-lg font-medium">Widget Management</h3>
                   <div className="flex gap-2">
+                     <Dialog open={isSaveDialogOpen} onOpenChange={setIsSaveDialogOpen}>
+                        <DialogTrigger asChild>
+                          <Button size="sm" variant="outline"><Save className="h-4 w-4 mr-2" />Save Current</Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                            <DialogHeader>
+                                <DialogTitle>Save Report</DialogTitle>
+                                <DialogDescription>Enter a name for your current report configuration.</DialogDescription>
+                            </DialogHeader>
+                            <div className="space-y-2">
+                                <Label htmlFor="report-name">Report Name</Label>
+                                <Input id="report-name" value={newReportName} onChange={(e) => setNewReportName(e.target.value)} />
+                            </div>
+                            <DialogFooter>
+                                <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                                <Button onClick={handleSaveReport}>Save Report</Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
                     <Button size="sm" onClick={addWidget}>
                       <Plus className="h-4 w-4 mr-2" />
                       Add Widget
@@ -644,6 +701,29 @@ export default function AdvancedCustomizableReports() {
                 </div>
               </TabsContent>
               
+              <TabsContent value="templates" className="space-y-4 pt-4">
+                <h3 className="text-lg font-medium">Saved Reports</h3>
+                {savedReports.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">You have no saved reports. Save the current widget configuration as a new report.</p>
+                ) : (
+                    <div className="space-y-2">
+                        {savedReports.map(report => (
+                            <div key={report.id} className="flex items-center justify-between p-2 border rounded-md">
+                                <span className="font-medium">{report.name}</span>
+                                <div className="flex gap-2">
+                                    <Button size="sm" variant="outline" onClick={() => handleLoadReport(report)}>
+                                        <UploadCloud className="h-4 w-4 mr-2" /> Load
+                                    </Button>
+                                    <Button size="sm" variant="destructive" outline onClick={() => handleDeleteReport(report.id)}>
+                                        <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+              </TabsContent>
+
               <TabsContent value="styling" className="space-y-4 pt-4">
                 <div className="space-y-4">
                   <h3 className="text-lg font-medium">Global Styling Options</h3>
@@ -799,5 +879,3 @@ export default function AdvancedCustomizableReports() {
     </div>
   );
 }
-
-    
