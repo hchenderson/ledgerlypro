@@ -3,6 +3,9 @@
 
 import React, { useState, useMemo, useRef, useCallback } from 'react';
 import { useUserData } from '@/hooks/use-user-data';
+import { useAuth } from '@/hooks/use-auth';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { 
   Card, 
   CardContent, 
@@ -31,13 +34,14 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
-  DialogClose,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
+import { Slider } from '@/components/ui/slider';
+import { Switch } from '@/components/ui/switch';
 import { 
   Settings, 
   Save, 
@@ -52,6 +56,14 @@ import {
   X,
   Filter,
   Calendar as CalendarIcon,
+  Palette,
+  Move,
+  Copy,
+  FileText,
+  Target,
+  Calculator,
+  Zap,
+  BarChart2
 } from 'lucide-react';
 import { 
   AreaChart, 
@@ -68,102 +80,101 @@ import {
   CartesianGrid, 
   Tooltip, 
   Legend,
-  ResponsiveContainer
+  ResponsiveContainer,
+  ScatterChart,
+  Scatter,
+  ComposedChart
 } from 'recharts';
-import { useAuth } from '@/hooks/use-auth';
-import { getDoc, doc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import type { Category, SubCategory } from '@/types';
 import { DateRange } from 'react-day-picker';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { subDays, format } from 'date-fns';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { format, subDays } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { MultiSelect } from '@/components/ui/multi-select';
-import type { Category, SubCategory } from '@/types';
 
 
 const CHART_TYPES = {
-  bar: { name: 'Bar Chart', icon: BarChart3 },
-  line: { name: 'Line Chart', icon: TrendingUp },
-  area: { name: 'Area Chart', icon: BarChart3 },
-  pie: { name: 'Pie Chart', icon: PieChartIcon }
+  bar: { name: 'Bar Chart', icon: BarChart3, allowsComparison: true },
+  line: { name: 'Line Chart', icon: TrendingUp, allowsComparison: true },
+  area: { name: 'Area Chart', icon: BarChart3, allowsComparison: false },
+  pie: { name: 'Pie Chart', icon: PieChartIcon, allowsComparison: false },
+  scatter: { name: 'Scatter Plot', icon: BarChart2, allowsComparison: false },
+  composed: { name: 'Combined Chart', icon: BarChart2, allowsComparison: true }
 };
 
-const CHART_COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff7c7c', '#8dd1e1', '#a4de6c', '#d0ed57', '#ffc0cb'];
-
-const DEFAULT_WIDGETS = [
-  {
-    id: 'income-expense',
-    title: 'Income vs Expense',
-    type: 'bar',
-    size: 'large',
-    dataKey: 'monthly',
-    enabled: true,
-    position: 0
-  },
-  {
-    id: 'category-breakdown',
-    title: 'Category Breakdown',
-    type: 'pie',
-    size: 'medium',
-    dataKey: 'category',
-    enabled: true,
-    position: 1
-  },
-  {
-    id: 'balance-trend',
-    title: 'Balance Trend',
-    type: 'area',
-    size: 'large',
-    dataKey: 'balance',
-    enabled: true,
-    position: 2
-  }
-];
-
-const CustomTooltip = ({ active, payload, label }: any) => {
-  if (active && payload && payload.length) {
-    return (
-      <div className="rounded-lg border bg-background p-2 shadow-sm">
-        <div className="grid grid-cols-2 gap-2">
-          <div className="flex flex-col space-y-1">
-            <span className="text-[0.7rem] uppercase text-muted-foreground">
-              {label || payload[0].name}
-            </span>
-            <span className="font-bold text-foreground">
-              {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(payload[0].value)}
-            </span>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return null;
+const COLOR_THEMES: Record<string, string[]> = {
+  default: ['#8884d8', '#82ca9d', '#ffc658', '#ff7c7c', '#8dd1e1'],
+  vibrant: ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7'],
+  professional: ['#2C3E50', '#34495E', '#7F8C8D', '#95A5A6', '#BDC3C7'],
+  warm: ['#E74C3C', '#E67E22', '#F39C12', '#F1C40F', '#D4AC0D'],
+  cool: ['#3498DB', '#2980B9', '#1ABC9C', '#16A085', '#27AE60'],
+  pastel: ['#FFB6C1', '#98FB98', '#87CEEB', '#DDA0DD', '#F0E68C']
 };
 
-export default function CustomizableReports() {
+const DATA_AGGREGATIONS = {
+  sum: 'Sum',
+  average: 'Average',
+  count: 'Count',
+  max: 'Maximum',
+  min: 'Minimum'
+};
+
+const TIME_PERIODS = {
+  daily: 'Daily',
+  weekly: 'Weekly', 
+  monthly: 'Monthly',
+  quarterly: 'Quarterly',
+  yearly: 'Yearly'
+};
+
+export default function AdvancedCustomizableReports() {
   const { allTransactions, categories: userCategories } = useUserData();
   const { user } = useAuth();
-  const [widgets, setWidgets] = useState(DEFAULT_WIDGETS);
-  const [isCustomizing, setIsCustomizing] = useState(false);
-  const [savedReports, setSavedReports] = useState([
-    { id: 1, name: 'Monthly Overview', widgets: DEFAULT_WIDGETS },
-    { id: 2, name: 'Expense Analysis', widgets: DEFAULT_WIDGETS.filter(w => w.id !== 'balance-trend') }
-  ]);
-  const [newReportName, setNewReportName] = useState('');
-  const [selectedReport, setSelectedReport] = useState<{ id: number | string, name: string, widgets: any[] } | null>(null);
-  const [layout, setLayout] = useState('grid');
-  const reportRef = useRef(null);
-
-  // Filter states
-  const [dateRange, setDateRange] = useState<DateRange | undefined>({
-    from: subDays(new Date(), 29),
-    to: new Date()
-  });
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [startingBalance, setStartingBalance] = useState(0);
 
+  const [widgets, setWidgets] = useState([
+    {
+      id: 'income-expense',
+      title: 'Income vs Expense',
+      type: 'bar',
+      size: 'large',
+      dataKey: 'monthly',
+      enabled: true,
+      position: 0,
+      colorTheme: 'default',
+      showLegend: true,
+      showGrid: true,
+      height: 300,
+      aggregation: 'sum',
+      timePeriod: 'monthly',
+      comparison: null,
+      customFilters: [],
+      annotations: []
+    }
+  ]);
+
+  const [isCustomizing, setIsCustomizing] = useState(false);
+  const [selectedWidget, setSelectedWidget] = useState<any>(null);
+  const [layout, setLayout] = useState('grid');
+  
+  const [globalFilters, setGlobalFilters] = useState({
+    dateRange: {
+      from: subDays(new Date(), 29),
+      to: new Date()
+    } as DateRange | undefined,
+    categories: [] as string[],
+    amountRange: [0, 10000] as [number, number],
+    tags: [] as string[]
+  });
+
+  const [draggedWidget, setDraggedWidget] = useState<any>(null);
+  const [kpiTargets, setKpiTargets] = useState({
+    monthlyIncome: 5000,
+    monthlyExpense: 3000,
+    savingsRate: 40
+  });
+  
   React.useEffect(() => {
     if (user) {
       const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'main');
@@ -174,7 +185,217 @@ export default function CustomizableReports() {
       });
     }
   }, [user]);
-  
+
+  const processedData = useMemo(() => {
+    const filtered = allTransactions.filter(t => {
+      const transactionDate = new Date(t.date);
+      const inDateRange = globalFilters.dateRange?.from && globalFilters.dateRange?.to ?
+        (transactionDate >= globalFilters.dateRange.from && transactionDate <= globalFilters.dateRange.to) : true;
+      const passesAmountFilter = t.amount >= globalFilters.amountRange[0] && 
+                                t.amount <= globalFilters.amountRange[1];
+      const passesCategoryFilter = globalFilters.categories.length === 0 || 
+                                  globalFilters.categories.includes(t.category);
+      return inDateRange && passesAmountFilter && passesCategoryFilter;
+    });
+
+    const monthlyData: { [key: string]: any } = filtered.reduce((acc: { [key: string]: any }, transaction) => {
+      const month = new Date(transaction.date).toLocaleDateString('en', { month: 'short', year: '2-digit' });
+      if (!acc[month]) {
+        acc[month] = { 
+          month, 
+          income: 0, 
+          expense: 0, 
+          transactions: 0,
+          avgTransaction: 0,
+          maxTransaction: 0,
+          categories: new Set()
+        };
+      }
+      
+      acc[month][transaction.type] += transaction.amount;
+      acc[month].transactions += 1;
+      acc[month].maxTransaction = Math.max(acc[month].maxTransaction, transaction.amount);
+      acc[month].categories.add(transaction.category);
+      
+      return acc;
+    }, {});
+
+    Object.values(monthlyData).forEach(month => {
+      month.avgTransaction = (month.income + month.expense) / month.transactions || 0;
+      month.netIncome = month.income - month.expense;
+      month.savingsRate = month.income > 0 ? ((month.income - month.expense) / month.income) * 100 : 0;
+      month.categoryCount = month.categories.size;
+      month.categories = Array.from(month.categories);
+    });
+
+    const categoryTrends: { [key: string]: { [key: string]: number } } = {};
+    filtered.filter(t => t.type === 'expense').forEach(t => {
+      const month = new Date(t.date).toLocaleDateString('en', { month: 'short' });
+      if (!categoryTrends[t.category]) {
+        categoryTrends[t.category] = {};
+      }
+      categoryTrends[t.category][month] = (categoryTrends[t.category][month] || 0) + t.amount;
+    });
+
+    return {
+      monthly: Object.values(monthlyData).sort((a, b) => new Date(`1 ${a.month}`).getTime() - new Date(`1 ${b.month}`).getTime()),
+      categories: Object.entries(categoryTrends).map(([category, months]) => ({
+        category,
+        total: Object.values(months).reduce((sum, val) => sum + val, 0),
+        trend: Object.entries(months),
+        avgMonthly: Object.values(months).reduce((sum, val) => sum + val, 0) / Object.keys(months).length
+      })),
+      kpis: {
+        totalIncome: filtered.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0),
+        totalExpense: filtered.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0),
+        transactionCount: filtered.length,
+        avgTransactionAmount: filtered.reduce((sum, t) => sum + t.amount, 0) / (filtered.length || 1)
+      }
+    };
+  }, [globalFilters, allTransactions]);
+
+  const renderAdvancedChart = (widget: any) => {
+    const theme = COLOR_THEMES[widget.colorTheme] || COLOR_THEMES.default;
+    const data = processedData[widget.dataKey === 'category' ? 'categories' : 'monthly' as keyof typeof processedData];
+
+    if (!data || data.length === 0) {
+      return (
+        <div className="flex h-[300px] items-center justify-center text-muted-foreground">
+          No data available for this configuration.
+        </div>
+      );
+    }
+
+    const chartProps = {
+      margin: { top: 20, right: 30, left: 20, bottom: 20 }
+    };
+
+    const CustomTooltip = ({ active, payload, label }: any) => {
+      if (!active || !payload || !payload.length) return null;
+
+      const data = payload[0].payload;
+      const targetKey = `monthly${payload[0].dataKey?.charAt(0).toUpperCase() + payload[0].dataKey?.slice(1)}`;
+      const target = kpiTargets[targetKey as keyof typeof kpiTargets];
+
+      return (
+        <div className="bg-background p-3 border rounded-lg shadow-lg">
+          <p className="font-medium">{label}</p>
+          {payload.map((entry: any, index: number) => (
+            <div key={index} className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }} />
+              <span className="text-sm">
+                {entry.name}: {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(entry.value)}
+              </span>
+              {target && (
+                <Badge variant={entry.value >= target ? 'default' : 'secondary'}>
+                  {((entry.value / target) * 100).toFixed(0)}% of target
+                </Badge>
+              )}
+            </div>
+          ))}
+          {data.savingsRate !== undefined && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Savings Rate: {data.savingsRate.toFixed(1)}%
+            </p>
+          )}
+        </div>
+      );
+    };
+
+    switch (widget.type) {
+      case 'composed':
+        return (
+          <ResponsiveContainer width="100%" height={widget.height}>
+            <ComposedChart data={data as any[]} {...chartProps}>
+              {widget.showGrid && <CartesianGrid strokeDasharray="3 3" />}
+              <XAxis dataKey="month" />
+              <YAxis yAxisId="left" />
+              <YAxis yAxisId="right" orientation="right" />
+              <Tooltip content={<CustomTooltip />} />
+              {widget.showLegend && <Legend />}
+              <Bar yAxisId="left" dataKey="income" fill={theme[0]} name="Income" />
+              <Bar yAxisId="left" dataKey="expense" fill={theme[1]} name="Expense" />
+              <Line yAxisId="right" type="monotone" dataKey="savingsRate" stroke={theme[2]} name="Savings Rate %" />
+            </ComposedChart>
+          </ResponsiveContainer>
+        );
+
+      case 'scatter':
+        return (
+          <ResponsiveContainer width="100%" height={widget.height}>
+            <ScatterChart data={data as any[]} {...chartProps}>
+              {widget.showGrid && <CartesianGrid strokeDasharray="3 3" />}
+              <XAxis dataKey="income" name="Income" />
+              <YAxis dataKey="expense" name="Expense" />
+              <Tooltip cursor={{ strokeDasharray: '3 3' }} content={<CustomTooltip />} />
+              <Scatter name="Income vs Expense" data={data as any[]} fill={theme[0]} />
+            </ScatterChart>
+          </ResponsiveContainer>
+        );
+
+      case 'bar':
+        return (
+          <ResponsiveContainer width="100%" height={widget.height}>
+            <BarChart data={data as any[]} {...chartProps}>
+              {widget.showGrid && <CartesianGrid strokeDasharray="3 3" />}
+              <XAxis dataKey="month" />
+              <YAxis />
+              <Tooltip content={<CustomTooltip />} />
+              {widget.showLegend && <Legend />}
+              <Bar dataKey="income" fill={theme[0]} name="Income" />
+              <Bar dataKey="expense" fill={theme[1]} name="Expense" />
+              {widget.comparison && (
+                <Bar dataKey={widget.comparison} fill={theme[2]} name="Comparison" />
+              )}
+            </BarChart>
+          </ResponsiveContainer>
+        );
+
+      default:
+        return <div>Chart type not implemented</div>;
+    }
+  };
+
+  const addWidget = useCallback(() => {
+    const newWidget = {
+      id: `widget-${Date.now()}`,
+      title: 'New Widget',
+      type: 'bar',
+      size: 'medium',
+      dataKey: 'monthly',
+      enabled: true,
+      position: widgets.length,
+      colorTheme: 'default',
+      showLegend: true,
+      showGrid: true,
+      height: 300,
+      aggregation: 'sum',
+      timePeriod: 'monthly',
+      comparison: null,
+      customFilters: [],
+      annotations: []
+    };
+    setWidgets([...widgets, newWidget]);
+  }, [widgets]);
+
+  const updateWidget = useCallback((widgetId: string, updates: any) => {
+    setWidgets(prevWidgets => 
+      prevWidgets.map(w => w.id === widgetId ? { ...w, ...updates } : w)
+    );
+  }, []);
+
+  const duplicateWidget = useCallback((widget: any) => {
+    const newWidget = {
+      ...widget,
+      id: `widget-${Date.now()}`,
+      title: `${widget.title} (Copy)`,
+      position: widgets.length
+    };
+    setWidgets([...widgets, newWidget]);
+  }, [widgets]);
+
+  const enabledWidgets = widgets.filter(w => w.enabled).sort((a, b) => a.position - b.position);
+
   const allCategoryOptions = useMemo(() => {
     const options: { value: string; label: string }[] = [];
     const recurse = (cats: (Category | SubCategory)[]) => {
@@ -187,257 +408,26 @@ export default function CustomizableReports() {
     return options;
   }, [userCategories]);
 
-  // Filtered transactions
-  const filteredTransactions = useMemo(() => {
-    return allTransactions.filter(t => {
-      const transactionDate = new Date(t.date);
-      const inDateRange = dateRange?.from && dateRange?.to ? 
-        (transactionDate >= dateRange.from && transactionDate <= dateRange.to) : true;
-      
-      const inCategory = selectedCategories.length > 0 ? selectedCategories.includes(t.category) : true;
-      
-      return inDateRange && inCategory;
-    });
-  }, [allTransactions, dateRange, selectedCategories]);
-
-
-  // Process data for different chart types
-  const processedData = useMemo(() => {
-    if (filteredTransactions.length === 0) {
-      return { monthly: [], category: [], totalExpense: 0 };
-    }
-    
-    // Monthly data for income vs expense
-    const monthlyData: { [key: string]: { month: string; income: number; expense: number } } = {};
-    filteredTransactions.forEach(transaction => {
-      const month = new Date(transaction.date).toLocaleDateString('en', { month: 'short', year: '2-digit' });
-      if (!monthlyData[month]) {
-        monthlyData[month] = { month, income: 0, expense: 0 };
-      }
-      monthlyData[month][transaction.type] += transaction.amount;
-    });
-
-    // --- Category data for major categories ---
-    const findParentCategory = (subCategoryName: string): Category | null => {
-        for (const parent of userCategories) {
-            if (parent.name === subCategoryName) {
-                return parent; // It's a parent category itself
-            }
-            if (parent.subCategories?.some(sub => sub.name === subCategoryName)) {
-                return parent;
-            }
-        }
-        return null;
-    };
-
-    const categoryTotals: { [key: string]: number } = {};
-    filteredTransactions
-      .filter(t => t.type === 'expense' && t.category)
-      .forEach(transaction => {
-        const parentCategory = findParentCategory(transaction.category);
-        const parentName = parentCategory?.name || 'Uncategorized';
-        if (!categoryTotals[parentName]) {
-          categoryTotals[parentName] = 0;
-        }
-        categoryTotals[parentName] += transaction.amount;
-      });
-    
-    const totalExpense = Object.values(categoryTotals).reduce((sum, val) => sum + val, 0);
-
-    const sortedCategories = Object.entries(categoryTotals)
-        .map(([name, value]) => ({ name, value }))
-        .sort((a, b) => b.value - a.value);
-
-    let categoryData;
-    const MAX_PIE_SLICES = 7;
-    if (sortedCategories.length > MAX_PIE_SLICES) {
-        const mainSlices = sortedCategories.slice(0, MAX_PIE_SLICES - 1);
-        const otherSliceValue = sortedCategories.slice(MAX_PIE_SLICES - 1).reduce((sum, cat) => sum + cat.value, 0);
-        categoryData = [...mainSlices, { name: 'Other', value: otherSliceValue }];
-    } else {
-        categoryData = sortedCategories;
-    }
-
-    const sortedMonths = Object.values(monthlyData).sort((a,b) => new Date(`1 ${a.month}`).getTime() - new Date(`1 ${b.month}`).getTime());
-    
-    return {
-      monthly: sortedMonths,
-      category: categoryData.map((item, index) => ({
-        ...item,
-        fill: CHART_COLORS[index % CHART_COLORS.length]
-      })),
-      totalExpense
-    };
-  }, [filteredTransactions, userCategories]);
-
-  const renderChart = (widget: any) => {
-    let data;
-
-    if (widget.dataKey === 'balance') {
-      const balanceStartDate = dateRange?.from || new Date(Math.min(...allTransactions.map(t => new Date(t.date).getTime())));
-      const initialBalance = allTransactions
-        .filter(t => new Date(t.date) < balanceStartDate)
-        .reduce((acc, t) => acc + (t.type === 'income' ? t.amount : -t.amount), startingBalance);
-      
-      let runningBalance = initialBalance;
-      data = processedData.monthly.map(monthData => {
-        runningBalance += monthData.income - monthData.expense;
-        return { month: monthData.month, balance: runningBalance };
-      });
-    } else {
-      data = processedData[widget.dataKey as keyof typeof processedData];
-    }
-    
-    if (!data || data.length === 0) {
-      return <div className="flex h-[300px] items-center justify-center text-muted-foreground">No data available for this chart.</div>;
-    }
-
-    switch (widget.type) {
-      case 'bar':
-        return (
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={data}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="month" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-              <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickFormatter={(value) => `$${value}`} />
-              <Tooltip content={<CustomTooltip />} />
-              <Legend />
-              <Bar dataKey="income" fill="hsl(var(--chart-1))" name="Income" />
-              <Bar dataKey="expense" fill="hsl(var(--chart-2))" name="Expense" />
-            </BarChart>
-          </ResponsiveContainer>
-        );
-      
-      case 'line':
-        return (
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={data}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="month" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-              <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickFormatter={(value) => `$${value}`} />
-              <Tooltip content={<CustomTooltip />} />
-              <Legend />
-              <Line type="monotone" dataKey="income" stroke="hsl(var(--chart-1))" name="Income" />
-              <Line type="monotone" dataKey="expense" stroke="hsl(var(--chart-2))" name="Expense" />
-            </LineChart>
-          </ResponsiveContainer>
-        );
-      
-      case 'area':
-        return (
-          <ResponsiveContainer width="100%" height={300}>
-            <AreaChart data={data} accessibilityLayer role="img" aria-label="Balance trend over time">
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="month" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-              <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickFormatter={(value) => `$${value}`} />
-              <Tooltip content={<CustomTooltip />} />
-              <Area type="monotone" dataKey="balance" stroke="hsl(var(--chart-1))" fill="hsl(var(--chart-1))" fillOpacity={0.3} name="Balance" />
-            </AreaChart>
-          </ResponsiveContainer>
-        );
-      
-      case 'pie':
-        return (
-          <ResponsiveContainer width="100%" height={300}>
-            <RechartsPieChart>
-              <Tooltip content={({ active, payload }) => {
-                if (active && payload && payload.length) {
-                  const data = payload[0];
-                  const percentage = ((data.value / processedData.totalExpense) * 100).toFixed(2);
-                  return (
-                    <div className="rounded-lg border bg-background p-2 shadow-sm">
-                      <p className="text-sm font-medium">{`${data.name}: ${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(data.value)} (${percentage}%)`}</p>
-                    </div>
-                  );
-                }
-                return null;
-              }} />
-              <Pie data={data} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} labelLine={false} label={({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
-                  const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
-                  const x = cx + radius * Math.cos(-midAngle * (Math.PI / 180));
-                  const y = cy + radius * Math.sin(-midAngle * (Math.PI / 180));
-                  return (
-                    <text x={x} y={y} fill="white" textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" className="text-xs font-bold">
-                      {`${(percent * 100).toFixed(0)}%`}
-                    </text>
-                  );
-                }}>
-                {(data as any[]).map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.fill} />
-                ))}
-              </Pie>
-              <Legend layout="vertical" align="right" verticalAlign="middle" iconSize={10} wrapperStyle={{fontSize: '12px'}}/>
-            </RechartsPieChart>
-          </ResponsiveContainer>
-        );
-      
-      default:
-        return <div>Unsupported chart type</div>;
-    }
-  };
-
-  const updateWidget = (widgetId: string, updates: any) => {
-    setWidgets(widgets.map(w => 
-      w.id === widgetId ? { ...w, ...updates } : w
-    ));
-  };
-
-  const addWidget = () => {
-    const newWidget = {
-      id: `widget-${Date.now()}`,
-      title: 'New Widget',
-      type: 'bar',
-      size: 'medium',
-      dataKey: 'monthly',
-      enabled: true,
-      position: widgets.length
-    };
-    setWidgets([...widgets, newWidget]);
-  };
-
-  const removeWidget = (widgetId: string) => {
-    setWidgets(widgets.filter(w => w.id !== widgetId));
-  };
-
-  const saveReport = () => {
-    if (!newReportName.trim()) return;
-    
-    const newReport = {
-      id: `report-${Date.now()}`,
-      name: newReportName,
-      widgets: [...widgets]
-    };
-    
-    setSavedReports([...savedReports, newReport]);
-    setNewReportName('');
-  };
-
-  const loadReport = (report: any) => {
-    setWidgets(report.widgets);
-    setSelectedReport(report);
-  };
-
-  const enabledWidgets = widgets.filter(w => w.enabled).sort((a, b) => a.position - b.position);
-
-  const resetFilters = useCallback(() => {
-    setDateRange({ from: subDays(new Date(), 29), to: new Date() });
-    setSelectedCategories([]);
-  }, []);
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight font-headline">Customizable Reports</h2>
-          <p className="text-muted-foreground">Design your perfect financial dashboard.</p>
+          <h2 className="text-2xl font-bold tracking-tight">Advanced Reports</h2>
+          <p className="text-muted-foreground">Create powerful, interactive financial dashboards</p>
         </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={() => setLayout(layout === 'grid' ? 'list' : 'grid')}
-          >
-            {layout === 'grid' ? <List className="h-4 w-4" /> : <Grid className="h-4 w-4" />}
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm">
+            <Target className="h-4 w-4 mr-2" />
+            KPI Targets
+          </Button>
+          <Button variant="outline" size="sm">
+            <Calculator className="h-4 w-4 mr-2" />
+            Formula Builder
+          </Button>
+          <Button variant="outline" size="sm">
+            <Zap className="h-4 w-4 mr-2" />
+            Auto Insights
           </Button>
           <Button
             variant={isCustomizing ? "default" : "outline"}
@@ -446,91 +436,86 @@ export default function CustomizableReports() {
             <Settings className="h-4 w-4 mr-2" />
             Customize
           </Button>
-          <Button variant="outline">
-            <Download className="h-4 w-4 mr-2" />
-            Export
-          </Button>
         </div>
       </div>
 
-      {/* Filters */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Filter className="h-5 w-5"/> Report Filters</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Filter className="h-5 w-5" />
+            Global Filters & KPIs
+          </CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
-          <div className="flex flex-col gap-2 lg:col-span-2">
-              <Label>Date Range</Label>
-               <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    id="date"
-                    variant={"outline"}
-                    className={cn(
-                      "w-full justify-start text-left font-normal",
-                      !dateRange && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {dateRange?.from ? (
-                      dateRange.to ? (
-                        <>
-                          {format(dateRange.from, "LLL dd, y")} -{" "}
-                          {format(dateRange.to, "LLL dd, y")}
-                        </>
-                      ) : (
-                        format(dateRange.from, "LLL dd, y")
-                      )
-                    ) : (
-                      <span>Pick a date</span>
-                    )}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    initialFocus
-                    mode="range"
-                    defaultMonth={dateRange?.from}
-                    selected={dateRange}
-                    onSelect={setDateRange}
-                    numberOfMonths={2}
-                  />
-                </PopoverContent>
-              </Popover>
-          </div>
-          <div className="flex flex-col gap-2 lg:col-span-2">
-            <Label>Categories</Label>
-            <MultiSelect
-              options={allCategoryOptions}
-              selected={selectedCategories}
-              onChange={setSelectedCategories}
-              placeholder="All categories"
-            />
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label>Amount Range</Label>
+              <Slider
+                value={globalFilters.amountRange}
+                onValueChange={(value) => setGlobalFilters(prev => ({ ...prev, amountRange: value as [number, number] }))}
+                min={0}
+                max={10000}
+                step={100}
+                className="w-full"
+              />
+              <div className="flex justify-between text-sm text-muted-foreground">
+                <span>${globalFilters.amountRange[0]}</span>
+                <span>${globalFilters.amountRange[1]}</span>
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Monthly Income Target</Label>
+              <Input
+                type="number"
+                value={kpiTargets.monthlyIncome}
+                onChange={(e) => setKpiTargets(prev => ({ 
+                  ...prev, 
+                  monthlyIncome: parseInt(e.target.value) || 0 
+                }))}
+                placeholder="5000"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Savings Rate Target (%)</Label>
+              <Input
+                type="number"
+                value={kpiTargets.savingsRate}
+                onChange={(e) => setKpiTargets(prev => ({ 
+                  ...prev, 
+                  savingsRate: parseInt(e.target.value) || 0 
+                }))}
+                placeholder="40"
+              />
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Customization Panel */}
       {isCustomizing && (
         <Card>
           <CardHeader>
-            <CardTitle>Report Configuration</CardTitle>
+            <CardTitle>Advanced Configuration</CardTitle>
           </CardHeader>
           <CardContent>
             <Tabs defaultValue="widgets" className="w-full">
-              <TabsList className="grid w-full grid-cols-3">
+              <TabsList className="grid w-full grid-cols-4">
                 <TabsTrigger value="widgets">Widgets</TabsTrigger>
-                <TabsTrigger value="layout">Layout</TabsTrigger>
-                <TabsTrigger value="templates">Templates</TabsTrigger>
+                <TabsTrigger value="styling">Styling</TabsTrigger>
+                <TabsTrigger value="formulas">Formulas</TabsTrigger>
+                <TabsTrigger value="export">Export</TabsTrigger>
               </TabsList>
               
               <TabsContent value="widgets" className="space-y-4 pt-4">
                 <div className="flex justify-between items-center">
-                  <h3 className="text-lg font-medium">Manage Widgets</h3>
-                  <Button size="sm" onClick={addWidget}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Widget
-                  </Button>
+                  <h3 className="text-lg font-medium">Widget Management</h3>
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={addWidget}>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Widget
+                    </Button>
+                  </div>
                 </div>
                 
                 <div className="grid gap-4">
@@ -539,45 +524,66 @@ export default function CustomizableReports() {
                       <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center space-x-2">
                           <Checkbox
-                            id={`enabled-${widget.id}`}
                             checked={widget.enabled}
-                            onCheckedChange={(checked) =>
-                              updateWidget(widget.id, { enabled: !!checked })
-                            }
+                            onCheckedChange={(checked) => updateWidget(widget.id, { enabled: !!checked })}
                           />
                           <Input
                             value={widget.title}
-                            onChange={(e) =>
-                              updateWidget(widget.id, { title: e.target.value })
-                            }
+                            onChange={(e) => updateWidget(widget.id, { title: e.target.value })}
                             className="font-medium"
                           />
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => removeWidget(widget.id)}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
+                        <div className="flex gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => duplicateWidget(widget)}
+                            title="Duplicate"
+                          >
+                            <Copy className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setSelectedWidget(widget as any)}
+                            title="Advanced Settings"
+                          >
+                            <Settings className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
                       
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                         <div>
                           <Label>Chart Type</Label>
                           <Select
                             value={widget.type}
-                            onValueChange={(value) =>
-                              updateWidget(widget.id, { type: value })
-                            }
+                            onValueChange={(value) => updateWidget(widget.id, { type: value })}
                           >
                             <SelectTrigger>
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
                               {Object.entries(CHART_TYPES).map(([key, type]) => (
-                                <SelectItem key={key} value={key}>
-                                  {type.name}
+                                <SelectItem key={key} value={key}>{type.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        
+                        <div>
+                          <Label>Color Theme</Label>
+                          <Select
+                            value={widget.colorTheme}
+                            onValueChange={(value) => updateWidget(widget.id, { colorTheme: value })}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {Object.keys(COLOR_THEMES).map(theme => (
+                                <SelectItem key={theme} value={theme}>
+                                  {theme.charAt(0).toUpperCase() + theme.slice(1)}
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -585,41 +591,52 @@ export default function CustomizableReports() {
                         </div>
                         
                         <div>
-                          <Label>Size</Label>
+                          <Label>Aggregation</Label>
                           <Select
-                            value={widget.size}
-                            onValueChange={(value) =>
-                              updateWidget(widget.id, { size: value })
-                            }
+                            value={widget.aggregation}
+                            onValueChange={(value) => updateWidget(widget.id, { aggregation: value })}
                           >
                             <SelectTrigger>
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="small">Small</SelectItem>
-                              <SelectItem value="medium">Medium</SelectItem>
-                              <SelectItem value="large">Large</SelectItem>
+                              {Object.entries(DATA_AGGREGATIONS).map(([key, value]) => (
+                                <SelectItem key={key} value={key}>{value}</SelectItem>
+                              ))}
                             </SelectContent>
                           </Select>
                         </div>
                         
                         <div>
-                          <Label>Data Source</Label>
-                          <Select
-                            value={widget.dataKey}
-                            onValueChange={(value) =>
-                              updateWidget(widget.id, { dataKey: value })
-                            }
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="monthly">Monthly Data</SelectItem>
-                              <SelectItem value="category">Category Data</SelectItem>
-                              <SelectItem value="balance">Balance Data</SelectItem>
-                            </SelectContent>
-                          </Select>
+                          <Label>Height (px)</Label>
+                          <Input
+                            type="number"
+                            value={widget.height}
+                            onChange={(e) => updateWidget(widget.id, { 
+                              height: parseInt(e.target.value) || 300 
+                            })}
+                            min={200}
+                            max={800}
+                          />
+                        </div>
+                      </div>
+                      
+                      <div className="mt-4 space-y-2">
+                        <div className="flex items-center space-x-4">
+                          <div className="flex items-center space-x-2">
+                            <Switch
+                              checked={widget.showLegend}
+                              onCheckedChange={(checked) => updateWidget(widget.id, { showLegend: !!checked })}
+                            />
+                            <Label>Show Legend</Label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Switch
+                              checked={widget.showGrid}
+                              onCheckedChange={(checked) => updateWidget(widget.id, { showGrid: !!checked })}
+                            />
+                            <Label>Show Grid</Label>
+                          </div>
                         </div>
                       </div>
                     </Card>
@@ -627,84 +644,99 @@ export default function CustomizableReports() {
                 </div>
               </TabsContent>
               
-              <TabsContent value="layout" className="space-y-4 pt-4">
-                <div>
-                  <h3 className="text-lg font-medium mb-2">Layout Options</h3>
+              <TabsContent value="styling" className="space-y-4 pt-4">
+                <div className="space-y-4">
+                  <h3 className="text-lg font-medium">Global Styling Options</h3>
                   <div className="grid grid-cols-2 gap-4">
-                    <Button
-                      variant={layout === 'grid' ? 'default' : 'outline'}
-                      onClick={() => setLayout('grid')}
-                    >
-                      <Grid className="h-4 w-4 mr-2" />
-                      Grid Layout
-                    </Button>
-                    <Button
-                      variant={layout === 'list' ? 'default' : 'outline'}
-                      onClick={() => setLayout('list')}
-                    >
-                      <List className="h-4 w-4 mr-2" />
-                      List Layout
+                    <div>
+                      <Label>Dashboard Layout</Label>
+                      <div className="flex gap-2 mt-2">
+                        <Button
+                          variant={layout === 'grid' ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setLayout('grid')}
+                        >
+                          <Grid className="h-4 w-4 mr-2" />
+                          Grid
+                        </Button>
+                        <Button
+                          variant={layout === 'list' ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setLayout('list')}
+                        >
+                          <List className="h-4 w-4 mr-2" />
+                          List
+                        </Button>
+                      </div>
+                    </div>
+                    <div>
+                      <Label>Color Palette Preview</Label>
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {Object.entries(COLOR_THEMES).map(([name, colors]) => (
+                          <div key={name} className="flex">
+                            {colors.map((color, i) => (
+                              <div
+                                key={i}
+                                className="w-4 h-4 rounded-sm"
+                                style={{ backgroundColor: color }}
+                                title={name}
+                              />
+                            ))}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </TabsContent>
+              
+              <TabsContent value="formulas" className="space-y-4 pt-4">
+                <div>
+                  <h3 className="text-lg font-medium">Custom Calculations</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Create custom metrics using formulas (e.g., "income - expense", "savings_rate * 100")
+                  </p>
+                  <div className="space-y-3">
+                    <div>
+                      <Label>Formula Name</Label>
+                      <Input placeholder="Net Worth Growth" />
+                    </div>
+                    <div>
+                      <Label>Formula Expression</Label>
+                      <Textarea 
+                        placeholder="(current_balance - starting_balance) / starting_balance * 100"
+                        rows={3}
+                      />
+                    </div>
+                    <Button size="sm">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Formula
                     </Button>
                   </div>
                 </div>
               </TabsContent>
               
-              <TabsContent value="templates" className="space-y-4 pt-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-medium">Saved Reports</h3>
-                  <Dialog>
-                    <DialogTrigger asChild>
-                      <Button size="sm">
-                        <Save className="h-4 w-4 mr-2" />
-                        Save Current
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>Save Report Template</DialogTitle>
-                        <DialogDescription>
-                          Give your custom report a name to save it for later use.
-                        </DialogDescription>
-                      </DialogHeader>
-                      <div>
-                        <Label htmlFor="report-name">Report Name</Label>
-                        <Input
-                          id="report-name"
-                          value={newReportName}
-                          onChange={(e) => setNewReportName(e.target.value)}
-                          placeholder="My Custom Report"
-                        />
-                      </div>
-                      <DialogFooter>
-                        <DialogClose asChild>
-                          <Button onClick={saveReport} disabled={!newReportName.trim()}>
-                            Save Report
-                          </Button>
-                        </DialogClose>
-                      </DialogFooter>
-                    </DialogContent>
-                  </Dialog>
-                </div>
-                
-                <div className="grid gap-2">
-                  {savedReports.map((report) => (
-                    <div key={report.id} className="flex items-center justify-between p-3 border rounded-lg">
-                      <div>
-                        <h4 className="font-medium">{report.name}</h4>
-                        <p className="text-sm text-muted-foreground">
-                          {report.widgets.filter(w => w.enabled).length} widgets
-                        </p>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => loadReport(report)}
-                      >
-                        <Eye className="h-4 w-4 mr-2" />
-                        Load
-                      </Button>
-                    </div>
-                  ))}
+              <TabsContent value="export" className="space-y-4 pt-4">
+                <div>
+                  <h3 className="text-lg font-medium">Export Options</h3>
+                  <div className="grid grid-cols-2 gap-4 mt-4">
+                    <Button variant="outline">
+                      <FileText className="h-4 w-4 mr-2" />
+                      Export as PDF
+                    </Button>
+                    <Button variant="outline">
+                      <Download className="h-4 w-4 mr-2" />
+                      Export Data (CSV)
+                    </Button>
+                    <Button variant="outline">
+                      <Palette className="h-4 w-4 mr-2" />
+                      Export as Image
+                    </Button>
+                    <Button variant="outline">
+                      <Settings className="h-4 w-4 mr-2" />
+                      Export Configuration
+                    </Button>
+                  </div>
                 </div>
               </TabsContent>
             </Tabs>
@@ -712,44 +744,26 @@ export default function CustomizableReports() {
         </Card>
       )}
 
-      {/* Report Display */}
-      <div ref={reportRef}>
-        {selectedReport && (
-          <div className="mb-4 p-3 bg-primary/5 border-primary/20 rounded-lg">
-            <div className="flex items-center justify-between">
-              <span className="text-primary font-medium">
-                Viewing: {selectedReport.name}
-              </span>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => setSelectedReport(null)}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        )}
-        
+      <div ref={useRef(null)}>
         {enabledWidgets.length === 0 ? (
-           <Card className="flex flex-col items-center justify-center py-12">
-             <CardHeader className="text-center">
-                <PieChartIcon className="mx-auto h-12 w-12 text-muted-foreground" />
-                <CardTitle className="mt-4">No Widgets Enabled</CardTitle>
-                <CardDescription>Enable some widgets in the customization panel to see your report.</CardDescription>
+          <Card className="flex flex-col items-center justify-center py-12">
+            <CardHeader className="text-center">
+              <PieChartIcon className="mx-auto h-12 w-12 text-muted-foreground" />
+              <CardTitle className="mt-4">No Widgets Enabled</CardTitle>
+              <CardDescription>
+                Enable some widgets in the customization panel to see your report.
+              </CardDescription>
             </CardHeader>
             <CardContent>
-                 <Button onClick={() => setIsCustomizing(true)}>
-                    <Settings className="mr-2 h-4 w-4" />
-                    Customize Report
-                </Button>
+              <Button onClick={() => setIsCustomizing(true)}>
+                <Settings className="mr-2 h-4 w-4" />
+                Customize Report
+              </Button>
             </CardContent>
-        </Card>
+          </Card>
         ) : (
           <div className={`grid gap-6 ${
-            layout === 'grid' 
-              ? 'grid-cols-1 md:grid-cols-2' 
-              : 'grid-cols-1'
+            layout === 'grid' ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'
           }`}>
             {enabledWidgets.map((widget) => {
               const sizeClasses = {
@@ -759,17 +773,22 @@ export default function CustomizableReports() {
               };
 
               return (
-                <Card key={widget.id} className={sizeClasses[widget.size as keyof typeof sizeClasses]}>
-                  <CardHeader>
+                <Card 
+                  key={widget.id} 
+                  className={`${sizeClasses[widget.size as keyof typeof sizeClasses]} transition-all duration-200 hover:shadow-md`}
+                >
+                  <CardHeader className="pb-2">
                     <CardTitle className="flex items-center justify-between">
-                      {widget.title}
-                      <Badge variant="outline">
-                        {CHART_TYPES[widget.type as keyof typeof CHART_TYPES]?.name}
-                      </Badge>
+                      <span>{widget.title}</span>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">
+                          {CHART_TYPES[widget.type as keyof typeof CHART_TYPES]?.name}
+                        </Badge>
+                      </div>
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    {renderChart(widget)}
+                    {renderAdvancedChart(widget)}
                   </CardContent>
                 </Card>
               );
@@ -780,3 +799,5 @@ export default function CustomizableReports() {
     </div>
   );
 }
+
+    
