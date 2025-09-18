@@ -1,7 +1,7 @@
 
 "use client";
 
-import { DollarSign, TrendingUp, TrendingDown, Wallet, Target, CalendarClock, Star } from "lucide-react";
+import { DollarSign, TrendingUp, TrendingDown, Wallet, Target, CalendarClock, Star, Flag } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { OverviewChart } from "@/components/dashboard/overview-chart";
@@ -172,7 +172,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
-              <CardTitle className="flex items-center gap-2"><Target className="text-primary" /> Savings Goals</CardTitle>
+              <CardTitle className="flex items-center gap-2"><Flag className="text-primary" /> Savings Goals</CardTitle>
               <CardDescription>Track your progress towards your financial goals.</CardDescription>
           </CardHeader>
           <CardContent>
