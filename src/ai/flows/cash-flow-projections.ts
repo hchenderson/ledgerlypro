@@ -1,3 +1,4 @@
+
 'use server';
 
 /**
@@ -17,6 +18,7 @@ const GetCashFlowProjectionsInputSchema = z.object({
     .describe(
       'Historical transaction data in JSON format.  Each transaction should include date, amount, and category.'
     ),
+  userPrompt: z.string().optional().describe('A specific question or prompt from the user for the AI to analyze.')
 });
 export type GetCashFlowProjectionsInput = z.infer<
   typeof GetCashFlowProjectionsInputSchema
@@ -26,7 +28,7 @@ const GetCashFlowProjectionsOutputSchema = z.object({
   projection: z
     .string()
     .describe(
-      'AI-driven cash flow projections based on historical transaction data.'
+      'AI-driven cash flow projections or analysis based on historical transaction data.'
     ),
 });
 export type GetCashFlowProjectionsOutput = z.infer<
@@ -43,14 +45,21 @@ const prompt = ai.definePrompt({
   name: 'cashFlowProjectionsPrompt',
   input: {schema: GetCashFlowProjectionsInputSchema},
   output: {schema: GetCashFlowProjectionsOutputSchema},
-  prompt: `You are a financial expert providing cash flow projections based on historical data.
+  prompt: `You are a financial expert providing cash flow projections and financial analysis based on historical data.
 
-  Analyze the following historical transaction data and provide a cash flow projection.
+  Analyze the following historical transaction data:
   Historical Data: {{{historicalData}}}
   
-  Provide a concise projection, highlighting key trends and potential future financial needs.
-  Your analysis MUST be based on the provided data.
-  The projection should be formatted as a string.`, // Enforce string format
+  {{#if userPrompt}}
+  The user has a specific question. Please answer it based on the data provided:
+  "{{{userPrompt}}}"
+
+  Provide a clear and concise answer to the user's question.
+  {{else}}
+  Provide a concise cash flow projection, highlighting key trends and potential future financial needs. Your analysis MUST be based on the provided data.
+  {{/if}}
+
+  The final output should be formatted as a single string.`,
 });
 
 const cashFlowProjectionsFlow = ai.defineFlow(

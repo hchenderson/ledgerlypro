@@ -10,11 +10,14 @@ import { Rocket, Sparkles, AlertTriangle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { FeatureGate } from "@/components/feature-gate";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 
 function ProjectionsPageContent() {
   const [loading, setLoading] = useState(false);
   const [projection, setProjection] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [userPrompt, setUserPrompt] = useState("");
   const { allTransactions } = useUserData();
 
   const handleGenerateProjection = async () => {
@@ -31,6 +34,7 @@ function ProjectionsPageContent() {
     try {
       const input: GetCashFlowProjectionsInput = {
         historicalData: JSON.stringify(allTransactions),
+        userPrompt: userPrompt || undefined,
       };
       const result = await getCashFlowProjections(input);
       setProjection(result.projection);
@@ -47,10 +51,10 @@ function ProjectionsPageContent() {
       <div className="text-center">
         <Rocket className="mx-auto h-12 w-12 text-primary" />
         <h1 className="mt-4 font-headline text-3xl font-bold tracking-tight sm:text-4xl">
-          AI Cash Flow Projections
+          AI Financial Analysis
         </h1>
         <p className="mt-4 text-lg text-muted-foreground">
-          Leverage the power of AI to forecast your financial future based on your transaction history.
+          Leverage AI to forecast your future or ask specific questions about your transaction history.
         </p>
       </div>
       
@@ -58,23 +62,33 @@ function ProjectionsPageContent() {
           <AlertTriangle className="h-4 w-4" />
           <AlertTitle>Verify AI Output</AlertTitle>
           <AlertDescription>
-            AI can make mistakes. Please review the generated projection carefully and verify its accuracy against your own records.
+            AI can make mistakes. Please review the generated analysis carefully and verify its accuracy against your own records.
           </AlertDescription>
         </Alert>
 
-      <Card className="text-center">
+      <Card>
         <CardHeader>
-          <CardTitle>Generate Your Projection</CardTitle>
-          <CardDescription>Click the button below to analyze your data and create a projection.</CardDescription>
+          <CardTitle>Generate Your Analysis</CardTitle>
+          <CardDescription>Enter a specific question or leave it blank for a general cash flow projection.</CardDescription>
         </CardHeader>
-        <CardContent>
-          <Button onClick={handleGenerateProjection} disabled={loading} size="lg">
+        <CardContent className="space-y-4">
+            <div className="space-y-2">
+                <Label htmlFor="user-prompt">Your Question (Optional)</Label>
+                <Textarea
+                    id="user-prompt"
+                    placeholder="e.g., 'What are my top 3 spending categories this month?' or 'How does my income compare to last month?'"
+                    value={userPrompt}
+                    onChange={(e) => setUserPrompt(e.target.value)}
+                    rows={3}
+                />
+            </div>
+          <Button onClick={handleGenerateProjection} disabled={loading} size="lg" className="w-full">
             {loading ? (
               "Analyzing Data..."
             ) : (
               <>
                 <Sparkles className="mr-2 h-4 w-4" />
-                Generate Projection
+                Generate Analysis
               </>
             )}
           </Button>
@@ -106,7 +120,7 @@ function ProjectionsPageContent() {
           <CardHeader>
              <CardTitle className="flex items-center gap-2">
               <Sparkles className="text-primary"/>
-              Your AI-Powered Projection
+              Your AI-Powered Analysis
             </CardTitle>
           </CardHeader>
           <CardContent>
