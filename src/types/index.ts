@@ -38,7 +38,7 @@ export type Budget = {
   id: string;
   categoryId: string;
   amount: number;
-  period: "monthly";
+  period: "monthly" | "yearly";
   isFavorite?: boolean;
 };
 

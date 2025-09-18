@@ -35,10 +35,12 @@ import type { Budget, Category, SubCategory } from '@/types';
 import { FeatureGate } from '@/components/feature-gate';
 import { cn } from '@/lib/utils';
 import { addMonths, subMonths, format } from 'date-fns';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
 const budgetFormSchema = z.object({
   categoryId: z.string().min(1, 'Please select a category.'),
   amount: z.coerce.number().positive('Amount must be a positive number.'),
+  period: z.enum(['monthly', 'yearly']),
 });
 
 type BudgetFormValues = z.infer<typeof budgetFormSchema>;
@@ -53,9 +55,11 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
     defaultValues: budget ? {
       categoryId: budget.categoryId,
       amount: budget.amount,
+      period: budget.period,
     } : {
       categoryId: '',
       amount: 0,
+      period: 'monthly',
     }
   });
 
@@ -64,9 +68,11 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
         form.reset(budget ? {
           categoryId: budget.categoryId,
           amount: budget.amount,
+          period: budget.period,
         } : {
           categoryId: '',
           amount: 0,
+          period: 'monthly',
         });
     }
   }, [isOpen, budget, form]);
@@ -124,9 +130,9 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{budget ? 'Edit' : 'Create'} Monthly Budget</DialogTitle>
+          <DialogTitle>{budget ? 'Edit' : 'Create'} Budget</DialogTitle>
           <DialogDescription>
-            Set a monthly spending limit for a specific category.
+            Set a spending limit for a specific category.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -155,6 +161,38 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
             />
             <FormField control={form.control} name="amount" render={({ field }) => (<FormItem><FormLabel>Budget Amount</FormLabel><FormControl><Input type="number" placeholder="e.g., 500" {...field} /></FormControl><FormMessage /></FormItem>)} />
             
+            <FormField
+              control={form.control}
+              name="period"
+              render={({ field }) => (
+                <FormItem className="space-y-3">
+                  <FormLabel>Period</FormLabel>
+                  <FormControl>
+                    <RadioGroup
+                      onValueChange={field.onChange}
+                      defaultValue={field.value}
+                      className="flex space-x-4"
+                      disabled={!!budget}
+                    >
+                      <FormItem className="flex items-center space-x-2">
+                        <FormControl>
+                          <RadioGroupItem value="monthly" />
+                        </FormControl>
+                        <FormLabel className="font-normal">Monthly</FormLabel>
+                      </FormItem>
+                      <FormItem className="flex items-center space-x-2">
+                        <FormControl>
+                          <RadioGroupItem value="yearly" />
+                        </FormControl>
+                        <FormLabel className="font-normal">Yearly</FormLabel>
+                      </FormItem>
+                    </RadioGroup>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
             <DialogFooter>
               <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
               <Button type="submit">Save Budget</Button>
@@ -177,7 +215,6 @@ function BudgetsPageContent() {
     } else {
         addBudget({
             ...values,
-            period: 'monthly',
             isFavorite: false,
         });
     }
@@ -203,10 +240,10 @@ function BudgetsPageContent() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold tracking-tight font-headline flex items-center gap-2">
-            <Target/> Monthly Budgets
+            <Target/> Budgets
           </h2>
           <p className="text-muted-foreground">
-            Track your spending against monthly goals.
+            Track your spending against your goals.
           </p>
         </div>
         <BudgetDialog onSave={handleSaveBudget}>
@@ -257,7 +294,7 @@ function BudgetsPageContent() {
                     <div>
                         <CardTitle>{budget.categoryName}</CardTitle>
                         <CardDescription>
-                            {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(budget.amount)} / month
+                            {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(budget.amount)} / {budget.period === 'yearly' ? 'year' : 'month'}
                         </CardDescription>
                     </div>
                     <div className="flex gap-1">

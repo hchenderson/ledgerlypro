@@ -35,7 +35,7 @@ export function BudgetProgress({ budgets }: BudgetProgressProps) {
                     <Progress value={budget.progress} className={budget.progress > 100 ? '[&>div]:bg-destructive' : ''} />
                      <div className="flex justify-between text-xs mt-1 text-muted-foreground">
                         <span>
-                            {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(budget.amount)} / month
+                            {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(budget.amount)} / {budget.period === 'yearly' ? 'year' : 'month'}
                         </span>
                         <span className={`font-medium ${budget.remaining < 0 ? 'text-destructive' : ''}`}>
                           {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(budget.remaining)} {budget.remaining >= 0 ? 'left' : 'over'}
