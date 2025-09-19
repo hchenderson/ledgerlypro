@@ -1,7 +1,7 @@
 
 "use client";
 
-import { DollarSign, TrendingUp, TrendingDown, Wallet, Target, CalendarClock, Star, Flag } from "lucide-react";
+import { DollarSign, TrendingUp, TrendingDown, Wallet, Target, CalendarClock, Star, Flag, Activity } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { OverviewChart } from "@/components/dashboard/overview-chart";
@@ -17,6 +17,7 @@ import type { GetDashboardAnalyticsOutput } from "@/ai/flows/get-dashboard-analy
 import { GoalProgress } from "@/components/dashboard/goal-progress";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { format } from "date-fns";
 
 
 function DashboardSkeleton() {
@@ -69,6 +70,12 @@ export default function DashboardPage() {
   const favoritedBudgets = useMemo(() => {
     return getBudgetDetails().filter(b => b.isFavorite);
   }, [getBudgetDetails]);
+
+  const lastUpdatedDate = useMemo(() => {
+    if (allTransactions.length === 0) return null;
+    // Assuming transactions are sorted descending by date
+    return new Date(allTransactions[0].date);
+  }, [allTransactions]);
   
   const isLoading = userDataLoading || authLoading || isAnalyticsLoading || !analytics;
 
@@ -91,13 +98,30 @@ export default function DashboardPage() {
       
       {analytics ? (
         <>
-           <div className="grid gap-4 md:grid-cols-1">
+           <div className="grid gap-4 md:grid-cols-2">
             <StatCard
               title="Current Balance"
               value={analytics.currentBalance}
               icon="Wallet"
               trendValue="Your real-time balance"
             />
+            {lastUpdatedDate ? (
+              <StatCard
+                title="Last Updated"
+                value={0}
+                icon="Activity"
+                trendValue={format(lastUpdatedDate, "PPP")}
+                isDate
+              />
+            ) : (
+               <StatCard
+                title="Last Updated"
+                value={0}
+                icon="Activity"
+                trendValue="No transactions yet"
+                isDate
+              />
+            )}
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">

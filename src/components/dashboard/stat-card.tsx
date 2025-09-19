@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { LucideIcon, Wallet, TrendingUp, TrendingDown, DollarSign, CalendarClock } from "lucide-react";
+import { LucideIcon, Wallet, TrendingUp, TrendingDown, DollarSign, CalendarClock, Activity } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const icons = {
@@ -12,6 +12,7 @@ const icons = {
   TrendingDown,
   DollarSign,
   CalendarClock,
+  Activity,
 };
 
 
@@ -21,6 +22,7 @@ interface StatCardProps {
   icon: keyof typeof icons;
   trendValue: string;
   isPercentage?: boolean;
+  isDate?: boolean;
   variant?: "success" | "danger" | "default";
 }
 
@@ -40,6 +42,7 @@ export function StatCard({
   icon,
   trendValue,
   isPercentage = false,
+  isDate = false,
   variant = "default",
 }: StatCardProps) {
   const [displayValue, setDisplayValue] = useState(0);
@@ -48,6 +51,8 @@ export function StatCard({
   const Icon = icons[icon] as LucideIcon;
 
   useEffect(() => {
+    if (isDate) return;
+    
     let startTimestamp: number | null = null;
     const duration = 1000; // 1 second animation
     const startValue = prevValueRef.current;
@@ -73,7 +78,7 @@ export function StatCard({
     return () => {
       // No cleanup needed as requestAnimationFrame stops itself
     };
-  }, [value]);
+  }, [value, isDate]);
 
   return (
     <Card>
@@ -82,10 +87,13 @@ export function StatCard({
         <Icon className="h-4 w-4 text-muted-foreground" />
       </CardHeader>
       <CardContent>
-        <div className="font-code text-2xl font-bold">
-          {formatValue(displayValue, isPercentage)}
-        </div>
+        {!isDate && (
+          <div className="font-code text-2xl font-bold">
+            {formatValue(displayValue, isPercentage)}
+          </div>
+        )}
         <p className={cn("text-xs text-muted-foreground",
+          isDate && "text-sm font-medium",
           variant === 'success' && 'text-emerald-600',
           variant === 'danger' && 'text-red-600'
         )}>
