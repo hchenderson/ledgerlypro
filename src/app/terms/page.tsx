@@ -20,7 +20,7 @@ export default function TermsOfServicePage() {
           <CardTitle className="font-headline text-3xl">Terms of Service</CardTitle>
           <p className="text-muted-foreground">Last updated: {new Date().toLocaleDateString()}</p>
         </CardHeader>
-        <CardContent className="prose prose-sm max-w-none dark:prose-invert">
+        <CardContent className="prose prose-sm max-w-none dark:prose-invert prose-headings:font-headline prose-headings:text-xl prose-headings:font-bold prose-p:text-muted-foreground">
           <p>
             Please read these Terms of Service ("Terms", "Terms of Service") carefully before using the Ledgerly Pro application (the "Service") operated by us.
           </p>

@@ -20,7 +20,7 @@ export default function PrivacyPolicyPage() {
           <CardTitle className="font-headline text-3xl">Privacy Policy</CardTitle>
           <p className="text-muted-foreground">Last updated: {new Date().toLocaleDateString()}</p>
         </CardHeader>
-        <CardContent className="prose prose-sm max-w-none dark:prose-invert">
+        <CardContent className="prose prose-sm max-w-none dark:prose-invert prose-headings:font-headline prose-headings:text-xl prose-headings:font-bold prose-p:text-muted-foreground">
           <p>
             Welcome to Ledgerly Pro. We are committed to protecting your privacy. This Privacy Policy explains how your personal information is collected, used, and disclosed by Ledgerly Pro.
           </p>
