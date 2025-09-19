@@ -5,13 +5,23 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { LedgerlyLogo } from "@/components/icons";
-import { signInWithGoogle, signUpWithEmail, signInWithEmail } from "@/lib/auth";
+import { signInWithGoogle, signUpWithEmail, signInWithEmail, sendPasswordResetEmail } from "@/lib/auth";
 import { useRouter } from "next/navigation";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { getAdditionalUserInfo } from "firebase/auth";
 import { useAuth } from "@/hooks/use-auth";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogClose,
+} from "@/components/ui/dialog"
 
 const GoogleIcon = () => (
     <svg className="size-4" viewBox="0 0 48 48">
@@ -21,6 +31,48 @@ const GoogleIcon = () => (
         <path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.571l6.19,5.238C42.02,35.579,44,30.038,44,24C44,22.659,43.862,21.35,43.611,20.083z" />
     </svg>
 );
+
+function ForgotPasswordDialog() {
+    const [email, setEmail] = useState('');
+    const [isOpen, setIsOpen] = useState(false);
+    const { toast } = useToast();
+
+    const handlePasswordReset = async () => {
+        if (!email) {
+            toast({ variant: 'destructive', title: 'Email required', description: 'Please enter your email address.' });
+            return;
+        }
+        try {
+            await sendPasswordResetEmail(email);
+            toast({ title: 'Password Reset Email Sent', description: 'Check your inbox for a link to reset your password.' });
+            setIsOpen(false);
+        } catch (error) {
+            toast({ variant: 'destructive', title: 'Error', description: 'Could not send password reset email. Please try again.' });
+        }
+    }
+
+    return (
+        <Dialog open={isOpen} onOpenChange={setIsOpen}>
+            <DialogTrigger asChild>
+                <Button variant="link" size="sm" className="w-full px-0 font-normal">Forgot Password?</Button>
+            </DialogTrigger>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Reset Your Password</DialogTitle>
+                    <DialogDescription>Enter your email address and we'll send you a link to reset your password.</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-2">
+                    <Label htmlFor="reset-email">Email</Label>
+                    <Input id="reset-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="m@example.com" />
+                </div>
+                <DialogFooter>
+                    <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                    <Button onClick={handlePasswordReset}>Send Reset Link</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    )
+}
 
 
 export default function SignInPage() {
@@ -121,8 +173,11 @@ export default function SignInPage() {
                             <Input id="email" type="email" placeholder="m@example.com" required value={email} onChange={e => setEmail(e.target.value)} />
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="password">Password</Label>
+                            <div className="flex items-center justify-between">
+                                <Label htmlFor="password">Password</Label>
+                            </div>
                             <Input id="password" type="password" required  value={password} onChange={e => setPassword(e.target.value)} />
+                            <ForgotPasswordDialog />
                         </div>
                         <div className="flex gap-2">
                             <Button type="submit" className="w-full" disabled={isSubmitting}>
