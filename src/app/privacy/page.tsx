@@ -58,7 +58,7 @@ export default function PrivacyPolicyPage() {
           
           <h2>6. Contact Us</h2>
           <p>
-            If you have any questions about this Privacy Policy, please contact us at support@ledgerlypro.com.
+            If you have any questions about this Privacy Policy, please contact us at support@ledgerly.business.
           </p>
         </CardContent>
       </Card>

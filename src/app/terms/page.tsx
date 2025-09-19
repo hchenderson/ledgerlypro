@@ -60,7 +60,7 @@ export default function TermsOfServicePage() {
 
           <h2>7. Contact Us</h2>
           <p>
-            If you have any questions about these Terms, please contact us at support@ledgerlypro.com.
+            If you have any questions about these Terms, please contact us at support@ledgerly.business.
           </p>
         </CardContent>
       </Card>
