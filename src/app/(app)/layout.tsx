@@ -90,7 +90,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
             <Link href="/dashboard" className="flex items-center gap-2" prefetch={false}>
               <LedgerlyLogo className="size-8 text-sidebar-primary" />
               <span className="font-headline text-lg font-semibold text-sidebar-primary">
-                Ledgerly
+                Ledgerly Pro
               </span>
             </Link>
           </SidebarHeader>

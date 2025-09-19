@@ -37,7 +37,7 @@ export default function SignInPage() {
             const result = await signInWithGoogle();
             const additionalInfo = getAdditionalUserInfo(result);
             // Instead of just checking isNewUser, we rely on our onboardingComplete state from the hook,
-            // which is fetched from Firestore and is the single source of truth.
+            // which is the single source of truth.
             if(additionalInfo?.isNewUser || !onboardingComplete) {
                 router.push("/welcome");
             } else {
@@ -111,7 +111,7 @@ export default function SignInPage() {
             <Card className="w-full max-w-sm">
                 <CardHeader className="text-center">
                     <LedgerlyLogo className="mx-auto h-10 w-10 mb-2" />
-                    <CardTitle>Welcome to Ledgerly</CardTitle>
+                    <CardTitle>Welcome to Ledgerly Pro</CardTitle>
                     <CardDescription>Sign in or create an account to continue.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">

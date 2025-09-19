@@ -10,7 +10,7 @@ export function InstructionsGuide() {
     <Card className="bg-primary/5 border-primary/20">
       <CardHeader>
         <CardTitle className="font-headline text-lg text-primary">
-          Welcome to Ledgerly! Here’s how to get started:
+          Welcome to Ledgerly Pro! Here’s how to get started:
         </CardTitle>
          <CardDescription>
           Follow these steps to set up your financial dashboard.

@@ -6,7 +6,7 @@ import { AuthProvider } from '@/hooks/use-auth';
 import { ThemeProvider } from 'next-themes';
 
 export const metadata: Metadata = {
-  title: 'Ledgerly',
+  title: 'Ledgerly Pro',
   description: 'Modern Bookkeeping, Simplified.',
 };
 
