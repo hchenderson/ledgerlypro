@@ -1544,7 +1544,6 @@ export default function ReportsPage() {
             <div className="flex items-center justify-between">
                 <div>
                     <h2 className="text-2xl font-bold tracking-tight">Reports</h2>
-                    <p className="text-muted-foreground">View and analyze your financial data.</p>
                 </div>
                 <TabsList>
                     <TabsTrigger value="basic">Basic</TabsTrigger>
@@ -1560,3 +1559,5 @@ export default function ReportsPage() {
         </Tabs>
     )
 }
+
+    
