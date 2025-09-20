@@ -91,7 +91,7 @@ import {
   ComposedChart,
   ReferenceLine
 } from 'recharts';
-import type { Category, SubCategory } from '@/types';
+import type { Category, SubCategory, Transaction } from '@/types';
 import { DateRange } from 'react-day-picker';
 import { subDays, format } from 'date-fns';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
@@ -136,13 +136,25 @@ const TIME_PERIODS = {
   yearly: 'Yearly'
 };
 
-function AdvancedWidgetSettingsDialog({ widget, onUpdate, onClose, children }: {
+function AdvancedWidgetSettingsDialog({ widget, onUpdate, onClose, allCategoryOptions }: {
     widget: any | null;
     onUpdate: (id: string, updates: any) => void;
     onClose: () => void;
-    children: React.ReactNode;
+    allCategoryOptions: { value: string; label: string }[];
 }) {
     if (!widget) return null;
+
+    const [customCategories, setCustomCategories] = useState(widget.customFilters?.categories || []);
+
+    const handleSave = () => {
+        onUpdate(widget.id, {
+            customFilters: {
+                ...widget.customFilters,
+                categories: customCategories,
+            }
+        });
+        onClose();
+    };
 
     return (
         <Dialog open={!!widget} onOpenChange={(open) => !open && onClose()}>
@@ -150,14 +162,26 @@ function AdvancedWidgetSettingsDialog({ widget, onUpdate, onClose, children }: {
                 <DialogHeader>
                     <DialogTitle>Advanced Settings: {widget.title}</DialogTitle>
                     <DialogDescription>
-                        Configure advanced options for this widget.
+                        Configure advanced options for this widget. Changes here will only affect this widget.
                     </DialogDescription>
                 </DialogHeader>
-                <div>
-                    <p>More settings will be available here soon.</p>
+                <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                        <Label>Filter by Category</Label>
+                        <p className="text-sm text-muted-foreground">
+                            Show data only for the selected categories on this widget. Leave empty to use global filters.
+                        </p>
+                        <MultiSelect
+                            options={allCategoryOptions}
+                            selected={customCategories}
+                            onChange={setCustomCategories}
+                            placeholder="Select categories..."
+                        />
+                    </div>
                 </div>
                 <DialogFooter>
-                    <Button variant="outline" onClick={onClose}>Close</Button>
+                    <Button variant="outline" onClick={onClose}>Cancel</Button>
+                    <Button onClick={handleSave}>Save Settings</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
@@ -261,7 +285,7 @@ export default function AdvancedCustomizableReports() {
   const [startingBalance, setStartingBalance] = useState(0);
   const { toast } = useToast();
 
-  const [widgets, setWidgets] = useState([
+  const [widgets, setWidgets] = useState<any[]>([
     {
       id: 'income-expense',
       title: 'Income vs Expense',
@@ -278,7 +302,7 @@ export default function AdvancedCustomizableReports() {
       height: 300,
       aggregation: 'sum',
       timePeriod: 'monthly',
-      customFilters: [],
+      customFilters: { categories: [] },
       annotations: [],
       formulaId: null,
     }
@@ -373,37 +397,28 @@ export default function AdvancedCustomizableReports() {
   };
 
 
-  const processedData = useMemo(() => {
-    const filtered = allTransactions.filter(t => {
-      const transactionDate = new Date(t.date);
-      const inDateRange = globalFilters.dateRange?.from && globalFilters.dateRange?.to ?
-        (transactionDate >= globalFilters.dateRange.from && transactionDate <= globalFilters.dateRange.to) : true;
-      const passesAmountFilter = t.amount >= globalFilters.amountRange[0] && 
-                                t.amount <= globalFilters.amountRange[1];
-      const passesCategoryFilter = globalFilters.categories.length === 0 || 
-                                  globalFilters.categories.includes(t.category);
-      return inDateRange && passesAmountFilter && passesCategoryFilter;
+  const getWidgetData = useCallback((widget: any) => {
+    const transactions = allTransactions.filter(t => {
+        const transactionDate = new Date(t.date);
+        const inDateRange = globalFilters.dateRange?.from && globalFilters.dateRange?.to ?
+            (transactionDate >= globalFilters.dateRange.from && transactionDate <= globalFilters.dateRange.to) : true;
+        const passesAmountFilter = t.amount >= globalFilters.amountRange[0] && t.amount <= globalFilters.amountRange[1];
+        
+        const globalCategoryCheck = globalFilters.categories.length === 0 || globalFilters.categories.includes(t.category);
+        const widgetCategoryCheck = widget.customFilters?.categories?.length > 0 ? widget.customFilters.categories.includes(t.category) : true;
+        
+        return inDateRange && passesAmountFilter && globalCategoryCheck && widgetCategoryCheck;
     });
 
-    const monthlyData: { [key: string]: any } = filtered.reduce((acc: { [key: string]: any }, transaction) => {
+    const monthlyData: { [key: string]: any } = transactions.reduce((acc: { [key: string]: any }, transaction) => {
       const month = new Date(transaction.date).toLocaleDateString('en', { month: 'short', year: '2-digit' });
       if (!acc[month]) {
-        acc[month] = { 
-          month, 
-          income: 0, 
-          expense: 0, 
-          transactions: 0,
-          avgTransaction: 0,
-          maxTransaction: 0,
-          categories: new Set()
-        };
+        acc[month] = { month, income: 0, expense: 0, transactions: 0, avgTransaction: 0, maxTransaction: 0, categories: new Set() };
       }
-      
       acc[month][transaction.type] += transaction.amount;
       acc[month].transactions += 1;
       acc[month].maxTransaction = Math.max(acc[month].maxTransaction, transaction.amount);
       acc[month].categories.add(transaction.category);
-      
       return acc;
     }, {});
 
@@ -415,58 +430,52 @@ export default function AdvancedCustomizableReports() {
       month.categories = Array.from(month.categories);
     });
 
-    const categoryTrends: { [key: string]: { [key: string]: number } } = {};
-    filtered.filter(t => t.type === 'expense').forEach(t => {
-      const month = new Date(t.date).toLocaleDateString('en', { month: 'short' });
-      if (!categoryTrends[t.category]) {
-        categoryTrends[t.category] = {};
-      }
-      categoryTrends[t.category][month] = (categoryTrends[t.category][month] || 0) + t.amount;
-    });
-    
-    const totalIncome = filtered.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-    const totalExpense = filtered.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+    const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+    const totalExpense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
 
-    return {
-      monthly: Object.values(monthlyData).sort((a, b) => new Date(`1 ${a.month}`).getTime() - new Date(`1 ${b.month}`).getTime()),
-      categories: Object.entries(categoryTrends).map(([category, months]) => ({
-        category,
-        total: Object.values(months).reduce((sum, val) => sum + val, 0),
-        trend: Object.entries(months),
-        avgMonthly: Object.values(months).reduce((sum, val) => sum + val, 0) / Object.keys(months).length
-      })),
-      kpis: {
-        totalIncome,
-        totalExpense,
-        transactionCount: filtered.length,
-        avgTransactionAmount: filtered.reduce((sum, t) => sum + t.amount, 0) / (filtered.length || 1),
-        netIncome: totalIncome - totalExpense,
-        savingsRate: totalIncome > 0 ? ((totalIncome - totalExpense) / totalIncome) * 100 : 0
-      }
+    const kpis = {
+      totalIncome,
+      totalExpense,
+      transactionCount: transactions.length,
+      avgTransactionAmount: transactions.reduce((sum, t) => sum + t.amount, 0) / (transactions.length || 1),
+      netIncome: totalIncome - totalExpense,
+      savingsRate: totalIncome > 0 ? ((totalIncome - totalExpense) / totalIncome) * 100 : 0
     };
-  }, [globalFilters, allTransactions]);
 
-  const renderAdvancedChart = (widget: any) => {
-    const theme = COLOR_THEMES[widget.colorTheme] || COLOR_THEMES.default;
-    const data = processedData[widget.dataKey === 'category' ? 'categories' : 'monthly' as keyof typeof processedData];
+    const monthly = Object.values(monthlyData).sort((a, b) => new Date(`1 ${a.month}`).getTime() - new Date(`1 ${b.month}`).getTime());
     
     if (widget.type === 'metric') {
       const formula = formulas.find(f => f.id === widget.formulaId);
-      if (!formula) {
+      if (!formula) return { kpis, data: null };
+      const value = evaluateFormula(formula.expression, kpis);
+      return { kpis, data: [{ name: formula.name, value }] };
+    }
+    
+    return { kpis, data: monthly };
+
+  }, [allTransactions, globalFilters, formulas]);
+
+  const renderAdvancedChart = (widget: any) => {
+    const { data, kpis } = getWidgetData(widget);
+    const theme = COLOR_THEMES[widget.colorTheme] || COLOR_THEMES.default;
+
+    if (widget.type === 'metric') {
+      const formula = formulas.find(f => f.id === widget.formulaId);
+      if (!formula || !data) {
         return (
           <div className="flex h-full items-center justify-center text-muted-foreground p-4 text-center">
-            Please select a formula for this metric card in the customize panel.
+             {formulas.length > 0 ? 'Please select a formula for this metric card.' : 'Please create a formula first.'}
           </div>
         );
       }
-      const value = evaluateFormula(formula.expression, processedData.kpis);
+      const metric = data[0];
       
       return (
         <div className="p-6">
           <p className="text-4xl font-bold font-code">
-            {value !== null ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value) : 'Error'}
+            {metric.value !== null ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(metric.value) : 'Error'}
           </p>
-          <p className="text-sm text-muted-foreground">{formula.name}</p>
+          <p className="text-sm text-muted-foreground">{metric.name}</p>
         </div>
       );
     }
@@ -603,14 +612,16 @@ export default function AdvancedCustomizableReports() {
   };
   
   const dataFieldOptions = useMemo(() => {
-    if (processedData.monthly.length > 0) {
-      return Object.keys(processedData.monthly[0]).map(key => ({
+    const { data } = getWidgetData(widgets[0] || {}); // Use a sample widget to get keys
+    if (data && data.length > 0) {
+      return Object.keys(data[0]).map(key => ({
         value: key,
         label: key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())
       }));
     }
     return [];
-  }, [processedData.monthly]);
+  }, [widgets, getWidgetData]);
+
 
   const addWidget = useCallback(() => {
     const newWidget = {
@@ -629,7 +640,7 @@ export default function AdvancedCustomizableReports() {
       height: 300,
       aggregation: 'sum',
       timePeriod: 'monthly',
-      customFilters: [],
+      customFilters: { categories: [] },
       annotations: [],
       formulaId: null,
     };
@@ -1150,6 +1161,7 @@ export default function AdvancedCustomizableReports() {
         widget={selectedWidget}
         onUpdate={updateWidget}
         onClose={() => setSelectedWidget(null)}
+        allCategoryOptions={allCategoryOptions}
       >
         {/* Advanced content goes here */}
       </AdvancedWidgetSettingsDialog>
