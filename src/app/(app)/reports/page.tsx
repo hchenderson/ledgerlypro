@@ -133,6 +133,74 @@ const TIME_PERIODS = {
   yearly: 'Yearly'
 };
 
+function KpiTargetsDialog({ targets, onSave, children }: {
+  targets: { monthlyIncome: number; monthlyExpense: number; savingsRate: number; };
+  onSave: (newTargets: any) => void;
+  children: React.ReactNode;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [localTargets, setLocalTargets] = useState(targets);
+
+  useEffect(() => {
+    setLocalTargets(targets);
+  }, [targets, isOpen]);
+
+  const handleSave = () => {
+    onSave(localTargets);
+    setIsOpen(false);
+  };
+
+  const handleChange = (key: keyof typeof targets, value: string) => {
+    const numValue = parseInt(value, 10);
+    setLocalTargets(prev => ({ ...prev, [key]: isNaN(numValue) ? 0 : numValue }));
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <DialogTrigger asChild>{children}</DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Set KPI Targets</DialogTitle>
+          <DialogDescription>Define your key performance indicators to track your financial goals.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Monthly Income Target</Label>
+            <Input
+              type="number"
+              value={localTargets.monthlyIncome}
+              onChange={e => handleChange('monthlyIncome', e.target.value)}
+              placeholder="e.g., 5000"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Monthly Expense Limit</Label>
+            <Input
+              type="number"
+              value={localTargets.monthlyExpense}
+              onChange={e => handleChange('monthlyExpense', e.target.value)}
+              placeholder="e.g., 3000"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Target Savings Rate (%)</Label>
+            <Input
+              type="number"
+              value={localTargets.savingsRate}
+              onChange={e => handleChange('savingsRate', e.target.value)}
+              placeholder="e.g., 40"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+          <Button onClick={handleSave}>Save Targets</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function AdvancedCustomizableReports() {
   const { allTransactions, categories: userCategories } = useUserData();
   const { user } = useAuth();
@@ -193,7 +261,11 @@ export default function AdvancedCustomizableReports() {
       const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'main');
       getDoc(settingsDocRef).then(docSnap => {
         if (docSnap.exists()) {
-          setStartingBalance(docSnap.data().startingBalance || 0);
+          const data = docSnap.data();
+          setStartingBalance(data.startingBalance || 0);
+          if (data.kpiTargets) {
+            setKpiTargets(data.kpiTargets);
+          }
         }
       });
     }
@@ -223,6 +295,15 @@ export default function AdvancedCustomizableReports() {
   const handleDeleteReport = (reportId: string) => {
     setSavedReports(prev => prev.filter(r => r.id !== reportId));
     toast({ title: "Report Deleted" });
+  };
+
+  const handleSaveKpiTargets = async (newTargets: any) => {
+    setKpiTargets(newTargets);
+    if(user) {
+        const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'main');
+        await setDoc(settingsDocRef, { kpiTargets: newTargets }, { merge: true });
+    }
+    toast({ title: "KPI Targets Saved" });
   };
 
 
@@ -314,28 +395,43 @@ export default function AdvancedCustomizableReports() {
       if (!active || !payload || !payload.length) return null;
 
       const data = payload[0].payload;
-      const targetKey = `monthly${payload[0].dataKey?.charAt(0).toUpperCase() + payload[0].dataKey?.slice(1)}`;
-      const target = kpiTargets[targetKey as keyof typeof kpiTargets];
+      
+      const getTarget = (dataKey: string) => {
+        if (dataKey === 'income') return kpiTargets.monthlyIncome;
+        if (dataKey === 'expense') return kpiTargets.monthlyExpense;
+        if (dataKey === 'savingsRate') return kpiTargets.savingsRate;
+        return null;
+      }
+      
+      const isExpense = (dataKey: string) => dataKey === 'expense';
 
       return (
         <div className="bg-background p-3 border rounded-lg shadow-lg">
           <p className="font-medium">{label}</p>
-          {payload.map((entry: any, index: number) => (
-            <div key={index} className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }} />
-              <span className="text-sm">
-                {entry.name}: {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(entry.value)}
-              </span>
-              {target && (
-                <Badge variant={entry.value >= target ? 'default' : 'secondary'}>
-                  {((entry.value / target) * 100).toFixed(0)}% of target
-                </Badge>
-              )}
-            </div>
-          ))}
-          {data.savingsRate !== undefined && (
-            <p className="text-xs text-muted-foreground mt-1">
-              Savings Rate: {data.savingsRate.toFixed(1)}%
+          {payload.map((entry: any, index: number) => {
+             const target = getTarget(entry.dataKey);
+             const isOverTarget = target && isExpense(entry.dataKey) && entry.value > target;
+             const isUnderTarget = target && !isExpense(entry.dataKey) && entry.value < target;
+
+             return (
+              <div key={index} className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }} />
+                  <span className="text-sm capitalize">
+                    {entry.name}: {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(entry.value)}
+                  </span>
+                </div>
+                {target && (
+                  <Badge variant={isOverTarget || isUnderTarget ? 'destructive' : 'default'} className="text-xs">
+                    {((entry.value / target) * 100).toFixed(0)}% of target
+                  </Badge>
+                )}
+              </div>
+            )
+          })}
+          {data.netIncome !== undefined && (
+             <p className={cn("text-xs text-muted-foreground mt-2 pt-2 border-t", data.netIncome > 0 ? 'text-emerald-500' : 'text-red-500')}>
+              Net: {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(data.netIncome)}
             </p>
           )}
         </div>
@@ -472,10 +568,12 @@ export default function AdvancedCustomizableReports() {
           <p className="text-muted-foreground">Create powerful, interactive financial dashboards</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm">
-            <Target className="h-4 w-4 mr-2" />
-            KPI Targets
-          </Button>
+           <KpiTargetsDialog targets={kpiTargets} onSave={handleSaveKpiTargets}>
+            <Button variant="outline" size="sm">
+              <Target className="h-4 w-4 mr-2" />
+              KPI Targets
+            </Button>
+          </KpiTargetsDialog>
           <Dialog open={isFormulaBuilderOpen} onOpenChange={setIsFormulaBuilderOpen}>
             <DialogTrigger asChild>
               <Button variant="outline" size="sm">
@@ -515,11 +613,50 @@ export default function AdvancedCustomizableReports() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Filter className="h-5 w-5" />
-            Global Filters & KPIs
+            Global Filters
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+                <Label>Date Range</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      id="date"
+                      variant={"outline"}
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !globalFilters.dateRange && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {globalFilters.dateRange?.from ? (
+                        globalFilters.dateRange.to ? (
+                          <>
+                            {format(globalFilters.dateRange.from, "LLL dd, y")} -{" "}
+                            {format(globalFilters.dateRange.to, "LLL dd, y")}
+                          </>
+                        ) : (
+                          format(globalFilters.dateRange.from, "LLL dd, y")
+                        )
+                      ) : (
+                        <span>Pick a date</span>
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      initialFocus
+                      mode="range"
+                      defaultMonth={globalFilters.dateRange?.from}
+                      selected={globalFilters.dateRange}
+                      onSelect={(range) => setGlobalFilters(prev => ({...prev, dateRange: range}))}
+                      numberOfMonths={2}
+                    />
+                  </PopoverContent>
+                </Popover>
+            </div>
             <div className="space-y-2">
               <Label>Amount Range</Label>
               <Slider
@@ -534,32 +671,6 @@ export default function AdvancedCustomizableReports() {
                 <span>${globalFilters.amountRange[0]}</span>
                 <span>${globalFilters.amountRange[1]}</span>
               </div>
-            </div>
-            
-            <div className="space-y-2">
-              <Label>Monthly Income Target</Label>
-              <Input
-                type="number"
-                value={kpiTargets.monthlyIncome}
-                onChange={(e) => setKpiTargets(prev => ({ 
-                  ...prev, 
-                  monthlyIncome: parseInt(e.target.value) || 0 
-                }))}
-                placeholder="5000"
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <Label>Savings Rate Target (%)</Label>
-              <Input
-                type="number"
-                value={kpiTargets.savingsRate}
-                onChange={(e) => setKpiTargets(prev => ({ 
-                  ...prev, 
-                  savingsRate: parseInt(e.target.value) || 0 
-                }))}
-                placeholder="40"
-              />
             </div>
           </div>
         </CardContent>
@@ -964,3 +1075,4 @@ function FormulaBuilderTabContent({ formulas, onAddFormula, onDeleteFormula }: {
     </div>
   );
 }
+
