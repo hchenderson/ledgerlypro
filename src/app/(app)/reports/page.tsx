@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { useUserData } from '@/hooks/use-user-data';
 import { useAuth } from '@/hooks/use-auth';
 import { doc, getDoc } from 'firebase/firestore';
@@ -1075,4 +1075,5 @@ function FormulaBuilderTabContent({ formulas, onAddFormula, onDeleteFormula }: {
     </div>
   );
 }
+
 
