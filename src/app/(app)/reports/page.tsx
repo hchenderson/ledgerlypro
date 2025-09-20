@@ -955,6 +955,12 @@ export default function AdvancedCustomizableReports() {
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-3xl">
+              <DialogHeader>
+                <DialogTitle>Formula Builder</DialogTitle>
+                <DialogDescription>
+                  Create custom calculations for your metric cards.
+                </DialogDescription>
+              </DialogHeader>
               <FormulaBuilderTabContent
                 formulas={formulas}
                 onAddFormula={handleAddFormula}
