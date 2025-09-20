@@ -19,19 +19,18 @@ interface CategoryPieChartProps {
 
 const RADIAN = Math.PI / 180;
 const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, index, payload, category }: any) => {
-  const radius = outerRadius * 1.15;
+  const radius = outerRadius * 1.25; // Increase radius to move labels further out
   const x = cx + radius * Math.cos(-midAngle * RADIAN);
   const y = cy + radius * Math.sin(-midAngle * RADIAN);
   const sin = Math.sin(-midAngle * RADIAN);
   const cos = Math.cos(-midAngle * RADIAN);
   const sx = cx + (outerRadius + 5) * cos;
   const sy = cy + (outerRadius + 5) * sin;
-  const mx = cx + (outerRadius + 15) * cos;
-  const my = cy + (outerRadius + 15) * sin;
-  const ex = mx + (cos >= 0 ? 1 : -1) * 12;
+  const mx = cx + (outerRadius + 20) * cos; // Increase distance for midpoint
+  const my = cy + (outerRadius + 20) * sin;
+  const ex = mx + (cos >= 0 ? 1 : -1) * 12; // Shorten the end line
   const ey = my;
   const textAnchor = cos >= 0 ? 'start' : 'end';
-
 
   if (percent < 0.03) return null;
 
@@ -39,7 +38,7 @@ const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, per
     <g>
       <path d={`M${sx},${sy}L${mx},${my}L${ex},${ey}`} stroke={payload.fill} fill="none" />
       <circle cx={ex} cy={ey} r={2} fill={payload.fill} stroke="none" />
-      <text x={ex + (cos >= 0 ? 1 : -1) * 12} y={ey} textAnchor={textAnchor} fill="hsl(var(--foreground))" dominantBaseline="central" className="text-xs">
+      <text x={ex + (cos >= 0 ? 1 : -1) * 8} y={ey} textAnchor={textAnchor} fill="hsl(var(--foreground))" dominantBaseline="central" className="text-xs">
         {`${category} (${(percent * 100).toFixed(0)}%)`}
       </text>
     </g>
@@ -70,7 +69,7 @@ export function CategoryPieChart({ data }: CategoryPieChartProps) {
       className="mx-auto aspect-square h-[300px]"
     >
       <ResponsiveContainer width="100%" height="100%">
-        <PieChart margin={{ top: 30, right: 30, bottom: 30, left: 30 }}>
+        <PieChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
           <Tooltip
             cursor={{ fill: "hsl(var(--muted))" }}
             content={<ChartTooltipContent hideLabel />}
@@ -81,7 +80,7 @@ export function CategoryPieChart({ data }: CategoryPieChartProps) {
             nameKey="category"
             cx="50%"
             cy="50%"
-            outerRadius={80}
+            outerRadius={70} // Reduce outer radius
             strokeWidth={2}
             labelLine={false}
             label={renderCustomizedLabel}
@@ -95,3 +94,4 @@ export function CategoryPieChart({ data }: CategoryPieChartProps) {
     </ChartContainer>
   )
 }
+
