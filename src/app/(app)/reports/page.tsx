@@ -489,9 +489,9 @@ export default function AdvancedCustomizableReports() {
       title: 'Income vs Expense',
       type: 'bar',
       size: 'large',
-      dataKey: 'monthly',
       mainDataKey: 'income',
       comparisonKey: 'expense',
+      dataCategories: [],
       enabled: true,
       position: 0,
       colorTheme: 'default',
@@ -499,10 +499,7 @@ export default function AdvancedCustomizableReports() {
       showGrid: true,
       showTargetLines: false,
       height: 300,
-      aggregation: 'sum',
-      timePeriod: 'monthly',
       customFilters: { categories: [] },
-      annotations: [],
       formulaId: null,
     }
   ]);
@@ -537,7 +534,7 @@ export default function AdvancedCustomizableReports() {
   // Load settings from Firebase
   useEffect(() => {
     if (user) {
-      const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'main');
+      const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'reports');
       getDoc(settingsDocRef).then(docSnap => {
         if (docSnap.exists()) {
           const data = docSnap.data();
@@ -564,7 +561,7 @@ export default function AdvancedCustomizableReports() {
   const saveSettingsToFirestore = async (updates: any) => {
     if (user) {
       try {
-        const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'main');
+        const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'reports');
         await setDoc(settingsDocRef, updates, { merge: true });
       } catch (error) {
         console.error("Error saving settings:", error);
@@ -682,34 +679,30 @@ export default function AdvancedCustomizableReports() {
       
       return inDateRange && passesAmountFilter && globalCategoryCheck && widgetCategoryCheck;
     });
+    
+    const dataKeys = [
+        ...new Set([widget.mainDataKey, widget.comparisonKey, ...(widget.dataCategories || [])])
+    ].filter(Boolean) as string[];
 
-    const monthlyData: { [key: string]: any } = transactions.reduce((acc: { [key: string]: any }, transaction) => {
+    const monthlyData: { [key: string]: any } = transactions.reduce((acc: { [key:string]: any }, transaction) => {
       const month = new Date(transaction.date).toLocaleDateString('en', { month: 'short', year: '2-digit' });
       if (!acc[month]) {
-        acc[month] = { 
-          month, 
-          income: 0, 
-          expense: 0, 
-          transactions: 0, 
-          avgTransaction: 0, 
-          maxTransaction: 0, 
-          categories: new Set() 
-        };
+        acc[month] = { month };
+        dataKeys.forEach(key => (acc[month][key] = 0));
+        acc[month].categories = new Set();
       }
-      acc[month][transaction.type] += transaction.amount;
-      acc[month].transactions += 1;
-      acc[month].maxTransaction = Math.max(acc[month].maxTransaction, transaction.amount);
+
+      if (dataKeys.includes(transaction.type)) {
+        acc[month][transaction.type] = (acc[month][transaction.type] || 0) + transaction.amount;
+      }
+      if (dataKeys.includes(transaction.category)) {
+        acc[month][transaction.category] = (acc[month][transaction.category] || 0) + transaction.amount;
+      }
+      
       acc[month].categories.add(transaction.category);
       return acc;
     }, {});
 
-    Object.values(monthlyData).forEach((month: any) => {
-      month.avgTransaction = (month.income + month.expense) / month.transactions || 0;
-      month.netIncome = month.income - month.expense;
-      month.savingsRate = month.income > 0 ? ((month.income - month.expense) / month.income) * 100 : 0;
-      month.categoryCount = month.categories.size;
-      month.categories = Array.from(month.categories);
-    });
 
     const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
     const totalExpense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
@@ -744,11 +737,11 @@ export default function AdvancedCustomizableReports() {
       return { kpis, data: [{ name: formula.name, value, formula: formula.expression }] };
     }
     
-    return { kpis, data: monthly };
+    return { kpis, data: monthly, dataKeys };
   }, [allTransactions, globalFilters, formulas]);
 
   const renderAdvancedChart = (widget: any) => {
-    const { data, kpis } = getWidgetData(widget);
+    const { data, kpis, dataKeys } = getWidgetData(widget);
     const theme = COLOR_THEMES[widget.colorTheme] || COLOR_THEMES.default;
 
     if (widget.type === 'metric') {
@@ -815,8 +808,6 @@ export default function AdvancedCustomizableReports() {
 
     const CustomTooltip = ({ active, payload, label }: any) => {
       if (!active || !payload || !payload.length) return null;
-
-      const data = payload[0].payload;
       
       return (
         <div className="bg-background p-3 border rounded-lg shadow-lg">
@@ -835,17 +826,6 @@ export default function AdvancedCustomizableReports() {
               </span>
             </div>
           ))}
-          {data.netIncome !== undefined && (
-             <p className={cn(
-               "text-xs text-muted-foreground mt-2 pt-2 border-t", 
-               data.netIncome > 0 ? 'text-emerald-500' : 'text-red-500'
-              )}>
-              Net: {new Intl.NumberFormat('en-US', { 
-                style: 'currency', 
-                currency: 'USD' 
-              }).format(data.netIncome)}
-            </p>
-          )}
         </div>
       );
     };
@@ -861,10 +841,9 @@ export default function AdvancedCustomizableReports() {
               <YAxis yAxisId="right" orientation="right" />
               <Tooltip content={<CustomTooltip />} />
               {widget.showLegend && <Legend />}
-              <Bar yAxisId="left" dataKey={widget.mainDataKey} fill={theme[0]} name={widget.mainDataKey.charAt(0).toUpperCase() + widget.mainDataKey.slice(1)} />
-              {widget.comparisonKey && (
-                <Line yAxisId="right" type="monotone" dataKey={widget.comparisonKey} stroke={theme[2]} name={widget.comparisonKey.charAt(0).toUpperCase() + widget.comparisonKey.slice(1)} />
-              )}
+              {dataKeys?.map((key, index) => (
+                <Bar key={key} yAxisId="left" dataKey={key} fill={theme[index % theme.length]} name={key} />
+              ))}
             </ComposedChart>
           </ResponsiveContainer>
         );
@@ -877,7 +856,7 @@ export default function AdvancedCustomizableReports() {
               <XAxis dataKey="income" name="Income" />
               <YAxis dataKey="expense" name="Expense" />
               <Tooltip cursor={{ strokeDasharray: '3 3' }} content={<CustomTooltip />} />
-              <Scatter name="Income vs Expense" data={data as any[]} fill={theme[0]} />
+              <Scatter name="Data" data={data as any[]} fill={theme[0]} />
             </ScatterChart>
           </ResponsiveContainer>
         );
@@ -897,10 +876,9 @@ export default function AdvancedCustomizableReports() {
                   <ReferenceLine y={kpiTargets.monthlyExpense} label={{ value: "Expense Target", position: 'insideTopLeft' }} stroke="red" strokeDasharray="3 3" />
                 </>
               )}
-              <Bar dataKey={widget.mainDataKey} fill={theme[0]} name={widget.mainDataKey.charAt(0).toUpperCase() + widget.mainDataKey.slice(1)} />
-              {widget.comparisonKey && (
-                <Bar dataKey={widget.comparisonKey} fill={theme[1]} name={widget.comparisonKey.charAt(0).toUpperCase() + widget.comparisonKey.slice(1)} />
-              )}
+               {dataKeys?.map((key, index) => (
+                <Bar key={key} dataKey={key} fill={theme[index % theme.length]} name={key} />
+              ))}
             </BarChart>
           </ResponsiveContainer>
         );
@@ -920,10 +898,9 @@ export default function AdvancedCustomizableReports() {
                   <ReferenceLine y={kpiTargets.monthlyExpense} label={{ value: "Expense Target", position: 'insideTopLeft' }} stroke="red" strokeDasharray="3 3" />
                 </>
               )}
-              <Line type="monotone" dataKey={widget.mainDataKey} stroke={theme[0]} name={widget.mainDataKey.charAt(0).toUpperCase() + widget.mainDataKey.slice(1)} />
-               {widget.comparisonKey && (
-                <Line type="monotone" dataKey={widget.comparisonKey} stroke={theme[1]} name={widget.comparisonKey.charAt(0).toUpperCase() + widget.comparisonKey.slice(1)} />
-              )}
+              {dataKeys?.map((key, index) => (
+                <Line key={key} type="monotone" dataKey={key} stroke={theme[index % theme.length]} name={key} />
+              ))}
             </LineChart>
           </ResponsiveContainer>
         );
@@ -937,30 +914,24 @@ export default function AdvancedCustomizableReports() {
               <YAxis />
               <Tooltip content={<CustomTooltip />} />
               {widget.showLegend && <Legend />}
-              <Area type="monotone" dataKey={widget.mainDataKey} stackId="1" stroke={theme[0]} fill={theme[0]} name={widget.mainDataKey.charAt(0).toUpperCase() + widget.mainDataKey.slice(1)} />
-              {widget.comparisonKey && (
-                <Area type="monotone" dataKey={widget.comparisonKey} stackId="1" stroke={theme[1]} fill={theme[1]} name={widget.comparisonKey.charAt(0).toUpperCase() + widget.comparisonKey.slice(1)} />
-              )}
+              {dataKeys?.map((key, index) => (
+                 <Area key={key} type="monotone" dataKey={key} stackId="1" stroke={theme[index % theme.length]} fill={theme[index % theme.length]} name={key} />
+              ))}
             </AreaChart>
           </ResponsiveContainer>
         );
         
       case 'pie':
-        const pieData = Object.values(data.reduce((acc, month: any) => {
-          month.categories.forEach((cat: string) => {
-            if (!acc[cat]) {
-              acc[cat] = { category: cat, amount: 0 };
-            }
-            acc[cat].amount += month.expense; // This is a simplification
-          });
-          return acc;
-        }, {} as any));
+        const pieData = dataKeys.map(key => ({
+            name: key,
+            value: data.reduce((acc, month) => acc + (month[key] || 0), 0)
+        })).filter(d => d.value > 0);
 
         return (
           <ResponsiveContainer width="100%" height={widget.height}>
             <RechartsPieChart>
               <Tooltip content={<CustomTooltip />} />
-              <Pie data={pieData as any[]} dataKey="amount" nameKey="category" cx="50%" cy="50%" outerRadius={80} fill={theme[0]}>
+              <Pie data={pieData as any[]} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} fill={theme[0]}>
                 {(pieData as any[]).map((entry, index) => (
                   <Cell key={`cell-${index}`} fill={theme[index % theme.length]} />
                 ))}
@@ -974,18 +945,6 @@ export default function AdvancedCustomizableReports() {
         return <div>Chart type not implemented</div>;
     }
   };
-  
-  const dataFieldOptions = useMemo(() => {
-    const { data } = getWidgetData(widgets[0] || {}); // Use a sample widget to get keys
-    if (data && data.length > 0) {
-      return Object.keys(data[0]).map(key => ({
-        value: key,
-        label: key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())
-      }));
-    }
-    return [];
-  }, [widgets, getWidgetData]);
-
 
   const addWidget = useCallback(() => {
     const newWidget = {
@@ -993,9 +952,9 @@ export default function AdvancedCustomizableReports() {
       title: 'New Widget',
       type: 'bar',
       size: 'medium',
-      dataKey: 'monthly',
       mainDataKey: 'income',
-      comparisonKey: 'expense',
+      comparisonKey: undefined,
+      dataCategories: [],
       enabled: true,
       position: widgets.length,
       colorTheme: 'default',
@@ -1003,10 +962,7 @@ export default function AdvancedCustomizableReports() {
       showGrid: true,
       showTargetLines: false,
       height: 300,
-      aggregation: 'sum',
-      timePeriod: 'monthly',
       customFilters: { categories: [] },
-      annotations: [],
       formulaId: null,
     };
     const updatedWidgets = [...widgets, newWidget];
@@ -1284,30 +1240,15 @@ export default function AdvancedCustomizableReports() {
                           </div>
                         ) : (
                           <>
-                            <div>
-                                <Label>Main Data</Label>
-                                <Select value={widget.mainDataKey} onValueChange={(value) => updateWidget(widget.id, { mainDataKey: value })}>
-                                    <SelectTrigger><SelectValue /></SelectTrigger>
-                                    <SelectContent>
-                                    {dataFieldOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
-                                    </SelectContent>
-                                </Select>
+                            <div className="col-span-2 lg:col-span-3">
+                              <Label>Categories to Display</Label>
+                              <MultiSelect
+                                options={allCategoryOptions}
+                                selected={widget.dataCategories || []}
+                                onChange={(value) => updateWidget(widget.id, { dataCategories: value })}
+                                placeholder="Select categories..."
+                              />
                             </div>
-                            {CHART_TYPES[widget.type as keyof typeof CHART_TYPES].allowsComparison && (
-                                <div>
-                                    <Label>Comparison Data</Label>
-                                    <Select 
-                                        value={widget.comparisonKey || 'none'} 
-                                        onValueChange={(value) => updateWidget(widget.id, { comparisonKey: value === 'none' ? undefined : value })}
-                                    >
-                                        <SelectTrigger><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="none">None</SelectItem>
-                                            {dataFieldOptions.map(opt => <SelectItem key={opt.value} value={opt.value} disabled={opt.value === widget.mainDataKey}>{opt.label}</SelectItem>)}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            )}
                             <div>
                               <Label>Height (px)</Label>
                               <Input
@@ -1485,3 +1426,5 @@ export default function AdvancedCustomizableReports() {
     </div>
   );
 }
+
+    
