@@ -293,6 +293,9 @@ export default function AdvancedCustomizableReports() {
           if (data.kpiTargets) {
             setKpiTargets(data.kpiTargets);
           }
+          if (data.formulas) {
+            setFormulas(data.formulas);
+          }
         }
       });
     }
@@ -331,6 +334,13 @@ export default function AdvancedCustomizableReports() {
         await setDoc(settingsDocRef, { kpiTargets: newTargets }, { merge: true });
     }
     toast({ title: "KPI Targets Saved" });
+  };
+
+  const saveFormulasToFirestore = async (updatedFormulas: { id: string; name: string; expression: string }[]) => {
+    if (user) {
+      const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'main');
+      await setDoc(settingsDocRef, { formulas: updatedFormulas }, { merge: true });
+    }
   };
 
 
@@ -627,9 +637,12 @@ export default function AdvancedCustomizableReports() {
     return options;
   }, [userCategories]);
 
-  const handleAddFormula = (name: string, expression: string) => {
+  const handleAddFormula = async (name: string, expression: string) => {
     if (name && expression) {
-      setFormulas(prev => [...prev, { id: `formula-${Date.now()}`, name, expression }]);
+      const newFormula = { id: `formula-${Date.now()}`, name, expression };
+      const updatedFormulas = [...formulas, newFormula];
+      setFormulas(updatedFormulas);
+      await saveFormulasToFirestore(updatedFormulas);
       toast({ title: 'Formula Added', description: `"${name}" has been created.` });
       return true;
     }
@@ -637,8 +650,10 @@ export default function AdvancedCustomizableReports() {
     return false;
   };
 
-  const handleDeleteFormula = (id: string) => {
-    setFormulas(prev => prev.filter(f => f.id !== id));
+  const handleDeleteFormula = async (id: string) => {
+    const updatedFormulas = formulas.filter(f => f.id !== id);
+    setFormulas(updatedFormulas);
+    await saveFormulasToFirestore(updatedFormulas);
     toast({ title: 'Formula Deleted' });
   };
 
@@ -1105,14 +1120,14 @@ export default function AdvancedCustomizableReports() {
 
 function FormulaBuilderTabContent({ formulas, onAddFormula, onDeleteFormula }: {
   formulas: { id: string; name: string; expression: string }[];
-  onAddFormula: (name: string, expression: string) => boolean;
+  onAddFormula: (name: string, expression: string) => Promise<boolean>;
   onDeleteFormula: (id: string) => void;
 }) {
   const [name, setName] = useState("");
   const [expression, setExpression] = useState("");
 
-  const handleAdd = () => {
-    if(onAddFormula(name, expression)) {
+  const handleAdd = async () => {
+    if(await onAddFormula(name, expression)) {
       setName("");
       setExpression("");
     }
