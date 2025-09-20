@@ -184,6 +184,9 @@ export default function AdvancedCustomizableReports() {
     monthlyExpense: 3000,
     savingsRate: 40
   });
+
+  const [formulas, setFormulas] = useState<{ id: string; name: string; expression: string }[]>([]);
+  const [isFormulaBuilderOpen, setIsFormulaBuilderOpen] = useState(false);
   
   React.useEffect(() => {
     if (user) {
@@ -445,6 +448,21 @@ export default function AdvancedCustomizableReports() {
     return options;
   }, [userCategories]);
 
+  const handleAddFormula = (name: string, expression: string) => {
+    if (name && expression) {
+      setFormulas(prev => [...prev, { id: `formula-${Date.now()}`, name, expression }]);
+      toast({ title: 'Formula Added', description: `"${name}" has been created.` });
+      return true;
+    }
+    toast({ variant: 'destructive', title: 'Invalid Formula', description: 'Name and expression cannot be empty.' });
+    return false;
+  };
+
+  const handleDeleteFormula = (id: string) => {
+    setFormulas(prev => prev.filter(f => f.id !== id));
+    toast({ title: 'Formula Deleted' });
+  };
+
 
   return (
     <div className="space-y-6">
@@ -458,10 +476,27 @@ export default function AdvancedCustomizableReports() {
             <Target className="h-4 w-4 mr-2" />
             KPI Targets
           </Button>
-          <Button variant="outline" size="sm">
-            <Calculator className="h-4 w-4 mr-2" />
-            Formula Builder
-          </Button>
+          <Dialog open={isFormulaBuilderOpen} onOpenChange={setIsFormulaBuilderOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm">
+                <Calculator className="h-4 w-4 mr-2" />
+                Formula Builder
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Formula Builder</DialogTitle>
+                <DialogDescription>
+                  Create, view, and manage your custom formulas. These can be used later to generate new data fields for your reports.
+                </DialogDescription>
+              </DialogHeader>
+              <FormulaBuilderTabContent
+                formulas={formulas}
+                onAddFormula={handleAddFormula}
+                onDeleteFormula={handleDeleteFormula}
+              />
+            </DialogContent>
+          </Dialog>
           <Button variant="outline" size="sm">
             <Zap className="h-4 w-4 mr-2" />
             Auto Insights
@@ -771,29 +806,11 @@ export default function AdvancedCustomizableReports() {
               </TabsContent>
               
               <TabsContent value="formulas" className="space-y-4 pt-4">
-                <div>
-                  <h3 className="text-lg font-medium">Custom Calculations</h3>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Create custom metrics using formulas (e.g., "income - expense", "savings_rate * 100")
-                  </p>
-                  <div className="space-y-3">
-                    <div>
-                      <Label>Formula Name</Label>
-                      <Input placeholder="Net Worth Growth" />
-                    </div>
-                    <div>
-                      <Label>Formula Expression</Label>
-                      <Textarea 
-                        placeholder="(current_balance - starting_balance) / starting_balance * 100"
-                        rows={3}
-                      />
-                    </div>
-                    <Button size="sm">
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Formula
-                    </Button>
-                  </div>
-                </div>
+                <FormulaBuilderTabContent
+                  formulas={formulas}
+                  onAddFormula={handleAddFormula}
+                  onDeleteFormula={handleDeleteFormula}
+                />
               </TabsContent>
               
               <TabsContent value="export" className="space-y-4 pt-4">
@@ -875,6 +892,74 @@ export default function AdvancedCustomizableReports() {
             })}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+
+function FormulaBuilderTabContent({ formulas, onAddFormula, onDeleteFormula }: {
+  formulas: { id: string; name: string; expression: string }[];
+  onAddFormula: (name: string, expression: string) => boolean;
+  onDeleteFormula: (id: string) => void;
+}) {
+  const [name, setName] = useState("");
+  const [expression, setExpression] = useState("");
+
+  const handleAdd = () => {
+    if(onAddFormula(name, expression)) {
+      setName("");
+      setExpression("");
+    }
+  };
+
+  return (
+    <div>
+      <h3 className="text-lg font-medium">Custom Calculations</h3>
+      <p className="text-sm text-muted-foreground mb-4">
+        Create custom metrics using formulas (e.g., "income - expense", "savings_rate * 100")
+      </p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="space-y-3">
+          <div>
+            <Label htmlFor="formula-name">Formula Name</Label>
+            <Input id="formula-name" placeholder="e.g. Net Income" value={name} onChange={e => setName(e.target.value)} />
+          </div>
+          <div>
+            <Label htmlFor="formula-expression">Formula Expression</Label>
+            <Textarea
+              id="formula-expression"
+              placeholder="e.g. income - expense"
+              rows={3}
+              value={expression}
+              onChange={e => setExpression(e.target.value)}
+            />
+          </div>
+          <Button size="sm" onClick={handleAdd}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Formula
+          </Button>
+        </div>
+        <div className="space-y-2">
+          <h4 className="font-medium">Existing Formulas</h4>
+          {formulas.length === 0 ? (
+            <p className="text-sm text-muted-foreground p-4 border rounded-md text-center">No formulas created yet.</p>
+          ) : (
+            <div className="border rounded-md max-h-60 overflow-y-auto">
+              {formulas.map(formula => (
+                <div key={formula.id} className="flex items-center justify-between p-2 border-b last:border-b-0">
+                  <div>
+                    <p className="font-semibold">{formula.name}</p>
+                    <p className="text-xs text-muted-foreground font-mono">{formula.expression}</p>
+                  </div>
+                  <Button variant="ghost" size="icon" onClick={() => onDeleteFormula(formula.id)}>
+                    <Trash2 className="h-4 w-4 text-red-500" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
