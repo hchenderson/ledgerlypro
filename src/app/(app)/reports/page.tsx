@@ -87,7 +87,8 @@ import {
   ResponsiveContainer,
   ScatterChart,
   Scatter,
-  ComposedChart
+  ComposedChart,
+  ReferenceLine
 } from 'recharts';
 import type { Category, SubCategory } from '@/types';
 import { DateRange } from 'react-day-picker';
@@ -238,6 +239,8 @@ export default function AdvancedCustomizableReports() {
       type: 'bar',
       size: 'large',
       dataKey: 'monthly',
+      mainDataKey: 'income',
+      comparisonKey: 'expense',
       enabled: true,
       position: 0,
       colorTheme: 'default',
@@ -246,7 +249,6 @@ export default function AdvancedCustomizableReports() {
       height: 300,
       aggregation: 'sum',
       timePeriod: 'monthly',
-      comparison: null,
       customFilters: [],
       annotations: [],
       formulaId: null,
@@ -281,7 +283,7 @@ export default function AdvancedCustomizableReports() {
   const [formulas, setFormulas] = useState<{ id: string; name: string; expression: string }[]>([]);
   const [isFormulaBuilderOpen, setIsFormulaBuilderOpen] = useState(false);
   
-  React.useEffect(() => {
+  useEffect(() => {
     if (user) {
       const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'main');
       getDoc(settingsDocRef).then(docSnap => {
@@ -413,7 +415,7 @@ export default function AdvancedCustomizableReports() {
       const formula = formulas.find(f => f.id === widget.formulaId);
       if (!formula) {
         return (
-          <div className="flex h-[300px] items-center justify-center text-muted-foreground p-4 text-center">
+          <div className="flex h-full items-center justify-center text-muted-foreground p-4 text-center">
             Please select a formula for this metric card in the customize panel.
           </div>
         );
@@ -432,7 +434,7 @@ export default function AdvancedCustomizableReports() {
 
     if (!data || data.length === 0) {
       return (
-        <div className="flex h-[300px] items-center justify-center text-muted-foreground">
+        <div className="flex h-full items-center justify-center text-muted-foreground">
           No data available for this configuration.
         </div>
       );
@@ -500,9 +502,10 @@ export default function AdvancedCustomizableReports() {
               <YAxis yAxisId="right" orientation="right" />
               <Tooltip content={<CustomTooltip />} />
               {widget.showLegend && <Legend />}
-              <Bar yAxisId="left" dataKey="income" fill={theme[0]} name="Income" />
-              <Bar yAxisId="left" dataKey="expense" fill={theme[1]} name="Expense" />
-              <Line yAxisId="right" type="monotone" dataKey="savingsRate" stroke={theme[2]} name="Savings Rate %" />
+              <Bar yAxisId="left" dataKey={widget.mainDataKey} fill={theme[0]} name={widget.mainDataKey.charAt(0).toUpperCase() + widget.mainDataKey.slice(1)} />
+              {widget.comparisonKey && (
+                <Line yAxisId="right" type="monotone" dataKey={widget.comparisonKey} stroke={theme[2]} name={widget.comparisonKey.charAt(0).toUpperCase() + widget.comparisonKey.slice(1)} />
+              )}
             </ComposedChart>
           </ResponsiveContainer>
         );
@@ -529,19 +532,46 @@ export default function AdvancedCustomizableReports() {
               <YAxis />
               <Tooltip content={<CustomTooltip />} />
               {widget.showLegend && <Legend />}
-              <Bar dataKey="income" fill={theme[0]} name="Income" />
-              <Bar dataKey="expense" fill={theme[1]} name="Expense" />
-              {widget.comparison && (
-                <Bar dataKey={widget.comparison} fill={theme[2]} name="Comparison" />
+              <Bar dataKey={widget.mainDataKey} fill={theme[0]} name={widget.mainDataKey.charAt(0).toUpperCase() + widget.mainDataKey.slice(1)} />
+              {widget.comparisonKey && (
+                <Bar dataKey={widget.comparisonKey} fill={theme[1]} name={widget.comparisonKey.charAt(0).toUpperCase() + widget.comparisonKey.slice(1)} />
               )}
             </BarChart>
           </ResponsiveContainer>
         );
+        
+      case 'line':
+        return (
+          <ResponsiveContainer width="100%" height={widget.height}>
+            <LineChart data={data as any[]} {...chartProps}>
+              {widget.showGrid && <CartesianGrid strokeDasharray="3 3" />}
+              <XAxis dataKey="month" />
+              <YAxis />
+              <Tooltip content={<CustomTooltip />} />
+              {widget.showLegend && <Legend />}
+              <Line type="monotone" dataKey={widget.mainDataKey} stroke={theme[0]} name={widget.mainDataKey.charAt(0).toUpperCase() + widget.mainDataKey.slice(1)} />
+               {widget.comparisonKey && (
+                <Line type="monotone" dataKey={widget.comparisonKey} stroke={theme[1]} name={widget.comparisonKey.charAt(0).toUpperCase() + widget.comparisonKey.slice(1)} />
+              )}
+            </LineChart>
+          </ResponsiveContainer>
+        );
+
 
       default:
         return <div>Chart type not implemented</div>;
     }
   };
+  
+  const dataFieldOptions = useMemo(() => {
+    if (processedData.monthly.length > 0) {
+      return Object.keys(processedData.monthly[0]).map(key => ({
+        value: key,
+        label: key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())
+      }));
+    }
+    return [];
+  }, [processedData.monthly]);
 
   const addWidget = useCallback(() => {
     const newWidget = {
@@ -550,6 +580,8 @@ export default function AdvancedCustomizableReports() {
       type: 'bar',
       size: 'medium',
       dataKey: 'monthly',
+      mainDataKey: 'income',
+      comparisonKey: 'expense',
       enabled: true,
       position: widgets.length,
       colorTheme: 'default',
@@ -558,7 +590,6 @@ export default function AdvancedCustomizableReports() {
       height: 300,
       aggregation: 'sum',
       timePeriod: 'monthly',
-      comparison: null,
       customFilters: [],
       annotations: [],
       formulaId: null,
@@ -847,41 +878,26 @@ export default function AdvancedCustomizableReports() {
                         ) : (
                           <>
                             <div>
-                              <Label>Color Theme</Label>
-                              <Select
-                                value={widget.colorTheme}
-                                onValueChange={(value) => updateWidget(widget.id, { colorTheme: value })}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {Object.keys(COLOR_THEMES).map(theme => (
-                                    <SelectItem key={theme} value={theme}>
-                                      {theme.charAt(0).toUpperCase() + theme.slice(1)}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
+                                <Label>Main Data</Label>
+                                <Select value={widget.mainDataKey} onValueChange={(value) => updateWidget(widget.id, { mainDataKey: value })}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                    {dataFieldOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
                             </div>
-                            
-                            <div>
-                              <Label>Aggregation</Label>
-                              <Select
-                                value={widget.aggregation}
-                                onValueChange={(value) => updateWidget(widget.id, { aggregation: value })}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {Object.entries(DATA_AGGREGATIONS).map(([key, value]) => (
-                                    <SelectItem key={key} value={key}>{value}</SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            
+                            {CHART_TYPES[widget.type as keyof typeof CHART_TYPES].allowsComparison && (
+                                <div>
+                                    <Label>Comparison Data</Label>
+                                    <Select value={widget.comparisonKey} onValueChange={(value) => updateWidget(widget.id, { comparisonKey: value })}>
+                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="">None</SelectItem>
+                                            {dataFieldOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            )}
                             <div>
                               <Label>Height (px)</Label>
                               <Input
@@ -1060,8 +1076,7 @@ export default function AdvancedCustomizableReports() {
                 <Card 
                   key={widget.id} 
                   className={cn(
-                    `${sizeClasses[widget.size as keyof typeof sizeClasses]} transition-all duration-200 hover:shadow-md`,
-                    widget.type === 'metric' && 'flex flex-col justify-center items-center'
+                    `${sizeClasses[widget.size as keyof typeof sizeClasses]} transition-all duration-200 hover:shadow-md flex flex-col`,
                   )}
                 >
                   <CardHeader className={cn("pb-2", widget.type === 'metric' && 'hidden')}>
@@ -1074,7 +1089,7 @@ export default function AdvancedCustomizableReports() {
                       </div>
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className={cn(widget.type !== 'metric' && 'p-0')}>
+                  <CardContent className={cn("flex-1 flex", widget.type !== 'metric' && 'p-0')}>
                     {renderAdvancedChart(widget)}
                   </CardContent>
                 </Card>
@@ -1155,5 +1170,4 @@ function FormulaBuilderTabContent({ formulas, onAddFormula, onDeleteFormula }: {
   );
 }
 
-
-
+    
