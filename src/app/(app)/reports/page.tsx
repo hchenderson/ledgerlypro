@@ -119,6 +119,10 @@ const COLOR_THEMES: Record<string, string[]> = {
   pastel: ['#FFB6C1', '#98FB98', '#87CEEB', '#DDA0DD', '#F0E68C']
 };
 
+const sanitizeForVariableName = (name: string) => {
+  return name.replace(/[^a-zA-Z0-9_]/g, '_');
+};
+
 // Simple and safe formula evaluator
 const evaluateFormula = (expression: string, context: Record<string, number>): number | null => {
   try {
@@ -323,29 +327,34 @@ function KpiTargetsDialog({
 function FormulaBuilderTabContent({ 
   formulas, 
   onAddFormula, 
-  onDeleteFormula 
+  onDeleteFormula,
+  availableVariables
 }: {
   formulas: { id: string; name: string; expression: string }[];
   onAddFormula: (name: string, expression: string) => Promise<boolean>;
   onDeleteFormula: (id: string) => void;
+  availableVariables: string[];
 }) {
   const [name, setName] = useState("");
   const [expression, setExpression] = useState("");
   const [testResult, setTestResult] = useState<number | null>(null);
 
-  const availableVariables = [
-    'totalIncome', 'totalExpense', 'transactionCount', 
-    'avgTransactionAmount', 'netIncome', 'savingsRate'
-  ];
-
-  const sampleContext = {
-    totalIncome: 5000,
-    totalExpense: 3000,
-    transactionCount: 25,
-    avgTransactionAmount: 320,
-    netIncome: 2000,
-    savingsRate: 40
-  };
+  const sampleContext = useMemo(() => {
+    const context: Record<string, number> = {
+      totalIncome: 5000,
+      totalExpense: 3000,
+      transactionCount: 25,
+      avgTransactionAmount: 320,
+      netIncome: 2000,
+      savingsRate: 40
+    };
+    availableVariables.forEach(v => {
+      if (!context[v]) {
+        context[v] = Math.random() * 1000; // Assign random value for testing
+      }
+    });
+    return context;
+  }, [availableVariables]);
 
   const handleAdd = async () => {
     if (name.trim() && expression.trim()) {
@@ -370,7 +379,7 @@ function FormulaBuilderTabContent({
       <div>
         <h3 className="text-lg font-medium">Custom Calculations</h3>
         <p className="text-sm text-muted-foreground">
-          Create custom metrics using formulas. Available variables: {availableVariables.join(', ')}.
+          Create custom metrics using formulas.
         </p>
       </div>
 
@@ -417,7 +426,7 @@ function FormulaBuilderTabContent({
                 }).format(testResult)}
               </p>
               <p className="text-xs text-muted-foreground">
-                Using sample data: Income: $5,000, Expenses: $3,000
+                Using sample data.
               </p>
             </div>
           )}
@@ -456,9 +465,9 @@ function FormulaBuilderTabContent({
 
       <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
         <h4 className="font-medium text-blue-900 mb-2">Available Variables:</h4>
-        <div className="grid grid-cols-2 gap-2 text-sm">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm max-h-32 overflow-y-auto">
           {availableVariables.map(variable => (
-            <code key={variable} className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs">
+            <code key={variable} className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs truncate">
               {variable}
             </code>
           ))}
@@ -528,7 +537,7 @@ export default function AdvancedCustomizableReports() {
   // Load settings from Firebase
   useEffect(() => {
     if (user) {
-      const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'reports');
+      const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'main');
       getDoc(settingsDocRef).then(docSnap => {
         if (docSnap.exists()) {
           const data = docSnap.data();
@@ -555,7 +564,7 @@ export default function AdvancedCustomizableReports() {
   const saveSettingsToFirestore = async (updates: any) => {
     if (user) {
       try {
-        const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'reports');
+        const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'main');
         await setDoc(settingsDocRef, updates, { merge: true });
       } catch (error) {
         console.error("Error saving settings:", error);
@@ -642,6 +651,24 @@ export default function AdvancedCustomizableReports() {
     toast({ title: 'Formula Deleted' });
   };
 
+  const formulaVariables = useMemo(() => {
+    const baseVars = [
+      'totalIncome', 'totalExpense', 'transactionCount',
+      'avgTransactionAmount', 'netIncome', 'savingsRate'
+    ];
+    
+    const categoryVars = new Set<string>();
+    const recurse = (cats: (Category | SubCategory)[]) => {
+      cats.forEach(c => {
+        categoryVars.add(sanitizeForVariableName(c.name));
+        if (c.subCategories) recurse(c.subCategories);
+      });
+    };
+    recurse(userCategories);
+
+    return [...baseVars, ...Array.from(categoryVars)];
+  }, [userCategories]);
+
   const getWidgetData = useCallback((widget: any) => {
     const transactions = allTransactions.filter(t => {
       const transactionDate = new Date(t.date);
@@ -687,13 +714,23 @@ export default function AdvancedCustomizableReports() {
     const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
     const totalExpense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
 
+    const categoryTotals = transactions.reduce((acc, t) => {
+      const sanitizedName = sanitizeForVariableName(t.category);
+      if (!acc[sanitizedName]) {
+        acc[sanitizedName] = 0;
+      }
+      acc[sanitizedName] += t.amount;
+      return acc;
+    }, {} as Record<string, number>);
+
     const kpis = {
       totalIncome,
       totalExpense,
       transactionCount: transactions.length,
       avgTransactionAmount: transactions.reduce((sum, t) => sum + t.amount, 0) / (transactions.length || 1),
       netIncome: totalIncome - totalExpense,
-      savingsRate: totalIncome > 0 ? ((totalIncome - totalExpense) / totalIncome) * 100 : 0
+      savingsRate: totalIncome > 0 ? ((totalIncome - totalExpense) / totalIncome) * 100 : 0,
+      ...categoryTotals
     };
 
     const monthly = Object.values(monthlyData).sort((a: any, b: any) => 
@@ -1036,11 +1073,12 @@ export default function AdvancedCustomizableReports() {
                 Formula Builder
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl">
+            <DialogContent className="max-w-3xl">
               <FormulaBuilderTabContent
                 formulas={formulas}
                 onAddFormula={handleAddFormula}
                 onDeleteFormula={handleDeleteFormula}
+                availableVariables={formulaVariables}
               />
             </DialogContent>
           </Dialog>
@@ -1447,4 +1485,3 @@ export default function AdvancedCustomizableReports() {
     </div>
   );
 }
-    
