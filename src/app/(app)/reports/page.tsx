@@ -112,16 +112,6 @@ const PRESET_RANGES = [
   { label: 'Last 90 Days', value: 'last-90' },
 ];
 
-const COLOR_PALETTE = [
-  "hsl(var(--chart-1))",
-  "hsl(var(--chart-2))",
-  "hsl(var(--chart-3))",
-  "hsl(var(--chart-4))",
-  "hsl(var(--chart-5))",
-  '#8884d8', '#82ca9d', '#ffc658', '#ff7c7c', '#8dd1e1',
-  '#a4de6c', '#d0ed57', '#ffc658'
-];
-
 const CHART_TYPES = {
   bar: { name: 'Bar Chart', icon: BarChart3, allowsComparison: true },
   line: { name: 'Line Chart', icon: TrendingUp, allowsComparison: true },
@@ -552,10 +542,9 @@ function BasicReports() {
       });
     
     return Object.entries(data)
-      .map(([category, amount], index) => ({
-        category,
-        amount,
-        fill: COLOR_PALETTE[index % COLOR_PALETTE.length],
+      .map(([name, amount], index) => ({
+        category: name,
+        amount: amount,
       }))
       .sort((a, b) => b.amount - a.amount);
   }, [filteredTransactions, categories]);
@@ -1629,3 +1618,5 @@ export default function ReportsPage() {
         </Tabs>
     )
 }
+
+    
