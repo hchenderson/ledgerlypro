@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
@@ -904,10 +905,13 @@ export default function AdvancedCustomizableReports() {
                             {CHART_TYPES[widget.type as keyof typeof CHART_TYPES].allowsComparison && (
                                 <div>
                                     <Label>Comparison Data</Label>
-                                    <Select value={widget.comparisonKey} onValueChange={(value) => updateWidget(widget.id, { comparisonKey: value })}>
+                                    <Select 
+                                        value={widget.comparisonKey} 
+                                        onValueChange={(value) => updateWidget(widget.id, { comparisonKey: value === 'none' ? undefined : value })}
+                                    >
                                         <SelectTrigger><SelectValue /></SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="">None</SelectItem>
+                                            <SelectItem value="none">None</SelectItem>
                                             {dataFieldOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
                                         </SelectContent>
                                     </Select>
