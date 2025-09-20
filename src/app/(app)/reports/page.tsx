@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
@@ -587,16 +588,15 @@ export default function AdvancedCustomizableReports() {
       return inDateRange && passesAmountFilter && globalCategoryCheck && widgetCategoryCheck;
     });
     
-    const dataKeys = [
-        ...new Set([widget.mainDataKey, widget.comparisonKey, ...(widget.dataCategories || [])])
-    ].filter(Boolean) as string[];
+    const dataKeys = (widget.dataCategories || []).length > 0
+        ? widget.dataCategories
+        : [widget.mainDataKey, widget.comparisonKey].filter(Boolean);
 
     const monthlyData: { [key: string]: any } = transactions.reduce((acc: { [key:string]: any }, transaction) => {
       const month = new Date(transaction.date).toLocaleDateString('en', { month: 'short', year: '2-digit' });
       if (!acc[month]) {
         acc[month] = { month };
         dataKeys.forEach(key => (acc[month][key] = 0));
-        acc[month].categories = new Set();
       }
 
       if (dataKeys.includes(transaction.type)) {
@@ -605,8 +605,6 @@ export default function AdvancedCustomizableReports() {
       if (dataKeys.includes(transaction.category)) {
         acc[month][transaction.category] = (acc[month][transaction.category] || 0) + transaction.amount;
       }
-      
-      acc[month].categories.add(transaction.category);
       return acc;
     }, {});
 
@@ -1358,3 +1356,4 @@ export default function AdvancedCustomizableReports() {
     </div>
   );
 }
+
