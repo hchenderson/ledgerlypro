@@ -136,6 +136,34 @@ const TIME_PERIODS = {
   yearly: 'Yearly'
 };
 
+function AdvancedWidgetSettingsDialog({ widget, onUpdate, onClose, children }: {
+    widget: any | null;
+    onUpdate: (id: string, updates: any) => void;
+    onClose: () => void;
+    children: React.ReactNode;
+}) {
+    if (!widget) return null;
+
+    return (
+        <Dialog open={!!widget} onOpenChange={(open) => !open && onClose()}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Advanced Settings: {widget.title}</DialogTitle>
+                    <DialogDescription>
+                        Configure advanced options for this widget.
+                    </DialogDescription>
+                </DialogHeader>
+                <div>
+                    <p>More settings will be available here soon.</p>
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" onClick={onClose}>Close</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    )
+}
+
 function KpiTargetsDialog({ targets, onSave, children }: {
   targets: { monthlyIncome: number; monthlyExpense: number; savingsRate: number; };
   onSave: (newTargets: any) => void;
@@ -847,7 +875,7 @@ export default function AdvancedCustomizableReports() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => setSelectedWidget(widget as any)}
+                            onClick={() => setSelectedWidget(widget)}
                             title="Advanced Settings"
                           >
                             <Settings className="h-4 w-4" />
@@ -1117,6 +1145,15 @@ export default function AdvancedCustomizableReports() {
           </div>
         )}
       </div>
+
+       <AdvancedWidgetSettingsDialog
+        widget={selectedWidget}
+        onUpdate={updateWidget}
+        onClose={() => setSelectedWidget(null)}
+      >
+        {/* Advanced content goes here */}
+      </AdvancedWidgetSettingsDialog>
+
     </div>
   );
 }
