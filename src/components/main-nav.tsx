@@ -23,6 +23,7 @@ import {
   useSidebar,
   SidebarMenuSub,
   SidebarMenuSubButton,
+  SidebarMenuSubItem,
 } from "@/components/ui/sidebar";
 import type { NavItem } from "@/types";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
