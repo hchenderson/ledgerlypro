@@ -17,7 +17,7 @@ type Option = Record<"value" | "label", string>;
 interface MultiSelectProps {
     options: Option[];
     selected: string[];
-    onChange: React.Dispatch<React.SetStateAction<string[]>>;
+    onChange: (value: string[]) => void;
     className?: string;
     placeholder?: string;
 }
@@ -28,8 +28,8 @@ export function MultiSelect({ options, selected, onChange, className, placeholde
   const [inputValue, setInputValue] = React.useState("");
 
   const handleUnselect = React.useCallback((optionValue: string) => {
-    onChange(prev => prev.filter((s) => s !== optionValue));
-  }, [onChange]);
+    onChange(selected.filter((s) => s !== optionValue));
+  }, [onChange, selected]);
 
   const handleKeyDown = React.useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
     const input = inputRef.current;
@@ -101,7 +101,7 @@ export function MultiSelect({ options, selected, onChange, className, placeholde
                     }}
                     onSelect={(_value) => {
                       setInputValue("");
-                      onChange(prev => [...prev, option.value]);
+                      onChange([...selected, option.value]);
                     }}
                     className={"cursor-pointer"}
                   >
