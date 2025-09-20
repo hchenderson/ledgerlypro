@@ -99,6 +99,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { MultiSelect } from '@/components/ui/multi-select';
 import { useToast } from '@/hooks/use-toast';
+import { AdvancedWidgetCustomizer } from '@/components/reports/customization';
 
 const CHART_TYPES = {
   bar: { name: 'Bar Chart', icon: BarChart3, allowsComparison: true },
@@ -144,100 +145,6 @@ const evaluateFormula = (expression: string, context: Record<string, number>): n
     return null;
   }
 };
-
-// Fixed AdvancedWidgetSettingsDialog
-function AdvancedWidgetSettingsDialog({ 
-  widget, 
-  onUpdate, 
-  onClose, 
-  allCategoryOptions 
-}: {
-  widget: any | null;
-  onUpdate: (id: string, updates: any) => void;
-  onClose: () => void;
-  allCategoryOptions: { value: string; label: string }[];
-}) {
-  const [customCategories, setCustomCategories] = useState<string[]>([]);
-  const [showTargetLines, setShowTargetLines] = useState(false);
-  const [colorTheme, setColorTheme] = useState('default');
-
-  useEffect(() => {
-    if (widget) {
-      setCustomCategories(widget.customFilters?.categories || []);
-      setShowTargetLines(widget.showTargetLines || false);
-      setColorTheme(widget.colorTheme || 'default');
-    }
-  }, [widget]);
-
-  if (!widget) return null;
-
-  const handleSave = () => {
-    onUpdate(widget.id, {
-      customFilters: {
-        ...widget.customFilters,
-        categories: customCategories,
-      },
-      showTargetLines,
-      colorTheme
-    });
-    onClose();
-  };
-
-  return (
-    <Dialog open={!!widget} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Advanced Settings: {widget.title}</DialogTitle>
-          <DialogDescription>
-            Configure advanced options for this widget.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4 py-4">
-          <div className="space-y-2">
-            <Label>Filter by Category</Label>
-            <p className="text-sm text-muted-foreground">
-              Show data only for selected categories on this widget.
-            </p>
-            <MultiSelect
-              options={allCategoryOptions}
-              selected={customCategories}
-              onChange={setCustomCategories}
-              placeholder="Select categories..."
-            />
-          </div>
-          
-          <div className="space-y-2">
-            <Label>Color Theme</Label>
-            <Select value={colorTheme} onValueChange={setColorTheme}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.keys(COLOR_THEMES).map((theme) => (
-                  <SelectItem key={theme} value={theme}>
-                    {theme.charAt(0).toUpperCase() + theme.slice(1)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex items-center space-x-2">
-            <Switch
-              checked={showTargetLines}
-              onCheckedChange={setShowTargetLines}
-            />
-            <Label>Show Target Lines</Label>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSave}>Save Settings</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
 
 // Fixed KpiTargetsDialog
 function KpiTargetsDialog({ 
@@ -953,7 +860,7 @@ export default function AdvancedCustomizableReports() {
       type: 'bar',
       size: 'medium',
       mainDataKey: 'income',
-      comparisonKey: undefined,
+      comparisonKey: 'expense',
       dataCategories: [],
       enabled: true,
       position: widgets.length,
@@ -1006,6 +913,24 @@ export default function AdvancedCustomizableReports() {
     };
     recurse(userCategories);
     return options;
+  }, [userCategories]);
+
+  const availableDataFields = useMemo(() => {
+    const fields = [
+      { value: 'income', label: 'Income' },
+      { value: 'expense', label: 'Expense' },
+      { value: 'netIncome', label: 'Net Income' },
+      { value: 'savingsRate', label: 'Savings Rate (%)' },
+      { value: 'transactionCount', label: 'Transaction Count' },
+      { value: 'avgTransactionAmount', label: 'Avg. Transaction Amount' },
+    ];
+    userCategories.forEach(cat => {
+      fields.push({ value: cat.name, label: `Category: ${cat.name}` });
+      cat.subCategories?.forEach(sub => {
+        fields.push({ value: sub.name, label: `  - ${sub.name}` });
+      });
+    });
+    return fields;
   }, [userCategories]);
   
   return (
@@ -1417,14 +1342,13 @@ export default function AdvancedCustomizableReports() {
         )}
       </div>
 
-       <AdvancedWidgetSettingsDialog
+       <AdvancedWidgetCustomizer
         widget={selectedWidget}
         onUpdate={updateWidget}
         onClose={() => setSelectedWidget(null)}
         allCategoryOptions={allCategoryOptions}
+        availableDataFields={availableDataFields}
       />
     </div>
   );
 }
-
-    
