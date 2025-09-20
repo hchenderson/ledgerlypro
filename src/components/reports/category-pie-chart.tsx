@@ -50,7 +50,8 @@ const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, per
 export function CategoryPieChart({ data }: CategoryPieChartProps) {
   const chartConfig = React.useMemo(() => {
     return data.reduce((acc, cur) => {
-      acc[cur.category] = { label: cur.category, color: cur.fill };
+      const cleanCategory = cur.category.replace(/^\d+\s*/, '');
+      acc[cleanCategory] = { label: cleanCategory, color: cur.fill };
       return acc;
     }, {} as ChartConfig);
   }, [data]);
@@ -69,7 +70,7 @@ export function CategoryPieChart({ data }: CategoryPieChartProps) {
       className="mx-auto aspect-square h-[300px]"
     >
       <ResponsiveContainer width="100%" height="100%">
-        <PieChart>
+        <PieChart margin={{ top: 30, right: 30, bottom: 30, left: 30 }}>
           <Tooltip
             cursor={{ fill: "hsl(var(--muted))" }}
             content={<ChartTooltipContent hideLabel />}
