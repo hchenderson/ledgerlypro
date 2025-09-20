@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
@@ -148,17 +147,17 @@ const sanitizeForVariableName = (name: string) => {
 
 // Simple and safe formula evaluator
 const evaluateFormula = (expression: string, context: Record<string, number>): number | null => {
-  try {
-    const variableNames = Object.keys(context);
-    const variableValues = Object.values(context);
-    
-    // Sanitize expression to only allow variable names, numbers, and basic operators
-    const sanitizedExpression = expression.replace(/[^a-zA-Z0-9_+\-*/(). ]/g, '').trim();
+  const variableNames = Object.keys(context);
+  const variableValues = Object.values(context);
+  
+  // Sanitize expression to only allow variable names, numbers, and basic operators
+  const sanitizedExpression = expression.replace(/[^a-zA-Z0-9_+\-*/(). ]/g, '').trim();
 
-    if (sanitizedExpression === '') {
-        return null;
-    }
-    
+  if (sanitizedExpression === '') {
+      return null;
+  }
+  
+  try {
     const func = new Function(...variableNames, `return ${sanitizedExpression}`);
     const result = func(...variableValues);
 
@@ -517,29 +516,38 @@ function BasicReports() {
   }, [filteredTransactions]);
 
   const expenseByCategory = useMemo(() => {
-    const expenseCategories = categories.filter(c => c.type === 'expense');
     const categoryMap = new Map<string, string>(); // sub-category name -> main category name
 
-    expenseCategories.forEach(mainCat => {
-        categoryMap.set(mainCat.name, mainCat.name);
-        const recurse = (subCats: SubCategory[], parentName: string) => {
-            (subCats || []).forEach(sub => {
-                categoryMap.set(sub.name, parentName);
-                if (sub.subCategories) {
-                    recurse(sub.subCategories, parentName);
+    const findMainCategory = (subCategoryName: string, allCategories: Category[]): string => {
+        for (const mainCat of allCategories) {
+            if (mainCat.name === subCategoryName) return mainCat.name;
+
+            const recurse = (currentSub: SubCategory): string | null => {
+                if (currentSub.name === subCategoryName) return mainCat.name;
+                if (currentSub.subCategories) {
+                    for(const sub of currentSub.subCategories) {
+                        const found = recurse(sub);
+                        if (found) return found;
+                    }
                 }
-            })
+                return null;
+            }
+
+            if (mainCat.subCategories) {
+                for (const sub of mainCat.subCategories) {
+                    const found = recurse(sub);
+                    if (found) return found;
+                }
+            }
         }
-        if (mainCat.subCategories) {
-            recurse(mainCat.subCategories, mainCat.name);
-        }
-    });
+        return 'Uncategorized';
+    };
 
     const data: { [key: string]: number } = {};
     filteredTransactions
       .filter(t => t.type === 'expense')
       .forEach(t => {
-        const mainCategory = categoryMap.get(t.category) || 'Uncategorized';
+        const mainCategory = findMainCategory(t.category, categories);
         data[mainCategory] = (data[mainCategory] || 0) + t.amount;
       });
     
@@ -555,9 +563,7 @@ function BasicReports() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-        <div className="flex-1">
-           
-        </div>
+        <div className="flex-1" />
         <div className="flex flex-wrap gap-2">
             <Select onValueChange={handlePresetChange}>
                 <SelectTrigger className="w-[180px]">
