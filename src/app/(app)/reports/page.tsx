@@ -404,7 +404,7 @@ function FormulaBuilderTabContent({
 }
 
 function BasicReports() {
-  const { allTransactions } = useUserData();
+  const { allTransactions, categories } = useUserData();
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: startOfMonth(new Date()),
     to: endOfMonth(new Date()),
@@ -454,11 +454,30 @@ function BasicReports() {
   }, [filteredTransactions]);
 
   const expenseByCategory = useMemo(() => {
+    const expenseCategories = categories.filter(c => c.type === 'expense');
+    const categoryMap = new Map<string, string>(); // sub-category name -> main category name
+
+    expenseCategories.forEach(mainCat => {
+        categoryMap.set(mainCat.name, mainCat.name);
+        const recurse = (subCats: SubCategory[], parentName: string) => {
+            subCats.forEach(sub => {
+                categoryMap.set(sub.name, parentName);
+                if (sub.subCategories) {
+                    recurse(sub.subCategories, parentName);
+                }
+            })
+        }
+        if (mainCat.subCategories) {
+            recurse(mainCat.subCategories, mainCat.name);
+        }
+    });
+
     const data: { [key: string]: number } = {};
     filteredTransactions
       .filter(t => t.type === 'expense')
       .forEach(t => {
-        data[t.category] = (data[t.category] || 0) + t.amount;
+        const mainCategory = categoryMap.get(t.category) || 'Uncategorized';
+        data[mainCategory] = (data[mainCategory] || 0) + t.amount;
       });
     
     return Object.entries(data)
@@ -468,7 +487,7 @@ function BasicReports() {
         fill: COLOR_PALETTE[index % COLOR_PALETTE.length],
       }))
       .sort((a, b) => b.amount - a.amount);
-  }, [filteredTransactions]);
+  }, [filteredTransactions, categories]);
 
   return (
     <div className="space-y-6">
@@ -1541,5 +1560,3 @@ export default function ReportsPage() {
         </Tabs>
     )
 }
-
-    
