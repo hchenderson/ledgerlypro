@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
@@ -68,7 +67,8 @@ import {
   Zap,
   BarChart2,
   Trash2,
-  UploadCloud
+  UploadCloud,
+  AlertTriangle
 } from 'lucide-react';
 import { 
   AreaChart, 
@@ -100,7 +100,6 @@ import { cn } from '@/lib/utils';
 import { MultiSelect } from '@/components/ui/multi-select';
 import { useToast } from '@/hooks/use-toast';
 
-
 const CHART_TYPES = {
   bar: { name: 'Bar Chart', icon: BarChart3, allowsComparison: true },
   line: { name: 'Line Chart', icon: TrendingUp, allowsComparison: true },
@@ -119,142 +118,6 @@ const COLOR_THEMES: Record<string, string[]> = {
   cool: ['#3498DB', '#2980B9', '#1ABC9C', '#16A085', '#27AE60'],
   pastel: ['#FFB6C1', '#98FB98', '#87CEEB', '#DDA0DD', '#F0E68C']
 };
-
-const DATA_AGGREGATIONS = {
-  sum: 'Sum',
-  average: 'Average',
-  count: 'Count',
-  max: 'Maximum',
-  min: 'Minimum'
-};
-
-const TIME_PERIODS = {
-  daily: 'Daily',
-  weekly: 'Weekly', 
-  monthly: 'Monthly',
-  quarterly: 'Quarterly',
-  yearly: 'Yearly'
-};
-
-function AdvancedWidgetSettingsDialog({ widget, onUpdate, onClose, allCategoryOptions }: {
-    widget: any | null;
-    onUpdate: (id: string, updates: any) => void;
-    onClose: () => void;
-    allCategoryOptions: { value: string; label: string }[];
-}) {
-    if (!widget) return null;
-
-    const [customCategories, setCustomCategories] = useState(widget.customFilters?.categories || []);
-
-    const handleSave = () => {
-        onUpdate(widget.id, {
-            customFilters: {
-                ...widget.customFilters,
-                categories: customCategories,
-            }
-        });
-        onClose();
-    };
-
-    return (
-        <Dialog open={!!widget} onOpenChange={(open) => !open && onClose()}>
-            <DialogContent>
-                <DialogHeader>
-                    <DialogTitle>Advanced Settings: {widget.title}</DialogTitle>
-                    <DialogDescription>
-                        Configure advanced options for this widget. Changes here will only affect this widget.
-                    </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                    <div className="space-y-2">
-                        <Label>Filter by Category</Label>
-                        <p className="text-sm text-muted-foreground">
-                            Show data only for the selected categories on this widget. Leave empty to use global filters.
-                        </p>
-                        <MultiSelect
-                            options={allCategoryOptions}
-                            selected={customCategories}
-                            onChange={setCustomCategories}
-                            placeholder="Select categories..."
-                        />
-                    </div>
-                </div>
-                <DialogFooter>
-                    <Button variant="outline" onClick={onClose}>Cancel</Button>
-                    <Button onClick={handleSave}>Save Settings</Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
-    )
-}
-
-function KpiTargetsDialog({ targets, onSave, children }: {
-  targets: { monthlyIncome: number; monthlyExpense: number; savingsRate: number; };
-  onSave: (newTargets: any) => void;
-  children: React.ReactNode;
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [localTargets, setLocalTargets] = useState(targets);
-
-  useEffect(() => {
-    setLocalTargets(targets);
-  }, [targets, isOpen]);
-
-  const handleSave = () => {
-    onSave(localTargets);
-    setIsOpen(false);
-  };
-
-  const handleChange = (key: keyof typeof targets, value: string) => {
-    const numValue = parseInt(value, 10);
-    setLocalTargets(prev => ({ ...prev, [key]: isNaN(numValue) ? 0 : numValue }));
-  };
-
-  return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>{children}</DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Set KPI Targets</DialogTitle>
-          <DialogDescription>Define your key performance indicators to track your financial goals.</DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label>Monthly Income Target</Label>
-            <Input
-              type="number"
-              value={localTargets.monthlyIncome}
-              onChange={e => handleChange('monthlyIncome', e.target.value)}
-              placeholder="e.g., 5000"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Monthly Expense Limit</Label>
-            <Input
-              type="number"
-              value={localTargets.monthlyExpense}
-              onChange={e => handleChange('monthlyExpense', e.target.value)}
-              placeholder="e.g., 3000"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Target Savings Rate (%)</Label>
-            <Input
-              type="number"
-              value={localTargets.savingsRate}
-              onChange={e => handleChange('savingsRate', e.target.value)}
-              placeholder="e.g., 40"
-            />
-          </div>
-        </div>
-        <DialogFooter>
-          <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-          <Button onClick={handleSave}>Save Targets</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
 
 // Simple and safe formula evaluator
 const evaluateFormula = (expression: string, context: Record<string, number>): number | null => {
@@ -278,6 +141,332 @@ const evaluateFormula = (expression: string, context: Record<string, number>): n
   }
 };
 
+// Fixed AdvancedWidgetSettingsDialog
+function AdvancedWidgetSettingsDialog({ 
+  widget, 
+  onUpdate, 
+  onClose, 
+  allCategoryOptions 
+}: {
+  widget: any | null;
+  onUpdate: (id: string, updates: any) => void;
+  onClose: () => void;
+  allCategoryOptions: { value: string; label: string }[];
+}) {
+  const [customCategories, setCustomCategories] = useState<string[]>([]);
+  const [showTargetLines, setShowTargetLines] = useState(false);
+  const [colorTheme, setColorTheme] = useState('default');
+
+  useEffect(() => {
+    if (widget) {
+      setCustomCategories(widget.customFilters?.categories || []);
+      setShowTargetLines(widget.showTargetLines || false);
+      setColorTheme(widget.colorTheme || 'default');
+    }
+  }, [widget]);
+
+  if (!widget) return null;
+
+  const handleSave = () => {
+    onUpdate(widget.id, {
+      customFilters: {
+        ...widget.customFilters,
+        categories: customCategories,
+      },
+      showTargetLines,
+      colorTheme
+    });
+    onClose();
+  };
+
+  return (
+    <Dialog open={!!widget} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Advanced Settings: {widget.title}</DialogTitle>
+          <DialogDescription>
+            Configure advanced options for this widget.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label>Filter by Category</Label>
+            <p className="text-sm text-muted-foreground">
+              Show data only for selected categories on this widget.
+            </p>
+            <MultiSelect
+              options={allCategoryOptions}
+              selected={customCategories}
+              onChange={setCustomCategories}
+              placeholder="Select categories..."
+            />
+          </div>
+          
+          <div className="space-y-2">
+            <Label>Color Theme</Label>
+            <Select value={colorTheme} onValueChange={setColorTheme}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.keys(COLOR_THEMES).map((theme) => (
+                  <SelectItem key={theme} value={theme}>
+                    {theme.charAt(0).toUpperCase() + theme.slice(1)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <Switch
+              checked={showTargetLines}
+              onCheckedChange={setShowTargetLines}
+            />
+            <Label>Show Target Lines</Label>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={handleSave}>Save Settings</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Fixed KpiTargetsDialog
+function KpiTargetsDialog({ 
+  targets, 
+  onSave, 
+  children 
+}: {
+  targets: { monthlyIncome: number; monthlyExpense: number; savingsRate: number; };
+  onSave: (newTargets: any) => void;
+  children: React.ReactNode;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [localTargets, setLocalTargets] = useState(targets);
+
+  useEffect(() => {
+    if (isOpen) {
+      setLocalTargets(targets);
+    }
+  }, [targets, isOpen]);
+
+  const handleSave = () => {
+    onSave(localTargets);
+    setIsOpen(false);
+  };
+
+  const handleChange = (key: keyof typeof targets, value: string) => {
+    const numValue = parseFloat(value);
+    setLocalTargets(prev => ({ 
+      ...prev, 
+      [key]: isNaN(numValue) ? 0 : numValue 
+    }));
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <DialogTrigger asChild>{children}</DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Set KPI Targets</DialogTitle>
+          <DialogDescription>
+            Define your key performance indicators to track your financial goals.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Monthly Income Target ($)</Label>
+            <Input
+              type="number"
+              value={localTargets.monthlyIncome}
+              onChange={e => handleChange('monthlyIncome', e.target.value)}
+              placeholder="e.g., 5000"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Monthly Expense Limit ($)</Label>
+            <Input
+              type="number"
+              value={localTargets.monthlyExpense}
+              onChange={e => handleChange('monthlyExpense', e.target.value)}
+              placeholder="e.g., 3000"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Target Savings Rate (%)</Label>
+            <Input
+              type="number"
+              value={localTargets.savingsRate}
+              onChange={e => handleChange('savingsRate', e.target.value)}
+              placeholder="e.g., 40"
+              min="0"
+              max="100"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline">Cancel</Button>
+          </DialogClose>
+          <Button onClick={handleSave}>Save Targets</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Fixed FormulaBuilderTabContent
+function FormulaBuilderTabContent({ 
+  formulas, 
+  onAddFormula, 
+  onDeleteFormula 
+}: {
+  formulas: { id: string; name: string; expression: string }[];
+  onAddFormula: (name: string, expression: string) => Promise<boolean>;
+  onDeleteFormula: (id: string) => void;
+}) {
+  const [name, setName] = useState("");
+  const [expression, setExpression] = useState("");
+  const [testResult, setTestResult] = useState<number | null>(null);
+
+  const availableVariables = [
+    'totalIncome', 'totalExpense', 'transactionCount', 
+    'avgTransactionAmount', 'netIncome', 'savingsRate'
+  ];
+
+  const sampleContext = {
+    totalIncome: 5000,
+    totalExpense: 3000,
+    transactionCount: 25,
+    avgTransactionAmount: 320,
+    netIncome: 2000,
+    savingsRate: 40
+  };
+
+  const handleAdd = async () => {
+    if (name.trim() && expression.trim()) {
+      const success = await onAddFormula(name.trim(), expression.trim());
+      if (success) {
+        setName("");
+        setExpression("");
+        setTestResult(null);
+      }
+    }
+  };
+
+  const testFormula = () => {
+    if (expression.trim()) {
+      const result = evaluateFormula(expression, sampleContext);
+      setTestResult(result);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-lg font-medium">Custom Calculations</h3>
+        <p className="text-sm text-muted-foreground">
+          Create custom metrics using formulas. Available variables: {availableVariables.join(', ')}.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="formula-name">Formula Name</Label>
+            <Input 
+              id="formula-name" 
+              placeholder="e.g., Net Income" 
+              value={name} 
+              onChange={e => setName(e.target.value)} 
+            />
+          </div>
+          
+          <div className="space-y-2">
+            <Label htmlFor="formula-expression">Formula Expression</Label>
+            <Textarea
+              id="formula-expression"
+              placeholder="e.g., totalIncome - totalExpense"
+              rows={3}
+              value={expression}
+              onChange={e => setExpression(e.target.value)}
+            />
+          </div>
+
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={testFormula}>
+              Test Formula
+            </Button>
+            <Button size="sm" onClick={handleAdd} disabled={!name.trim() || !expression.trim()}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Formula
+            </Button>
+          </div>
+
+          {testResult !== null && (
+            <div className="p-3 bg-muted rounded-md">
+              <p className="text-sm font-medium">Test Result:</p>
+              <p className="text-lg font-mono">
+                {new Intl.NumberFormat('en-US', { 
+                  style: 'currency', 
+                  currency: 'USD' 
+                }).format(testResult)}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Using sample data: Income: $5,000, Expenses: $3,000
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-4">
+          <h4 className="font-medium">Existing Formulas</h4>
+          {formulas.length === 0 ? (
+            <div className="text-sm text-muted-foreground p-4 border rounded-md text-center">
+              No formulas created yet.
+            </div>
+          ) : (
+            <div className="border rounded-md max-h-60 overflow-y-auto">
+              {formulas.map(formula => (
+                <div key={formula.id} className="flex items-center justify-between p-3 border-b last:border-b-0">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold truncate">{formula.name}</p>
+                    <p className="text-xs text-muted-foreground font-mono truncate">
+                      {formula.expression}
+                    </p>
+                  </div>
+                  <Button 
+                    variant="ghost" 
+                    size="icon"
+                    onClick={() => onDeleteFormula(formula.id)}
+                    className="flex-shrink-0 ml-2"
+                  >
+                    <Trash2 className="h-4 w-4 text-red-500" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+        <h4 className="font-medium text-blue-900 mb-2">Available Variables:</h4>
+        <div className="grid grid-cols-2 gap-2 text-sm">
+          {availableVariables.map(variable => (
+            <code key={variable} className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs">
+              {variable}
+            </code>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function AdvancedCustomizableReports() {
   const { allTransactions, categories: userCategories } = useUserData();
@@ -299,6 +488,7 @@ export default function AdvancedCustomizableReports() {
       colorTheme: 'default',
       showLegend: true,
       showGrid: true,
+      showTargetLines: false,
       height: 300,
       aggregation: 'sum',
       timePeriod: 'monthly',
@@ -326,7 +516,6 @@ export default function AdvancedCustomizableReports() {
     tags: [] as string[]
   });
 
-  const [draggedWidget, setDraggedWidget] = useState<any>(null);
   const [kpiTargets, setKpiTargets] = useState({
     monthlyIncome: 5000,
     monthlyExpense: 3000,
@@ -336,25 +525,50 @@ export default function AdvancedCustomizableReports() {
   const [formulas, setFormulas] = useState<{ id: string; name: string; expression: string }[]>([]);
   const [isFormulaBuilderOpen, setIsFormulaBuilderOpen] = useState(false);
   
+  // Load settings from Firebase
   useEffect(() => {
     if (user) {
-      const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'main');
+      const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'reports');
       getDoc(settingsDocRef).then(docSnap => {
         if (docSnap.exists()) {
           const data = docSnap.data();
-          setStartingBalance(data.startingBalance || 0);
           if (data.kpiTargets) {
             setKpiTargets(data.kpiTargets);
           }
           if (data.formulas) {
             setFormulas(data.formulas);
           }
+          if (data.savedReports) {
+            setSavedReports(data.savedReports);
+          }
+          if (data.widgets) {
+            setWidgets(data.widgets);
+          }
         }
+      }).catch(error => {
+        console.error("Error loading settings:", error);
       });
     }
   }, [user]);
-  
-  const handleSaveReport = () => {
+
+  // Save settings to Firebase
+  const saveSettingsToFirestore = async (updates: any) => {
+    if (user) {
+      try {
+        const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'reports');
+        await setDoc(settingsDocRef, updates, { merge: true });
+      } catch (error) {
+        console.error("Error saving settings:", error);
+        toast({ 
+          variant: 'destructive', 
+          title: "Save Error", 
+          description: "Failed to save settings. Please try again." 
+        });
+      }
+    }
+  };
+
+  const handleSaveReport = async () => {
     if (!newReportName.trim()) {
       toast({ variant: 'destructive', title: "Report name cannot be empty." });
       return;
@@ -362,9 +576,11 @@ export default function AdvancedCustomizableReports() {
     const newReport = {
       id: `report-${Date.now()}`,
       name: newReportName,
-      widgets: JSON.parse(JSON.stringify(widgets)) // Deep copy
+      widgets: JSON.parse(JSON.stringify(widgets))
     };
-    setSavedReports(prev => [...prev, newReport]);
+    const updatedReports = [...savedReports, newReport];
+    setSavedReports(updatedReports);
+    await saveSettingsToFirestore({ savedReports: updatedReports });
     toast({ title: "Report Saved!", description: `"${newReportName}" has been saved.` });
     setIsSaveDialogOpen(false);
     setNewReportName("");
@@ -375,45 +591,83 @@ export default function AdvancedCustomizableReports() {
     toast({ title: "Report Loaded", description: `Switched to "${report.name}" report.` });
   };
   
-  const handleDeleteReport = (reportId: string) => {
-    setSavedReports(prev => prev.filter(r => r.id !== reportId));
+  const handleDeleteReport = async (reportId: string) => {
+    const updatedReports = savedReports.filter(r => r.id !== reportId);
+    setSavedReports(updatedReports);
+    await saveSettingsToFirestore({ savedReports: updatedReports });
     toast({ title: "Report Deleted" });
   };
 
   const handleSaveKpiTargets = async (newTargets: any) => {
     setKpiTargets(newTargets);
-    if(user) {
-        const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'main');
-        await setDoc(settingsDocRef, { kpiTargets: newTargets }, { merge: true });
-    }
+    await saveSettingsToFirestore({ kpiTargets: newTargets });
     toast({ title: "KPI Targets Saved" });
   };
 
-  const saveFormulasToFirestore = async (updatedFormulas: { id: string; name: string; expression: string }[]) => {
-    if (user) {
-      const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'main');
-      await setDoc(settingsDocRef, { formulas: updatedFormulas }, { merge: true });
+  const handleAddFormula = async (name: string, expression: string): Promise<boolean> => {
+    if (name.trim() && expression.trim()) {
+      const newFormula = { 
+        id: `formula-${Date.now()}`, 
+        name: name.trim(), 
+        expression: expression.trim() 
+      };
+      const updatedFormulas = [...formulas, newFormula];
+      setFormulas(updatedFormulas);
+      await saveSettingsToFirestore({ formulas: updatedFormulas });
+      toast({ title: 'Formula Added', description: `"${name}" has been created.` });
+      return true;
     }
+    toast({ 
+      variant: 'destructive', 
+      title: 'Invalid Formula', 
+      description: 'Name and expression cannot be empty.' 
+    });
+    return false;
   };
 
+  const handleDeleteFormula = async (id: string) => {
+    const updatedFormulas = formulas.filter(f => f.id !== id);
+    setFormulas(updatedFormulas);
+    
+    // Also remove formula from widgets that use it
+    const updatedWidgets = widgets.map(w => 
+      w.formulaId === id ? { ...w, formulaId: null } : w
+    );
+    setWidgets(updatedWidgets);
+    
+    await saveSettingsToFirestore({ 
+      formulas: updatedFormulas,
+      widgets: updatedWidgets 
+    });
+    toast({ title: 'Formula Deleted' });
+  };
 
   const getWidgetData = useCallback((widget: any) => {
     const transactions = allTransactions.filter(t => {
-        const transactionDate = new Date(t.date);
-        const inDateRange = globalFilters.dateRange?.from && globalFilters.dateRange?.to ?
-            (transactionDate >= globalFilters.dateRange.from && transactionDate <= globalFilters.dateRange.to) : true;
-        const passesAmountFilter = t.amount >= globalFilters.amountRange[0] && t.amount <= globalFilters.amountRange[1];
-        
-        const globalCategoryCheck = globalFilters.categories.length === 0 || globalFilters.categories.includes(t.category);
-        const widgetCategoryCheck = widget.customFilters?.categories?.length > 0 ? widget.customFilters.categories.includes(t.category) : true;
-        
-        return inDateRange && passesAmountFilter && globalCategoryCheck && widgetCategoryCheck;
+      const transactionDate = new Date(t.date);
+      const inDateRange = globalFilters.dateRange?.from && globalFilters.dateRange?.to ?
+        (transactionDate >= globalFilters.dateRange.from && transactionDate <= globalFilters.dateRange.to) : true;
+      const passesAmountFilter = t.amount >= globalFilters.amountRange[0] && t.amount <= globalFilters.amountRange[1];
+      
+      const globalCategoryCheck = globalFilters.categories.length === 0 || globalFilters.categories.includes(t.category);
+      const widgetCategoryCheck = widget.customFilters?.categories?.length > 0 ? 
+        widget.customFilters.categories.includes(t.category) : true;
+      
+      return inDateRange && passesAmountFilter && globalCategoryCheck && widgetCategoryCheck;
     });
 
     const monthlyData: { [key: string]: any } = transactions.reduce((acc: { [key: string]: any }, transaction) => {
       const month = new Date(transaction.date).toLocaleDateString('en', { month: 'short', year: '2-digit' });
       if (!acc[month]) {
-        acc[month] = { month, income: 0, expense: 0, transactions: 0, avgTransaction: 0, maxTransaction: 0, categories: new Set() };
+        acc[month] = { 
+          month, 
+          income: 0, 
+          expense: 0, 
+          transactions: 0, 
+          avgTransaction: 0, 
+          maxTransaction: 0, 
+          categories: new Set() 
+        };
       }
       acc[month][transaction.type] += transaction.amount;
       acc[month].transactions += 1;
@@ -422,7 +676,7 @@ export default function AdvancedCustomizableReports() {
       return acc;
     }, {});
 
-    Object.values(monthlyData).forEach(month => {
+    Object.values(monthlyData).forEach((month: any) => {
       month.avgTransaction = (month.income + month.expense) / month.transactions || 0;
       month.netIncome = month.income - month.expense;
       month.savingsRate = month.income > 0 ? ((month.income - month.expense) / month.income) * 100 : 0;
@@ -442,17 +696,18 @@ export default function AdvancedCustomizableReports() {
       savingsRate: totalIncome > 0 ? ((totalIncome - totalExpense) / totalIncome) * 100 : 0
     };
 
-    const monthly = Object.values(monthlyData).sort((a, b) => new Date(`1 ${a.month}`).getTime() - new Date(`1 ${b.month}`).getTime());
+    const monthly = Object.values(monthlyData).sort((a: any, b: any) => 
+      new Date(`1 ${a.month}`).getTime() - new Date(`1 ${b.month}`).getTime()
+    );
     
     if (widget.type === 'metric') {
       const formula = formulas.find(f => f.id === widget.formulaId);
       if (!formula) return { kpis, data: null };
       const value = evaluateFormula(formula.expression, kpis);
-      return { kpis, data: [{ name: formula.name, value }] };
+      return { kpis, data: [{ name: formula.name, value, formula: formula.expression }] };
     }
     
     return { kpis, data: monthly };
-
   }, [allTransactions, globalFilters, formulas]);
 
   const renderAdvancedChart = (widget: any) => {
@@ -460,22 +715,47 @@ export default function AdvancedCustomizableReports() {
     const theme = COLOR_THEMES[widget.colorTheme] || COLOR_THEMES.default;
 
     if (widget.type === 'metric') {
-      const formula = formulas.find(f => f.id === widget.formulaId);
-      if (!formula || !data) {
+      if (!data || data[0]?.value === null) {
         return (
           <div className="flex h-full items-center justify-center text-muted-foreground p-4 text-center">
-             {formulas.length > 0 ? 'Please select a formula for this metric card.' : 'Please create a formula first.'}
+            <div className="space-y-2">
+              <AlertTriangle className="h-8 w-8 mx-auto" />
+              <div>
+                {formulas.length === 0 ? (
+                  <>
+                    <p className="font-medium">No formulas available</p>
+                    <p className="text-sm">Create a formula first in the Formula Builder</p>
+                  </>
+                ) : !widget.formulaId ? (
+                  <>
+                    <p className="font-medium">No formula selected</p>
+                    <p className="text-sm">Please select a formula for this metric card</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="font-medium">Formula error</p>
+                    <p className="text-sm">Check your formula expression</p>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
         );
       }
-      const metric = data[0];
       
+      const metric = data[0];
       return (
-        <div className="p-6">
-          <p className="text-4xl font-bold font-code">
-            {metric.value !== null ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(metric.value) : 'Error'}
+        <div className="p-6 text-center">
+          <p className="text-4xl font-bold font-mono text-primary">
+            {new Intl.NumberFormat('en-US', { 
+              style: 'currency', 
+              currency: 'USD' 
+            }).format(metric.value)}
           </p>
-          <p className="text-sm text-muted-foreground">{metric.name}</p>
+          <p className="text-lg font-medium mt-2">{metric.name}</p>
+          <p className="text-sm text-muted-foreground mt-1 font-mono">
+            {metric.formula}
+          </p>
         </div>
       );
     }
@@ -483,7 +763,11 @@ export default function AdvancedCustomizableReports() {
     if (!data || data.length === 0) {
       return (
         <div className="flex h-full items-center justify-center text-muted-foreground">
-          No data available for this configuration.
+          <div className="text-center space-y-2">
+            <BarChart3 className="h-8 w-8 mx-auto" />
+            <p>No data available for this configuration.</p>
+            <p className="text-sm">Try adjusting your filters.</p>
+          </div>
         </div>
       );
     }
@@ -497,42 +781,32 @@ export default function AdvancedCustomizableReports() {
 
       const data = payload[0].payload;
       
-      const getTarget = (dataKey: string) => {
-        if (dataKey === 'income') return kpiTargets.monthlyIncome;
-        if (dataKey === 'expense') return kpiTargets.monthlyExpense;
-        if (dataKey === 'savingsRate') return kpiTargets.savingsRate;
-        return null;
-      }
-      
-      const isExpense = (dataKey: string) => dataKey === 'expense';
-
       return (
         <div className="bg-background p-3 border rounded-lg shadow-lg">
           <p className="font-medium">{label}</p>
-          {payload.map((entry: any, index: number) => {
-             const target = getTarget(entry.dataKey);
-             const isOverTarget = target && isExpense(entry.dataKey) && entry.value > target;
-             const isUnderTarget = target && !isExpense(entry.dataKey) && entry.value < target;
-
-             return (
-              <div key={index} className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }} />
-                  <span className="text-sm capitalize">
-                    {entry.name}: {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(entry.value)}
-                  </span>
-                </div>
-                {target && (
-                  <Badge variant={isOverTarget || isUnderTarget ? 'destructive' : 'default'} className="text-xs">
-                    {((entry.value / target) * 100).toFixed(0)}% of target
-                  </Badge>
-                )}
-              </div>
-            )
-          })}
+          {payload.map((entry: any, index: number) => (
+            <div key={index} className="flex items-center gap-2">
+              <div 
+                className="w-3 h-3 rounded-full" 
+                style={{ backgroundColor: entry.color }} 
+              />
+              <span className="text-sm capitalize">
+                {entry.name}: {new Intl.NumberFormat('en-US', { 
+                  style: 'currency', 
+                  currency: 'USD' 
+                }).format(entry.value)}
+              </span>
+            </div>
+          ))}
           {data.netIncome !== undefined && (
-             <p className={cn("text-xs text-muted-foreground mt-2 pt-2 border-t", data.netIncome > 0 ? 'text-emerald-500' : 'text-red-500')}>
-              Net: {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(data.netIncome)}
+             <p className={cn(
+               "text-xs text-muted-foreground mt-2 pt-2 border-t", 
+               data.netIncome > 0 ? 'text-emerald-500' : 'text-red-500'
+              )}>
+              Net: {new Intl.NumberFormat('en-US', { 
+                style: 'currency', 
+                currency: 'USD' 
+              }).format(data.netIncome)}
             </p>
           )}
         </div>
@@ -580,6 +854,12 @@ export default function AdvancedCustomizableReports() {
               <YAxis />
               <Tooltip content={<CustomTooltip />} />
               {widget.showLegend && <Legend />}
+              {widget.showTargetLines && (
+                <>
+                  <ReferenceLine y={kpiTargets.monthlyIncome} label={{ value: "Income Target", position: 'insideTopLeft' }} stroke="green" strokeDasharray="3 3" />
+                  <ReferenceLine y={kpiTargets.monthlyExpense} label={{ value: "Expense Target", position: 'insideTopLeft' }} stroke="red" strokeDasharray="3 3" />
+                </>
+              )}
               <Bar dataKey={widget.mainDataKey} fill={theme[0]} name={widget.mainDataKey.charAt(0).toUpperCase() + widget.mainDataKey.slice(1)} />
               {widget.comparisonKey && (
                 <Bar dataKey={widget.comparisonKey} fill={theme[1]} name={widget.comparisonKey.charAt(0).toUpperCase() + widget.comparisonKey.slice(1)} />
@@ -597,6 +877,12 @@ export default function AdvancedCustomizableReports() {
               <YAxis />
               <Tooltip content={<CustomTooltip />} />
               {widget.showLegend && <Legend />}
+              {widget.showTargetLines && (
+                <>
+                  <ReferenceLine y={kpiTargets.monthlyIncome} label={{ value: "Income Target", position: 'insideTopLeft' }} stroke="green" strokeDasharray="3 3" />
+                  <ReferenceLine y={kpiTargets.monthlyExpense} label={{ value: "Expense Target", position: 'insideTopLeft' }} stroke="red" strokeDasharray="3 3" />
+                </>
+              )}
               <Line type="monotone" dataKey={widget.mainDataKey} stroke={theme[0]} name={widget.mainDataKey.charAt(0).toUpperCase() + widget.mainDataKey.slice(1)} />
                {widget.comparisonKey && (
                 <Line type="monotone" dataKey={widget.comparisonKey} stroke={theme[1]} name={widget.comparisonKey.charAt(0).toUpperCase() + widget.comparisonKey.slice(1)} />
@@ -605,6 +891,47 @@ export default function AdvancedCustomizableReports() {
           </ResponsiveContainer>
         );
 
+      case 'area':
+        return (
+          <ResponsiveContainer width="100%" height={widget.height}>
+            <AreaChart data={data as any[]} {...chartProps}>
+              {widget.showGrid && <CartesianGrid strokeDasharray="3 3" />}
+              <XAxis dataKey="month" />
+              <YAxis />
+              <Tooltip content={<CustomTooltip />} />
+              {widget.showLegend && <Legend />}
+              <Area type="monotone" dataKey={widget.mainDataKey} stackId="1" stroke={theme[0]} fill={theme[0]} name={widget.mainDataKey.charAt(0).toUpperCase() + widget.mainDataKey.slice(1)} />
+              {widget.comparisonKey && (
+                <Area type="monotone" dataKey={widget.comparisonKey} stackId="1" stroke={theme[1]} fill={theme[1]} name={widget.comparisonKey.charAt(0).toUpperCase() + widget.comparisonKey.slice(1)} />
+              )}
+            </AreaChart>
+          </ResponsiveContainer>
+        );
+        
+      case 'pie':
+        const pieData = Object.values(data.reduce((acc, month: any) => {
+          month.categories.forEach((cat: string) => {
+            if (!acc[cat]) {
+              acc[cat] = { category: cat, amount: 0 };
+            }
+            acc[cat].amount += month.expense; // This is a simplification
+          });
+          return acc;
+        }, {} as any));
+
+        return (
+          <ResponsiveContainer width="100%" height={widget.height}>
+            <RechartsPieChart>
+              <Tooltip content={<CustomTooltip />} />
+              <Pie data={pieData as any[]} dataKey="amount" nameKey="category" cx="50%" cy="50%" outerRadius={80} fill={theme[0]}>
+                {(pieData as any[]).map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={theme[index % theme.length]} />
+                ))}
+              </Pie>
+              {widget.showLegend && <Legend />}
+            </RechartsPieChart>
+          </ResponsiveContainer>
+        );
 
       default:
         return <div>Chart type not implemented</div>;
@@ -637,6 +964,7 @@ export default function AdvancedCustomizableReports() {
       colorTheme: 'default',
       showLegend: true,
       showGrid: true,
+      showTargetLines: false,
       height: 300,
       aggregation: 'sum',
       timePeriod: 'monthly',
@@ -644,14 +972,22 @@ export default function AdvancedCustomizableReports() {
       annotations: [],
       formulaId: null,
     };
-    setWidgets([...widgets, newWidget]);
-  }, [widgets]);
+    const updatedWidgets = [...widgets, newWidget];
+    setWidgets(updatedWidgets);
+    saveSettingsToFirestore({ widgets: updatedWidgets });
+  }, [widgets, saveSettingsToFirestore]);
 
   const updateWidget = useCallback((widgetId: string, updates: any) => {
-    setWidgets(prevWidgets => 
-      prevWidgets.map(w => w.id === widgetId ? { ...w, ...updates } : w)
-    );
-  }, []);
+    const updatedWidgets = widgets.map(w => w.id === widgetId ? { ...w, ...updates } : w);
+    setWidgets(updatedWidgets);
+    saveSettingsToFirestore({ widgets: updatedWidgets });
+  }, [widgets, saveSettingsToFirestore]);
+  
+  const removeWidget = useCallback((widgetId: string) => {
+    const updatedWidgets = widgets.filter(w => w.id !== widgetId);
+    setWidgets(updatedWidgets);
+    saveSettingsToFirestore({ widgets: updatedWidgets });
+  }, [widgets, saveSettingsToFirestore]);
 
   const duplicateWidget = useCallback((widget: any) => {
     const newWidget = {
@@ -660,8 +996,10 @@ export default function AdvancedCustomizableReports() {
       title: `${widget.title} (Copy)`,
       position: widgets.length
     };
-    setWidgets([...widgets, newWidget]);
-  }, [widgets]);
+    const updatedWidgets = [...widgets, newWidget];
+    setWidgets(updatedWidgets);
+    saveSettingsToFirestore({ widgets: updatedWidgets });
+  }, [widgets, saveSettingsToFirestore]);
 
   const enabledWidgets = widgets.filter(w => w.enabled).sort((a, b) => a.position - b.position);
 
@@ -676,28 +1014,7 @@ export default function AdvancedCustomizableReports() {
     recurse(userCategories);
     return options;
   }, [userCategories]);
-
-  const handleAddFormula = async (name: string, expression: string) => {
-    if (name && expression) {
-      const newFormula = { id: `formula-${Date.now()}`, name, expression };
-      const updatedFormulas = [...formulas, newFormula];
-      setFormulas(updatedFormulas);
-      await saveFormulasToFirestore(updatedFormulas);
-      toast({ title: 'Formula Added', description: `"${name}" has been created.` });
-      return true;
-    }
-    toast({ variant: 'destructive', title: 'Invalid Formula', description: 'Name and expression cannot be empty.' });
-    return false;
-  };
-
-  const handleDeleteFormula = async (id: string) => {
-    const updatedFormulas = formulas.filter(f => f.id !== id);
-    setFormulas(updatedFormulas);
-    await saveFormulasToFirestore(updatedFormulas);
-    toast({ title: 'Formula Deleted' });
-  };
-
-
+  
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -720,12 +1037,6 @@ export default function AdvancedCustomizableReports() {
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>Formula Builder</DialogTitle>
-                <DialogDescription>
-                  Create, view, and manage your custom formulas. These can be used later to generate new data fields for your reports.
-                </DialogDescription>
-              </DialogHeader>
               <FormulaBuilderTabContent
                 formulas={formulas}
                 onAddFormula={handleAddFormula}
@@ -733,10 +1044,6 @@ export default function AdvancedCustomizableReports() {
               />
             </DialogContent>
           </Dialog>
-          <Button variant="outline" size="sm">
-            <Zap className="h-4 w-4 mr-2" />
-            Auto Insights
-          </Button>
           <Button
             variant={isCustomizing ? "default" : "outline"}
             onClick={() => setIsCustomizing(!isCustomizing)}
@@ -821,11 +1128,10 @@ export default function AdvancedCustomizableReports() {
           </CardHeader>
           <CardContent>
             <Tabs defaultValue="widgets" className="w-full">
-              <TabsList className="grid w-full grid-cols-5">
+              <TabsList className="grid w-full grid-cols-4">
                 <TabsTrigger value="widgets">Widgets</TabsTrigger>
                 <TabsTrigger value="templates">Templates</TabsTrigger>
-                <TabsTrigger value="styling">Styling</TabsTrigger>
-                <TabsTrigger value="formulas">Formulas</TabsTrigger>
+                <TabsTrigger value="layout">Layout</TabsTrigger>
                 <TabsTrigger value="export">Export</TabsTrigger>
               </TabsList>
               
@@ -891,6 +1197,14 @@ export default function AdvancedCustomizableReports() {
                           >
                             <Settings className="h-4 w-4" />
                           </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeWidget(widget.id)}
+                            title="Remove Widget"
+                          >
+                            <Trash2 className="h-4 w-4 text-red-500" />
+                          </Button>
                         </div>
                       </div>
                       
@@ -916,7 +1230,7 @@ export default function AdvancedCustomizableReports() {
                           <div>
                             <Label>Formula</Label>
                             <Select
-                              value={widget.formulaId}
+                              value={widget.formulaId || ""}
                               onValueChange={(value) => updateWidget(widget.id, { formulaId: value })}
                               disabled={formulas.length === 0}
                             >
@@ -945,13 +1259,13 @@ export default function AdvancedCustomizableReports() {
                                 <div>
                                     <Label>Comparison Data</Label>
                                     <Select 
-                                        value={widget.comparisonKey} 
+                                        value={widget.comparisonKey || 'none'} 
                                         onValueChange={(value) => updateWidget(widget.id, { comparisonKey: value === 'none' ? undefined : value })}
                                     >
                                         <SelectTrigger><SelectValue /></SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="none">None</SelectItem>
-                                            {dataFieldOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
+                                            {dataFieldOptions.map(opt => <SelectItem key={opt.value} value={opt.value} disabled={opt.value === widget.mainDataKey}>{opt.label}</SelectItem>)}
                                         </SelectContent>
                                     </Select>
                                 </div>
@@ -1020,12 +1334,12 @@ export default function AdvancedCustomizableReports() {
                 )}
               </TabsContent>
 
-              <TabsContent value="styling" className="space-y-4 pt-4">
+              <TabsContent value="layout" className="space-y-4 pt-4">
                 <div className="space-y-4">
-                  <h3 className="text-lg font-medium">Global Styling Options</h3>
+                  <h3 className="text-lg font-medium">Dashboard Layout</h3>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label>Dashboard Layout</Label>
+                      <Label>Layout Style</Label>
                       <div className="flex gap-2 mt-2">
                         <Button
                           variant={layout === 'grid' ? 'default' : 'outline'}
@@ -1045,33 +1359,8 @@ export default function AdvancedCustomizableReports() {
                         </Button>
                       </div>
                     </div>
-                    <div>
-                      <Label>Color Palette Preview</Label>
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        {Object.entries(COLOR_THEMES).map(([name, colors]) => (
-                          <div key={name} className="flex">
-                            {colors.map((color, i) => (
-                              <div
-                                key={i}
-                                className="w-4 h-4 rounded-sm"
-                                style={{ backgroundColor: color }}
-                                title={name}
-                              />
-                            ))}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
                   </div>
                 </div>
-              </TabsContent>
-              
-              <TabsContent value="formulas" className="space-y-4 pt-4">
-                <FormulaBuilderTabContent
-                  formulas={formulas}
-                  onAddFormula={handleAddFormula}
-                  onDeleteFormula={handleDeleteFormula}
-                />
               </TabsContent>
               
               <TabsContent value="export" className="space-y-4 pt-4">
@@ -1086,14 +1375,6 @@ export default function AdvancedCustomizableReports() {
                       <Download className="h-4 w-4 mr-2" />
                       Export Data (CSV)
                     </Button>
-                    <Button variant="outline">
-                      <Palette className="h-4 w-4 mr-2" />
-                      Export as Image
-                    </Button>
-                    <Button variant="outline">
-                      <Settings className="h-4 w-4 mr-2" />
-                      Export Configuration
-                    </Button>
                   </div>
                 </div>
               </TabsContent>
@@ -1102,7 +1383,7 @@ export default function AdvancedCustomizableReports() {
         </Card>
       )}
 
-      <div ref={useRef(null)}>
+      <div>
         {enabledWidgets.length === 0 ? (
           <Card className="flex flex-col items-center justify-center py-12">
             <CardHeader className="text-center">
@@ -1162,80 +1443,8 @@ export default function AdvancedCustomizableReports() {
         onUpdate={updateWidget}
         onClose={() => setSelectedWidget(null)}
         allCategoryOptions={allCategoryOptions}
-      >
-        {/* Advanced content goes here */}
-      </AdvancedWidgetSettingsDialog>
-
+      />
     </div>
   );
 }
-
-
-function FormulaBuilderTabContent({ formulas, onAddFormula, onDeleteFormula }: {
-  formulas: { id: string; name: string; expression: string }[];
-  onAddFormula: (name: string, expression: string) => Promise<boolean>;
-  onDeleteFormula: (id: string) => void;
-}) {
-  const [name, setName] = useState("");
-  const [expression, setExpression] = useState("");
-
-  const handleAdd = async () => {
-    if(await onAddFormula(name, expression)) {
-      setName("");
-      setExpression("");
-    }
-  };
-
-  return (
-    <div>
-      <h3 className="text-lg font-medium">Custom Calculations</h3>
-      <p className="text-sm text-muted-foreground mb-4">
-        Create custom metrics using formulas (e.g., "totalIncome - totalExpense"). Available variables: totalIncome, totalExpense, transactionCount, avgTransactionAmount, netIncome, savingsRate.
-      </p>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="space-y-3">
-          <div>
-            <Label htmlFor="formula-name">Formula Name</Label>
-            <Input id="formula-name" placeholder="e.g. Net Income" value={name} onChange={e => setName(e.target.value)} />
-          </div>
-          <div>
-            <Label htmlFor="formula-expression">Formula Expression</Label>
-            <Textarea
-              id="formula-expression"
-              placeholder="e.g. totalIncome - totalExpense"
-              rows={3}
-              value={expression}
-              onChange={e => setExpression(e.target.value)}
-            />
-          </div>
-          <Button size="sm" onClick={handleAdd}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Formula
-          </Button>
-        </div>
-        <div className="space-y-2">
-          <h4 className="font-medium">Existing Formulas</h4>
-          {formulas.length === 0 ? (
-            <p className="text-sm text-muted-foreground p-4 border rounded-md text-center">No formulas created yet.</p>
-          ) : (
-            <div className="border rounded-md max-h-60 overflow-y-auto">
-              {formulas.map(formula => (
-                <div key={formula.id} className="flex items-center justify-between p-2 border-b last:border-b-0">
-                  <div>
-                    <p className="font-semibold">{formula.name}</p>
-                    <p className="text-xs text-muted-foreground font-mono">{formula.expression}</p>
-                  </div>
-                  <Button variant="ghost" size="icon" onClick={() => onDeleteFormula(formula.id)}>
-                    <Trash2 className="h-4 w-4 text-red-500" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
     
