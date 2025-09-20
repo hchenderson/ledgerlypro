@@ -1,9 +1,8 @@
-
 // Enhanced customization components for the reports system
 
 import React, { useState, useEffect } from 'react';
 import { 
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
   Button, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
   Tabs, TabsContent, TabsList, TabsTrigger, Switch, Slider, Textarea,
   Card, CardContent, CardHeader, CardTitle, Badge, Separator
@@ -57,6 +56,9 @@ export function AdvancedWidgetCustomizer({
             <Settings className="h-5 w-5" />
             Customize: {localWidget.title}
           </DialogTitle>
+          <DialogDescription>
+            Modify the widget's appearance, data source, and filters.
+          </DialogDescription>
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
