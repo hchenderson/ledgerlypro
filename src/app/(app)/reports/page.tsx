@@ -252,6 +252,22 @@ function KpiTargetsDialog({
   );
 }
 
+const DraggableItem = ({ value }: { value: string }) => {
+    const handleDragStart = (e: React.DragEvent<HTMLDivElement>) => {
+      e.dataTransfer.setData('text/plain', value);
+    };
+
+    return (
+      <div
+        draggable
+        onDragStart={handleDragStart}
+        className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs truncate cursor-move"
+      >
+        {value}
+      </div>
+    );
+};
+
 function FormulaBuilderTabContent({ 
   formulas, 
   onAddFormula, 
@@ -266,6 +282,9 @@ function FormulaBuilderTabContent({
   const [name, setName] = useState("");
   const [expression, setExpression] = useState("");
   const [testResult, setTestResult] = useState<number | null>(null);
+  const expressionRef = useRef<HTMLTextAreaElement>(null);
+
+  const mathSymbols = ['+', '-', '*', '/', '(', ')'];
 
   const sampleContext = useMemo(() => {
     const context: Record<string, number> = {
@@ -302,12 +321,34 @@ function FormulaBuilderTabContent({
     }
   };
 
+    const handleDrop = (e: React.DragEvent<HTMLTextAreaElement>) => {
+        e.preventDefault();
+        const data = e.dataTransfer.getData('text/plain');
+        const textarea = expressionRef.current;
+        if (textarea) {
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            const newExpression = expression.substring(0, start) + data + expression.substring(end);
+            setExpression(newExpression);
+            
+            // Move cursor to after the inserted text
+            setTimeout(() => {
+                textarea.selectionStart = textarea.selectionEnd = start + data.length;
+                textarea.focus();
+            }, 0);
+        }
+    };
+
+    const handleDragOver = (e: React.DragEvent<HTMLTextAreaElement>) => {
+        e.preventDefault();
+    };
+
   return (
     <div className="space-y-6">
       <div>
         <h3 className="text-lg font-medium">Custom Calculations</h3>
         <p className="text-sm text-muted-foreground">
-          Create custom metrics using formulas.
+          Create custom metrics using formulas. Drag items into the expression box.
         </p>
       </div>
 
@@ -327,10 +368,13 @@ function FormulaBuilderTabContent({
             <Label htmlFor="formula-expression">Formula Expression</Label>
             <Textarea
               id="formula-expression"
+              ref={expressionRef}
               placeholder="e.g., totalIncome - totalExpense"
               rows={3}
               value={expression}
               onChange={e => setExpression(e.target.value)}
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
             />
           </div>
 
@@ -390,14 +434,21 @@ function FormulaBuilderTabContent({
           )}
         </div>
       </div>
+      
+       <div className="space-y-2">
+          <h4 className="font-medium">Operators</h4>
+          <div className="flex flex-wrap gap-2">
+            {mathSymbols.map(symbol => (
+              <DraggableItem key={symbol} value={symbol} />
+            ))}
+          </div>
+        </div>
 
-      <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
-        <h4 className="font-medium text-blue-900 mb-2">Available Variables:</h4>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm max-h-32 overflow-y-auto">
+      <div className="space-y-2">
+        <h4 className="font-medium">Available Variables</h4>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-32 overflow-y-auto border p-2 rounded-md">
           {availableVariables.map(variable => (
-            <code key={variable} className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs truncate">
-              {variable}
-            </code>
+            <DraggableItem key={variable} value={variable} />
           ))}
         </div>
       </div>
@@ -1126,7 +1177,7 @@ function AdvancedReports() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Advanced Reports</h2>
+          
           <p className="text-muted-foreground">Create powerful, interactive financial dashboards</p>
         </div>
         <div className="flex flex-wrap gap-2">
