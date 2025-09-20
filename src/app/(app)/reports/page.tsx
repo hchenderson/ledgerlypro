@@ -4,7 +4,7 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { useUserData } from '@/hooks/use-user-data';
 import { useAuth } from '@/hooks/use-auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { 
   Card, 
@@ -105,7 +105,8 @@ const CHART_TYPES = {
   area: { name: 'Area Chart', icon: BarChart3, allowsComparison: false },
   pie: { name: 'Pie Chart', icon: PieChartIcon, allowsComparison: false },
   scatter: { name: 'Scatter Plot', icon: BarChart2, allowsComparison: false },
-  composed: { name: 'Combined Chart', icon: BarChart2, allowsComparison: true }
+  composed: { name: 'Combined Chart', icon: BarChart2, allowsComparison: true },
+  metric: { name: 'Metric Card', icon: Calculator, allowsComparison: false },
 };
 
 const COLOR_THEMES: Record<string, string[]> = {
@@ -201,6 +202,29 @@ function KpiTargetsDialog({ targets, onSave, children }: {
   );
 }
 
+// Simple and safe formula evaluator
+const evaluateFormula = (expression: string, context: Record<string, number>): number | null => {
+  try {
+    const variableNames = Object.keys(context);
+    const variableValues = Object.values(context);
+    
+    // Sanitize expression to only allow variable names, numbers, and basic operators
+    const sanitizedExpression = expression.replace(/[^a-zA-Z0-9_+\-*/(). ]/g, '');
+    if(sanitizedExpression !== expression) {
+        console.warn("Formula expression contained invalid characters and was sanitized.");
+    }
+    
+    const func = new Function(...variableNames, `return ${sanitizedExpression}`);
+    const result = func(...variableValues);
+
+    return typeof result === 'number' && isFinite(result) ? result : null;
+  } catch (error) {
+    console.error("Formula evaluation error:", error);
+    return null;
+  }
+};
+
+
 export default function AdvancedCustomizableReports() {
   const { allTransactions, categories: userCategories } = useUserData();
   const { user } = useAuth();
@@ -224,7 +248,8 @@ export default function AdvancedCustomizableReports() {
       timePeriod: 'monthly',
       comparison: null,
       customFilters: [],
-      annotations: []
+      annotations: [],
+      formulaId: null,
     }
   ]);
   
@@ -357,6 +382,9 @@ export default function AdvancedCustomizableReports() {
       }
       categoryTrends[t.category][month] = (categoryTrends[t.category][month] || 0) + t.amount;
     });
+    
+    const totalIncome = filtered.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+    const totalExpense = filtered.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
 
     return {
       monthly: Object.values(monthlyData).sort((a, b) => new Date(`1 ${a.month}`).getTime() - new Date(`1 ${b.month}`).getTime()),
@@ -367,10 +395,12 @@ export default function AdvancedCustomizableReports() {
         avgMonthly: Object.values(months).reduce((sum, val) => sum + val, 0) / Object.keys(months).length
       })),
       kpis: {
-        totalIncome: filtered.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0),
-        totalExpense: filtered.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0),
+        totalIncome,
+        totalExpense,
         transactionCount: filtered.length,
-        avgTransactionAmount: filtered.reduce((sum, t) => sum + t.amount, 0) / (filtered.length || 1)
+        avgTransactionAmount: filtered.reduce((sum, t) => sum + t.amount, 0) / (filtered.length || 1),
+        netIncome: totalIncome - totalExpense,
+        savingsRate: totalIncome > 0 ? ((totalIncome - totalExpense) / totalIncome) * 100 : 0
       }
     };
   }, [globalFilters, allTransactions]);
@@ -378,6 +408,27 @@ export default function AdvancedCustomizableReports() {
   const renderAdvancedChart = (widget: any) => {
     const theme = COLOR_THEMES[widget.colorTheme] || COLOR_THEMES.default;
     const data = processedData[widget.dataKey === 'category' ? 'categories' : 'monthly' as keyof typeof processedData];
+    
+    if (widget.type === 'metric') {
+      const formula = formulas.find(f => f.id === widget.formulaId);
+      if (!formula) {
+        return (
+          <div className="flex h-[300px] items-center justify-center text-muted-foreground p-4 text-center">
+            Please select a formula for this metric card in the customize panel.
+          </div>
+        );
+      }
+      const value = evaluateFormula(formula.expression, processedData.kpis);
+      
+      return (
+        <div className="p-6">
+          <p className="text-4xl font-bold font-code">
+            {value !== null ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value) : 'Error'}
+          </p>
+          <p className="text-sm text-muted-foreground">{formula.name}</p>
+        </div>
+      );
+    }
 
     if (!data || data.length === 0) {
       return (
@@ -509,7 +560,8 @@ export default function AdvancedCustomizableReports() {
       timePeriod: 'monthly',
       comparison: null,
       customFilters: [],
-      annotations: []
+      annotations: [],
+      formulaId: null,
     };
     setWidgets([...widgets, newWidget]);
   }, [widgets]);
@@ -761,7 +813,7 @@ export default function AdvancedCustomizableReports() {
                           <Label>Chart Type</Label>
                           <Select
                             value={widget.type}
-                            onValueChange={(value) => updateWidget(widget.id, { type: value })}
+                            onValueChange={(value) => updateWidget(widget.id, { type: value, formulaId: value === 'metric' ? (formulas[0]?.id || null) : null })}
                           >
                             <SelectTrigger>
                               <SelectValue />
@@ -773,75 +825,99 @@ export default function AdvancedCustomizableReports() {
                             </SelectContent>
                           </Select>
                         </div>
-                        
-                        <div>
-                          <Label>Color Theme</Label>
-                          <Select
-                            value={widget.colorTheme}
-                            onValueChange={(value) => updateWidget(widget.id, { colorTheme: value })}
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {Object.keys(COLOR_THEMES).map(theme => (
-                                <SelectItem key={theme} value={theme}>
-                                  {theme.charAt(0).toUpperCase() + theme.slice(1)}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        
-                        <div>
-                          <Label>Aggregation</Label>
-                          <Select
-                            value={widget.aggregation}
-                            onValueChange={(value) => updateWidget(widget.id, { aggregation: value })}
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {Object.entries(DATA_AGGREGATIONS).map(([key, value]) => (
-                                <SelectItem key={key} value={key}>{value}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        
-                        <div>
-                          <Label>Height (px)</Label>
-                          <Input
-                            type="number"
-                            value={widget.height}
-                            onChange={(e) => updateWidget(widget.id, { 
-                              height: parseInt(e.target.value) || 300 
-                            })}
-                            min={200}
-                            max={800}
-                          />
-                        </div>
+
+                         {widget.type === 'metric' ? (
+                          <div>
+                            <Label>Formula</Label>
+                            <Select
+                              value={widget.formulaId}
+                              onValueChange={(value) => updateWidget(widget.id, { formulaId: value })}
+                              disabled={formulas.length === 0}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select a formula" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {formulas.map(f => (
+                                  <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        ) : (
+                          <>
+                            <div>
+                              <Label>Color Theme</Label>
+                              <Select
+                                value={widget.colorTheme}
+                                onValueChange={(value) => updateWidget(widget.id, { colorTheme: value })}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {Object.keys(COLOR_THEMES).map(theme => (
+                                    <SelectItem key={theme} value={theme}>
+                                      {theme.charAt(0).toUpperCase() + theme.slice(1)}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            
+                            <div>
+                              <Label>Aggregation</Label>
+                              <Select
+                                value={widget.aggregation}
+                                onValueChange={(value) => updateWidget(widget.id, { aggregation: value })}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {Object.entries(DATA_AGGREGATIONS).map(([key, value]) => (
+                                    <SelectItem key={key} value={key}>{value}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            
+                            <div>
+                              <Label>Height (px)</Label>
+                              <Input
+                                type="number"
+                                value={widget.height}
+                                onChange={(e) => updateWidget(widget.id, { 
+                                  height: parseInt(e.target.value) || 300 
+                                })}
+                                min={200}
+                                max={800}
+                              />
+                            </div>
+                          </>
+                        )}
                       </div>
                       
-                      <div className="mt-4 space-y-2">
-                        <div className="flex items-center space-x-4">
-                          <div className="flex items-center space-x-2">
-                            <Switch
-                              checked={widget.showLegend}
-                              onCheckedChange={(checked) => updateWidget(widget.id, { showLegend: !!checked })}
-                            />
-                            <Label>Show Legend</Label>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <Switch
-                              checked={widget.showGrid}
-                              onCheckedChange={(checked) => updateWidget(widget.id, { showGrid: !!checked })}
-                            />
-                            <Label>Show Grid</Label>
+                      {widget.type !== 'metric' && (
+                        <div className="mt-4 space-y-2">
+                          <div className="flex items-center space-x-4">
+                            <div className="flex items-center space-x-2">
+                              <Switch
+                                checked={widget.showLegend}
+                                onCheckedChange={(checked) => updateWidget(widget.id, { showLegend: !!checked })}
+                              />
+                              <Label>Show Legend</Label>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              <Switch
+                                checked={widget.showGrid}
+                                onCheckedChange={(checked) => updateWidget(widget.id, { showGrid: !!checked })}
+                              />
+                              <Label>Show Grid</Label>
+                            </div>
                           </div>
                         </div>
-                      </div>
+                      )}
                     </Card>
                   ))}
                 </div>
@@ -860,7 +936,7 @@ export default function AdvancedCustomizableReports() {
                                     <Button size="sm" variant="outline" onClick={() => handleLoadReport(report)}>
                                         <UploadCloud className="h-4 w-4 mr-2" /> Load
                                     </Button>
-                                    <Button size="sm" variant="destructive" outline onClick={() => handleDeleteReport(report.id)}>
+                                    <Button size="sm" variant="destructive" onClick={() => handleDeleteReport(report.id)}>
                                         <Trash2 className="h-4 w-4" />
                                     </Button>
                                 </div>
@@ -983,9 +1059,12 @@ export default function AdvancedCustomizableReports() {
               return (
                 <Card 
                   key={widget.id} 
-                  className={`${sizeClasses[widget.size as keyof typeof sizeClasses]} transition-all duration-200 hover:shadow-md`}
+                  className={cn(
+                    `${sizeClasses[widget.size as keyof typeof sizeClasses]} transition-all duration-200 hover:shadow-md`,
+                    widget.type === 'metric' && 'flex flex-col justify-center items-center'
+                  )}
                 >
-                  <CardHeader className="pb-2">
+                  <CardHeader className={cn("pb-2", widget.type === 'metric' && 'hidden')}>
                     <CardTitle className="flex items-center justify-between">
                       <span>{widget.title}</span>
                       <div className="flex items-center gap-2">
@@ -995,7 +1074,7 @@ export default function AdvancedCustomizableReports() {
                       </div>
                     </CardTitle>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className={cn(widget.type !== 'metric' && 'p-0')}>
                     {renderAdvancedChart(widget)}
                   </CardContent>
                 </Card>
@@ -1028,7 +1107,7 @@ function FormulaBuilderTabContent({ formulas, onAddFormula, onDeleteFormula }: {
     <div>
       <h3 className="text-lg font-medium">Custom Calculations</h3>
       <p className="text-sm text-muted-foreground mb-4">
-        Create custom metrics using formulas (e.g., "income - expense", "savings_rate * 100")
+        Create custom metrics using formulas (e.g., "totalIncome - totalExpense"). Available variables: totalIncome, totalExpense, transactionCount, avgTransactionAmount, netIncome, savingsRate.
       </p>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="space-y-3">
@@ -1040,7 +1119,7 @@ function FormulaBuilderTabContent({ formulas, onAddFormula, onDeleteFormula }: {
             <Label htmlFor="formula-expression">Formula Expression</Label>
             <Textarea
               id="formula-expression"
-              placeholder="e.g. income - expense"
+              placeholder="e.g. totalIncome - totalExpense"
               rows={3}
               value={expression}
               onChange={e => setExpression(e.target.value)}
@@ -1075,5 +1154,6 @@ function FormulaBuilderTabContent({ formulas, onAddFormula, onDeleteFormula }: {
     </div>
   );
 }
+
 
 
