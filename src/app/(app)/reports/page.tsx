@@ -138,7 +138,7 @@ const COLOR_THEMES: Record<string, string[]> = {
   professional: ['#2C3E50', '#34495E', '#7F8C8D', '#95A5A6', '#BDC3C7'],
   warm: ['#E74C3C', '#E67E22', '#F39C12', '#F1C40F', '#D4AC0D'],
   cool: ['#3498DB', '#2980B9', '#1ABC9C', '#16A085', '#27AE60'],
-  pastel: ['#FFB6C1', '#98FB98', '#87CEEB', '#DDA0DD', '#F0E68C']
+  pastel: ['#FFB6C1', '#98FB98', '#87CEEB', '#DDA0DD', '#F0E68C'],
 };
 
 const sanitizeForVariableName = (name: string) => {
@@ -473,11 +473,10 @@ function BasicReports() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Reports</h2>
-          <p className="text-muted-foreground">
-            A summary of your financial activity.
-          </p>
+        <div className="flex-1">
+            <p className="text-muted-foreground">
+                A summary of your financial activity.
+            </p>
         </div>
         <div className="flex flex-wrap gap-2">
             <Select onValueChange={handlePresetChange}>
@@ -765,8 +764,7 @@ function AdvancedReports() {
 
       if (dataKeys.includes(transaction.type)) {
         acc[month][transaction.type] = (acc[month][transaction.type] || 0) + transaction.amount;
-      }
-      if (dataKeys.includes(transaction.category)) {
+      } else if (dataKeys.includes(transaction.category)) {
         acc[month][transaction.category] = (acc[month][transaction.category] || 0) + transaction.amount;
       }
       return acc;
@@ -1543,3 +1541,5 @@ export default function ReportsPage() {
         </Tabs>
     )
 }
+
+    
