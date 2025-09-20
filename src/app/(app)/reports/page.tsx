@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
@@ -93,7 +94,7 @@ import {
 } from 'recharts';
 import type { Category, SubCategory, Transaction } from '@/types';
 import { DateRange } from 'react-day-picker';
-import { subDays, format, startOfMonth, endOfMonth } from 'date-fns';
+import { subDays, format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
@@ -152,9 +153,10 @@ const evaluateFormula = (expression: string, context: Record<string, number>): n
     const variableValues = Object.values(context);
     
     // Sanitize expression to only allow variable names, numbers, and basic operators
-    const sanitizedExpression = expression.replace(/[^a-zA-Z0-9_+\-*/(). ]/g, '');
-    if(sanitizedExpression !== expression) {
-        console.warn("Formula expression contained invalid characters and was sanitized.");
+    const sanitizedExpression = expression.replace(/[^a-zA-Z0-9_+\-*/(). ]/g, '').trim();
+
+    if (sanitizedExpression === '') {
+        return null;
     }
     
     const func = new Function(...variableNames, `return ${sanitizedExpression}`);
@@ -412,24 +414,34 @@ function BasicReports() {
 
   const handlePresetChange = (value: string) => {
     const now = new Date();
+    let fromDate: Date;
+    let toDate: Date;
     switch (value) {
       case 'this-month':
-        setDateRange({ from: startOfMonth(now), to: endOfMonth(now) });
+        fromDate = startOfMonth(now);
+        toDate = endOfMonth(now);
         break;
       case 'last-month':
-        const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        setDateRange({ from: startOfMonth(lastMonth), to: endOfMonth(lastMonth) });
+        const lastMonth = subMonths(now, 1);
+        fromDate = startOfMonth(lastMonth);
+        toDate = endOfMonth(lastMonth);
         break;
       case 'this-year':
-         setDateRange({ from: new Date(now.getFullYear(), 0, 1), to: new Date(now.getFullYear(), 11, 31) });
+         fromDate = new Date(now.getFullYear(), 0, 1);
+         toDate = new Date(now.getFullYear(), 11, 31);
         break;
       case 'last-30':
-         setDateRange({ from: new Date(new Date().setDate(now.getDate() - 30)), to: new Date() });
+         fromDate = subDays(now, 29);
+         toDate = now;
         break;
       case 'last-90':
-        setDateRange({ from: new Date(new Date().setDate(now.getDate() - 90)), to: new Date() });
+        fromDate = subDays(now, 89);
+        toDate = now;
         break;
+      default:
+        return;
     }
+    setDateRange({ from: fromDate, to: toDate });
   };
 
   const filteredTransactions = useMemo(() => {
@@ -460,7 +472,7 @@ function BasicReports() {
     expenseCategories.forEach(mainCat => {
         categoryMap.set(mainCat.name, mainCat.name);
         const recurse = (subCats: SubCategory[], parentName: string) => {
-            subCats.forEach(sub => {
+            (subCats || []).forEach(sub => {
                 categoryMap.set(sub.name, parentName);
                 if (sub.subCategories) {
                     recurse(sub.subCategories, parentName);
@@ -493,9 +505,7 @@ function BasicReports() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
         <div className="flex-1">
-            <p className="text-muted-foreground">
-                A summary of your financial activity.
-            </p>
+           
         </div>
         <div className="flex flex-wrap gap-2">
             <Select onValueChange={handlePresetChange}>
@@ -746,7 +756,7 @@ function AdvancedReports() {
     
     const categoryVars = new Set<string>();
     const recurse = (cats: (Category | SubCategory)[]) => {
-      cats.forEach(c => {
+      (cats || []).forEach(c => {
         categoryVars.add(sanitizeForVariableName(c.name));
         if (c.subCategories) recurse(c.subCategories);
       });
@@ -772,7 +782,7 @@ function AdvancedReports() {
     
     const dataKeys = (widget.dataCategories || []).length > 0
         ? widget.dataCategories
-        : [widget.mainDataKey, widget.comparisonKey].filter(Boolean);
+        : ['income', 'expense'].filter(Boolean);
 
     const monthlyData: { [key: string]: any } = transactions.reduce((acc: { [key:string]: any }, transaction) => {
       const month = new Date(transaction.date).toLocaleDateString('en', { month: 'short', year: '2-digit' });
@@ -1085,7 +1095,7 @@ function AdvancedReports() {
   const allCategoryOptions = useMemo(() => {
     const options: { value: string; label: string }[] = [];
     const recurse = (cats: (Category | SubCategory)[]) => {
-      cats.forEach(c => {
+      (cats || []).forEach(c => {
         options.push({ value: c.name, label: c.name });
         if(c.subCategories) recurse(c.subCategories);
       });
@@ -1105,7 +1115,7 @@ function AdvancedReports() {
     ];
     userCategories.forEach(cat => {
       fields.push({ value: cat.name, label: `Category: ${cat.name}` });
-      cat.subCategories?.forEach(sub => {
+      (cat.subCategories || []).forEach(sub => {
         fields.push({ value: sub.name, label: `  - ${sub.name}` });
       });
     });
@@ -1544,6 +1554,9 @@ export default function ReportsPage() {
             <div className="flex items-center justify-between">
                 <div>
                     <h2 className="text-2xl font-bold tracking-tight">Reports</h2>
+                     <p className="text-muted-foreground">
+                        A summary of your financial activity.
+                    </p>
                 </div>
                 <TabsList>
                     <TabsTrigger value="basic">Basic</TabsTrigger>
@@ -1559,5 +1572,3 @@ export default function ReportsPage() {
         </Tabs>
     )
 }
-
-    
