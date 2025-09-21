@@ -142,7 +142,7 @@ const evaluateFormula = (expression: string, context: Record<string, number>): n
   
   // Sanitize expression to only allow variable names, numbers, and basic operators
   const sanitizedExpression = expression.replace(/[^a-zA-Z0-9_+\-*/(). ]/g, '').trim();
-
+  
   if (sanitizedExpression === '') {
       return null;
   }

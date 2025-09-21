@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/chart"
 
 interface CategoryPieChartProps {
-    data: { category: string; amount: number; fill: string }[];
+    data: { category: string; amount: number }[];
 }
 
 const CustomTooltip = ({ active, payload }: any) => {
@@ -34,7 +34,7 @@ const CustomTooltip = ({ active, payload }: any) => {
   return null;
 };
 
-const CustomLabelWithLine = ({ cx, cy, midAngle, outerRadius, name, percent, fill }: any) => {
+const CustomLabelWithLine = ({ cx, cy, midAngle, outerRadius, name, percent }: any) => {
     const RADIAN = Math.PI / 180;
     const radius = outerRadius + 30;
     const x = cx + radius * Math.cos(-midAngle * RADIAN);
@@ -72,26 +72,37 @@ const CustomLabelWithLine = ({ cx, cy, midAngle, outerRadius, name, percent, fil
           dominantBaseline="central"
           className="text-xs"
         >
-          {(percent * 100).toFixed(0)}%
+          {`(${(percent * 100).toFixed(0)}%)`}
         </text>
       </g>
     );
   };
 
+const COLORS = [
+  "hsl(var(--chart-1))",
+  "hsl(var(--chart-2))",
+  "hsl(var(--chart-3))",
+  "hsl(var(--chart-4))",
+  "hsl(var(--chart-5))",
+  '#8884d8', '#82ca9d', '#ffc658', '#ff7c7c', '#8dd1e1',
+  '#a4de6c', '#d0ed57', '#ffc658'
+];
 
 export function CategoryPieChart({ data }: CategoryPieChartProps) {
   const chartConfig = React.useMemo(() => {
-    return data.reduce((acc, cur) => {
-      acc[cur.category] = { label: cur.category, color: cur.fill };
+    return data.reduce((acc, cur, index) => {
+      acc[cur.category] = { label: cur.category, color: COLORS[index % COLORS.length] };
       return acc;
     }, {} as ChartConfig);
   }, [data]);
+  
+  const totalAmount = data.reduce((sum, d) => sum + d.amount, 0);
 
-  const processedData = data.map(item => ({
+  const processedData = data.map((item, index) => ({
     name: item.category,
     value: item.amount,
-    fill: item.fill,
-    percent: item.amount / data.reduce((sum, d) => sum + d.amount, 0)
+    fill: COLORS[index % COLORS.length],
+    percent: item.amount / totalAmount
   }));
     
   if (data.length === 0) {
@@ -108,7 +119,7 @@ export function CategoryPieChart({ data }: CategoryPieChartProps) {
       className="mx-auto aspect-square h-[350px]"
     >
       <ResponsiveContainer width="100%" height="100%">
-        <PieChart margin={{ top: 20, right: 40, bottom: 20, left: 40 }}>
+        <PieChart margin={{ top: 40, right: 40, bottom: 40, left: 40 }}>
           <Tooltip content={<CustomTooltip />} />
           <Pie
             data={processedData}
