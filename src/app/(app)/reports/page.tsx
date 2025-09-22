@@ -220,7 +220,7 @@ const safeEvaluateExpression = (expression: string, context: Record<string, numb
   
   try {
     const parser = new Parser();
-    const expr = parser.parse(expression);
+    const expr = parser.parse(expression.trim());
     const identifiers = expr.variables();
     const unknown = identifiers.filter(id => !(id in context));
 
@@ -369,7 +369,7 @@ function FormulaBuilderTabContent({
     };
     availableVariables.forEach(v => {
       if (!context[v]) {
-        context[v] = Math.random() * 1000;
+        context[v] = Math.floor(Math.random() * 1000);
       }
     });
     return context;
@@ -378,7 +378,7 @@ function FormulaBuilderTabContent({
   const handleAdd = async () => {
     if (name.trim() && expression.trim()) {
       try {
-        safeEvaluateExpression(expression.trim(), sampleContext);
+        safeEvaluateExpression(expression, sampleContext);
       } catch (e: any) {
         toast({
           variant: 'destructive',
@@ -402,7 +402,7 @@ function FormulaBuilderTabContent({
       setTestError("");
       setTestResult(null);
       try {
-        const result = safeEvaluateExpression(expression.trim(), sampleContext);
+        const result = safeEvaluateExpression(expression, sampleContext);
         if (result === null) {
           setTestError("Formula evaluated to a non-number.");
         } else {
