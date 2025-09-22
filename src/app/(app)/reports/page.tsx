@@ -207,20 +207,29 @@ interface KPITargets {
 const sanitizeForVariableName = (name: string): string => {
   if (!name) return '';
   return name
-    .replace(/[^a-zA-Z0-9_]/g, '_') // Replace non-alphanumeric with underscore
+    .replace(/[^a-zA-Z0-9_]/g, '_') // Replace non-alphanumeric with underscore, but allow underscores
     .replace(/^[0-9]/, '_$&')      // Prefix with underscore if starts with number
     .replace(/__+/g, '_')           // Replace multiple underscores with single
     .replace(/^_|_$/g, '');         // Remove leading/trailing underscores
 };
 
 const safeEvaluateExpression = (expression: string, context: Record<string, number | string | boolean>): number | null => {
-  if (!expression || typeof expression !== 'string' || expression.trim() === '') {
+  const rawExpression = expression || '';
+  const cleanedExpression = rawExpression
+    .replace(/[\u200B-\u200D\uFEFF]/g, '') // remove zero-width chars
+    .trim();
+
+  if (cleanedExpression === '') {
     return null;
   }
   
+  if (/[\+\-\*\/]$/.test(cleanedExpression)) {
+    throw new Error('Formula cannot end with an operator');
+  }
+
   try {
     const parser = new Parser();
-    const expr = parser.parse(expression.trim());
+    const expr = parser.parse(cleanedExpression);
     const identifiers = expr.variables();
     const unknown = identifiers.filter(id => !(id in context));
 
@@ -232,9 +241,9 @@ const safeEvaluateExpression = (expression: string, context: Record<string, numb
 
     return typeof result === 'number' && isFinite(result) ? result : null;
   } catch (error: any) {
-    console.error("Formula evaluation error:", error);
-    // Rethrow with just the message for UI display
-    throw new Error(error.message || "Invalid formula syntax.");
+    console.error("Formula evaluation error:", { cleanedExpression, error });
+    // Rethrow with a more user-friendly message
+    throw new Error(`Invalid formula: ${error.message}`);
   }
 };
 
