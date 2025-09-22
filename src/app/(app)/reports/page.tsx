@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
@@ -506,33 +505,25 @@ function BasicReports() {
   }, [filteredTransactions]);
 
   const expenseByCategory = useMemo(() => {
-    const categoryMap = new Map<string, string>(); // sub-category name -> main category name
-
     const findMainCategory = (subCategoryName: string, allCategories: Category[]): string => {
-        for (const mainCat of allCategories) {
-            if (mainCat.name === subCategoryName) return mainCat.name;
+      for (const mainCat of allCategories) {
+        if (mainCat.name === subCategoryName) return mainCat.name;
 
-            const recurse = (currentSub: SubCategory): string | null => {
-                if (currentSub.name === subCategoryName) return mainCat.name;
-                if (currentSub.subCategories) {
-                    for(const sub of currentSub.subCategories) {
-                        const found = recurse(sub);
-                        if (found) return found;
-                    }
-                }
-                return null;
+        const recurse = (currentSubs: SubCategory[] | undefined): string | null => {
+            if (!currentSubs) return null;
+            for (const sub of currentSubs) {
+                if (sub.name === subCategoryName) return mainCat.name;
+                const found = recurse(sub.subCategories);
+                if (found) return found;
             }
-
-            if (mainCat.subCategories) {
-                for (const sub of mainCat.subCategories) {
-                    const found = recurse(sub);
-                    if (found) return found;
-                }
-            }
+            return null;
         }
-        return 'Uncategorized';
+        const found = recurse(mainCat.subCategories);
+        if (found) return found;
+      }
+      return 'Uncategorized';
     };
-
+  
     const data: { [key: string]: number } = {};
     filteredTransactions
       .filter(t => t.type === 'expense')
@@ -540,7 +531,7 @@ function BasicReports() {
         const mainCategory = findMainCategory(t.category, categories);
         data[mainCategory] = (data[mainCategory] || 0) + t.amount;
       });
-    
+  
     return Object.entries(data)
       .map(([name, amount], index) => ({
         category: name,
@@ -665,7 +656,6 @@ function AdvancedReports() {
       to: new Date()
     } as DateRange | undefined,
     categories: [] as string[],
-    amountRange: [0, 10000] as [number, number],
     tags: [] as string[]
   });
 
@@ -817,13 +807,12 @@ function AdvancedReports() {
       const transactionDate = new Date(t.date);
       const inDateRange = globalFilters.dateRange?.from && globalFilters.dateRange?.to ?
         (transactionDate >= globalFilters.dateRange.from && transactionDate <= globalFilters.dateRange.to) : true;
-      const passesAmountFilter = t.amount >= globalFilters.amountRange[0] && t.amount <= globalFilters.amountRange[1];
       
       const globalCategoryCheck = globalFilters.categories.length === 0 || globalFilters.categories.includes(t.category);
       const widgetCategoryCheck = widget.customFilters?.categories?.length > 0 ? 
         widget.customFilters.categories.includes(t.category) : true;
       
-      return inDateRange && passesAmountFilter && globalCategoryCheck && widgetCategoryCheck;
+      return inDateRange && globalCategoryCheck && widgetCategoryCheck;
     });
     
     const dataKeys = (widget.dataCategories || []).length > 0
@@ -1262,21 +1251,6 @@ function AdvancedReports() {
                   </PopoverContent>
                 </Popover>
             </div>
-            <div className="space-y-2">
-              <Label>Amount Range</Label>
-              <Slider
-                value={globalFilters.amountRange}
-                onValueChange={(value) => setGlobalFilters(prev => ({ ...prev, amountRange: value as [number, number] }))}
-                min={0}
-                max={10000}
-                step={100}
-                className="w-full"
-              />
-              <div className="flex justify-between text-sm text-muted-foreground">
-                <span>${globalFilters.amountRange[0]}</span>
-                <span>${globalFilters.amountRange[1]}</span>
-              </div>
-            </div>
           </div>
         </CardContent>
       </Card>
@@ -1618,5 +1592,3 @@ export default function ReportsPage() {
         </Tabs>
     )
 }
-
-    
