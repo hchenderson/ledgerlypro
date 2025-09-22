@@ -112,6 +112,42 @@ const PRESET_RANGES = [
   { label: 'Last 90 Days', value: 'last-90' },
 ];
 
+class ChartErrorBoundary extends React.Component<
+  { children: React.ReactNode; fallback?: React.ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('Chart error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback || (
+        <div className="flex h-full items-center justify-center text-muted-foreground p-4 text-center">
+          <div className="space-y-2">
+            <AlertTriangle className="h-8 w-8 mx-auto" />
+            <div>
+              <p className="font-medium">Chart Error</p>
+              <p className="text-sm">Unable to render this chart</p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 const CHART_TYPES = {
   bar: { name: 'Bar Chart', icon: BarChart3, allowsComparison: true },
   line: { name: 'Line Chart', icon: TrendingUp, allowsComparison: true },
@@ -131,16 +167,55 @@ const COLOR_THEMES: Record<string, string[]> = {
   pastel: ['#FFB6C1', '#98FB98', '#87CEEB', '#DDA0DD', '#F0E68C'],
 };
 
-const sanitizeForVariableName = (name: string) => {
-  return name.replace(/[^a-zA-Z0-9_]/g, '_');
+interface Widget {
+  id: string;
+  title: string;
+  type: 'bar' | 'line' | 'area' | 'pie' | 'scatter' | 'composed' | 'metric';
+  size: 'small' | 'medium' | 'large';
+  mainDataKey?: string;
+  comparisonKey?: string;
+  dataCategories: string[];
+  enabled: boolean;
+  position: number;
+  colorTheme: keyof typeof COLOR_THEMES;
+  showLegend: boolean;
+  showGrid: boolean;
+  showTargetLines: boolean;
+  height: number;
+  customFilters: {
+    categories: string[];
+  };
+  formulaId: string | null;
+}
+
+interface Formula {
+  id: string;
+  name: string;
+  expression: string;
+}
+
+interface KPITargets {
+  monthlyIncome: number;
+  monthlyExpense: number;
+  savingsRate: number;
+}
+
+
+const sanitizeForVariableName = (name: string): string => {
+  if (!name) return '';
+  return name
+    .replace(/[^a-zA-Z0-9_]/g, '_') // Replace non-alphanumeric with underscore
+    .replace(/^[0-9]/, '_$&')      // Prefix with underscore if starts with number
+    .replace(/__+/g, '_')           // Replace multiple underscores with single
+    .replace(/^_|_$/g, '');         // Remove leading/trailing underscores
 };
 
-// Simple and safe formula evaluator
+// Safe formula evaluator
 const evaluateFormula = (expression: string, context: Record<string, number>): number | null => {
   if (!expression || typeof expression !== 'string' || expression.trim() === '') {
     return null;
   }
-  
+
   const variableNames = Object.keys(context);
   const variableValues = Object.values(context);
   
@@ -168,7 +243,7 @@ function KpiTargetsDialog({
   onSave, 
   children 
 }: {
-  targets: { monthlyIncome: number; monthlyExpense: number; savingsRate: number; };
+  targets: KPITargets;
   onSave: (newTargets: any) => void;
   children: React.ReactNode;
 }) {
@@ -268,14 +343,16 @@ function FormulaBuilderTabContent({
   onDeleteFormula,
   availableVariables
 }: {
-  formulas: { id: string; name: string; expression: string }[];
+  formulas: Formula[];
   onAddFormula: (name: string, expression: string) => Promise<boolean>;
   onDeleteFormula: (id: string) => void;
   availableVariables: string[];
 }) {
+  const { toast } = useToast();
   const [name, setName] = useState("");
   const [expression, setExpression] = useState("");
   const [testResult, setTestResult] = useState<number | null>(null);
+  const [testError, setTestError] = useState<string>("");
   const expressionRef = useRef<HTMLTextAreaElement>(null);
 
   const mathSymbols = ['+', '-', '*', '/', '(', ')'];
@@ -291,7 +368,7 @@ function FormulaBuilderTabContent({
     };
     availableVariables.forEach(v => {
       if (!context[v]) {
-        context[v] = Math.random() * 1000; // Assign random value for testing
+        context[v] = Math.random() * 1000;
       }
     });
     return context;
@@ -299,19 +376,36 @@ function FormulaBuilderTabContent({
 
   const handleAdd = async () => {
     if (name.trim() && expression.trim()) {
+      const testResultValue = evaluateFormula(expression.trim(), sampleContext);
+      if (testResultValue === null) {
+        toast({
+          variant: 'destructive',
+          title: 'Invalid Formula',
+          description: 'Please check your formula syntax and try again.'
+        });
+        return;
+      }
       const success = await onAddFormula(name.trim(), expression.trim());
       if (success) {
         setName("");
         setExpression("");
         setTestResult(null);
+        setTestError("");
       }
     }
   };
 
   const testFormula = () => {
     if (expression.trim()) {
-      const result = evaluateFormula(expression, sampleContext);
-      setTestResult(result);
+      setTestError("");
+      const result = evaluateFormula(expression.trim(), sampleContext);
+      if (result === null) {
+        setTestError("Formula evaluation failed. Check console for details.");
+        setTestResult(null);
+      } else {
+        setTestResult(result);
+        setTestError("");
+      }
     }
   };
 
@@ -394,6 +488,12 @@ function FormulaBuilderTabContent({
               <p className="text-xs text-muted-foreground">
                 Using sample data.
               </p>
+            </div>
+          )}
+          {testError && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-md">
+              <p className="text-sm font-medium text-red-900">Error:</p>
+              <p className="text-sm text-red-700">{testError}</p>
             </div>
           )}
         </div>
@@ -627,7 +727,7 @@ function AdvancedReports() {
   const [startingBalance, setStartingBalance] = useState(0);
   const { toast } = useToast();
 
-  const [widgets, setWidgets] = useState<any[]>([
+  const [widgets, setWidgets] = useState<Widget[]>([
     {
       id: 'income-expense',
       title: 'Income vs Expense',
@@ -665,13 +765,13 @@ function AdvancedReports() {
     tags: [] as string[]
   });
 
-  const [kpiTargets, setKpiTargets] = useState({
+  const [kpiTargets, setKpiTargets] = useState<KPITargets>({
     monthlyIncome: 5000,
     monthlyExpense: 3000,
     savingsRate: 40
   });
 
-  const [formulas, setFormulas] = useState<{ id: string; name: string; expression: string }[]>([]);
+  const [formulas, setFormulas] = useState<Formula[]>([]);
   const [isFormulaBuilderOpen, setIsFormulaBuilderOpen] = useState(false);
   
   // Load settings from Firebase
@@ -755,7 +855,7 @@ function AdvancedReports() {
 
   const handleAddFormula = async (name: string, expression: string): Promise<boolean> => {
     if (name.trim() && expression.trim()) {
-      const newFormula = { 
+      const newFormula: Formula = { 
         id: `formula-${Date.now()}`, 
         name: name.trim(), 
         expression: expression.trim() 
@@ -823,7 +923,7 @@ function AdvancedReports() {
     
     const dataKeys = (widget.dataCategories || []).length > 0
         ? widget.dataCategories
-        : ['income', 'expense'].filter(Boolean);
+        : [widget.mainDataKey, widget.comparisonKey].filter(Boolean);
 
     const monthlyData: { [key: string]: any } = transactions.reduce((acc: { [key:string]: any }, transaction) => {
       const month = new Date(transaction.date).toLocaleDateString('en', { month: 'short', year: '2-digit' });
@@ -832,11 +932,12 @@ function AdvancedReports() {
         dataKeys.forEach(key => (acc[month][key] = 0));
       }
 
-      if (dataKeys.includes(transaction.type)) {
-        acc[month][transaction.type] = (acc[month][transaction.type] || 0) + transaction.amount;
-      } else if (dataKeys.includes(transaction.category)) {
-        acc[month][transaction.category] = (acc[month][transaction.category] || 0) + transaction.amount;
-      }
+      dataKeys.forEach(key => {
+        if (key === transaction.type || key === transaction.category) {
+          acc[month][key] = (acc[month][key] || 0) + transaction.amount;
+        }
+      });
+  
       return acc;
     }, {});
 
@@ -845,11 +946,15 @@ function AdvancedReports() {
     const totalExpense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
 
     const categoryTotals = transactions.reduce((acc, t) => {
-      const sanitizedName = sanitizeForVariableName(t.category);
-      if (!acc[sanitizedName]) {
-        acc[sanitizedName] = 0;
+      if (t.category) {
+        const sanitizedName = sanitizeForVariableName(t.category);
+        if (sanitizedName) {
+            if (!acc[sanitizedName]) {
+                acc[sanitizedName] = 0;
+            }
+            acc[sanitizedName] += t.amount;
+        }
       }
-      acc[sanitizedName] += t.amount;
       return acc;
     }, {} as Record<string, number>);
 
@@ -878,213 +983,219 @@ function AdvancedReports() {
   }, [allTransactions, globalFilters, formulas]);
 
   const renderAdvancedChart = (widget: any) => {
-    const { data, kpis, dataKeys } = getWidgetData(widget);
-    const theme = COLOR_THEMES[widget.colorTheme] || COLOR_THEMES.default;
+    return (
+      <ChartErrorBoundary>
+        {(() => {
+          const { data, kpis, dataKeys } = getWidgetData(widget);
+          const theme = COLOR_THEMES[widget.colorTheme] || COLOR_THEMES.default;
 
-    if (widget.type === 'metric') {
-      if (!data || data[0]?.value === null) {
-        return (
-          <div className="flex h-full items-center justify-center text-muted-foreground p-4 text-center">
-            <div className="space-y-2">
-              <AlertTriangle className="h-8 w-8 mx-auto" />
-              <div>
-                {formulas.length === 0 ? (
-                  <>
-                    <p className="font-medium">No formulas available</p>
-                    <p className="text-sm">Create a formula first in the Formula Builder</p>
-                  </>
-                ) : !widget.formulaId ? (
-                  <>
-                    <p className="font-medium">No formula selected</p>
-                    <p className="text-sm">Please select a formula for this metric card</p>
-                  </>
-                ) : (
-                  <>
-                    <p className="font-medium">Formula error</p>
-                    <p className="text-sm">Check your formula expression</p>
-                  </>
-                )}
+          if (widget.type === 'metric') {
+            if (!data || data[0]?.value === null) {
+              return (
+                <div className="flex h-full items-center justify-center text-muted-foreground p-4 text-center">
+                  <div className="space-y-2">
+                    <AlertTriangle className="h-8 w-8 mx-auto" />
+                    <div>
+                      {formulas.length === 0 ? (
+                        <>
+                          <p className="font-medium">No formulas available</p>
+                          <p className="text-sm">Create a formula first in the Formula Builder</p>
+                        </>
+                      ) : !widget.formulaId ? (
+                        <>
+                          <p className="font-medium">No formula selected</p>
+                          <p className="text-sm">Please select a formula for this metric card</p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="font-medium">Formula error</p>
+                          <p className="text-sm">Check your formula expression</p>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+            
+            const metric = data[0];
+            return (
+              <div className="p-6 text-center">
+                <p className="text-4xl font-bold font-mono text-primary">
+                  {new Intl.NumberFormat('en-US', { 
+                    style: 'currency', 
+                    currency: 'USD' 
+                  }).format(metric.value)}
+                </p>
+                <p className="text-lg font-medium mt-2">{metric.name}</p>
+                <p className="text-sm text-muted-foreground mt-1 font-mono">
+                  {metric.formula}
+                </p>
               </div>
-            </div>
-          </div>
-        );
-      }
-      
-      const metric = data[0];
-      return (
-        <div className="p-6 text-center">
-          <p className="text-4xl font-bold font-mono text-primary">
-            {new Intl.NumberFormat('en-US', { 
-              style: 'currency', 
-              currency: 'USD' 
-            }).format(metric.value)}
-          </p>
-          <p className="text-lg font-medium mt-2">{metric.name}</p>
-          <p className="text-sm text-muted-foreground mt-1 font-mono">
-            {metric.formula}
-          </p>
-        </div>
-      );
-    }
+            );
+          }
 
-    if (!data || data.length === 0) {
-      return (
-        <div className="flex h-full items-center justify-center text-muted-foreground">
-          <div className="text-center space-y-2">
-            <BarChart3 className="h-8 w-8 mx-auto" />
-            <p>No data available for this configuration.</p>
-            <p className="text-sm">Try adjusting your filters.</p>
-          </div>
-        </div>
-      );
-    }
+          if (!data || data.length === 0) {
+            return (
+              <div className="flex h-full items-center justify-center text-muted-foreground">
+                <div className="text-center space-y-2">
+                  <BarChart3 className="h-8 w-8 mx-auto" />
+                  <p>No data available for this configuration.</p>
+                  <p className="text-sm">Try adjusting your filters.</p>
+                </div>
+              </div>
+            );
+          }
 
-    const chartProps = {
-      margin: { top: 20, right: 30, left: 20, bottom: 20 }
-    };
+          const chartProps = {
+            margin: { top: 20, right: 30, left: 20, bottom: 20 }
+          };
 
-    const CustomTooltip = ({ active, payload, label }: any) => {
-      if (!active || !payload || !payload.length) return null;
-      
-      return (
-        <div className="bg-background p-3 border rounded-lg shadow-lg">
-          <p className="font-medium">{label}</p>
-          {payload.map((entry: any, index: number) => (
-            <div key={index} className="flex items-center gap-2">
-              <div 
-                className="w-3 h-3 rounded-full" 
-                style={{ backgroundColor: entry.color }} 
-              />
-              <span className="text-sm capitalize">
-                {entry.name}: {new Intl.NumberFormat('en-US', { 
-                  style: 'currency', 
-                  currency: 'USD' 
-                }).format(entry.value)}
-              </span>
-            </div>
-          ))}
-        </div>
-      );
-    };
-
-    switch (widget.type) {
-      case 'composed':
-        return (
-          <ResponsiveContainer width="100%" height={widget.height}>
-            <ComposedChart data={data as any[]} {...chartProps}>
-              {widget.showGrid && <CartesianGrid strokeDasharray="3 3" />}
-              <XAxis dataKey="month" />
-              <YAxis yAxisId="left" />
-              <YAxis yAxisId="right" orientation="right" />
-              <Tooltip content={<CustomTooltip />} />
-              {widget.showLegend && <Legend />}
-              {dataKeys?.map((key, index) => (
-                <Bar key={key} yAxisId="left" dataKey={key} fill={theme[index % theme.length]} name={key} />
-              ))}
-            </ComposedChart>
-          </ResponsiveContainer>
-        );
-
-      case 'scatter':
-        return (
-          <ResponsiveContainer width="100%" height={widget.height}>
-            <ScatterChart data={data as any[]} {...chartProps}>
-              {widget.showGrid && <CartesianGrid strokeDasharray="3 3" />}
-              <XAxis dataKey="income" name="Income" />
-              <YAxis dataKey="expense" name="Expense" />
-              <Tooltip cursor={{ strokeDasharray: '3 3' }} content={<CustomTooltip />} />
-              <Scatter name="Data" data={data as any[]} fill={theme[0]} />
-            </ScatterChart>
-          </ResponsiveContainer>
-        );
-
-      case 'bar':
-        return (
-          <ResponsiveContainer width="100%" height={widget.height}>
-            <BarChart data={data as any[]} {...chartProps}>
-              {widget.showGrid && <CartesianGrid strokeDasharray="3 3" />}
-              <XAxis dataKey="month" />
-              <YAxis />
-              <Tooltip content={<CustomTooltip />} />
-              {widget.showLegend && <Legend />}
-              {widget.showTargetLines && (
-                <>
-                  <ReferenceLine y={kpiTargets.monthlyIncome} label={{ value: "Income Target", position: 'insideTopLeft' }} stroke="green" strokeDasharray="3 3" />
-                  <ReferenceLine y={kpiTargets.monthlyExpense} label={{ value: "Expense Target", position: 'insideTopLeft' }} stroke="red" strokeDasharray="3 3" />
-                </>
-              )}
-               {dataKeys?.map((key, index) => (
-                <Bar key={key} dataKey={key} fill={theme[index % theme.length]} name={key} />
-              ))}
-            </BarChart>
-          </ResponsiveContainer>
-        );
-        
-      case 'line':
-        return (
-          <ResponsiveContainer width="100%" height={widget.height}>
-            <LineChart data={data as any[]} {...chartProps}>
-              {widget.showGrid && <CartesianGrid strokeDasharray="3 3" />}
-              <XAxis dataKey="month" />
-              <YAxis />
-              <Tooltip content={<CustomTooltip />} />
-              {widget.showLegend && <Legend />}
-              {widget.showTargetLines && (
-                <>
-                  <ReferenceLine y={kpiTargets.monthlyIncome} label={{ value: "Income Target", position: 'insideTopLeft' }} stroke="green" strokeDasharray="3 3" />
-                  <ReferenceLine y={kpiTargets.monthlyExpense} label={{ value: "Expense Target", position: 'insideTopLeft' }} stroke="red" strokeDasharray="3 3" />
-                </>
-              )}
-              {dataKeys?.map((key, index) => (
-                <Line key={key} type="monotone" dataKey={key} stroke={theme[index % theme.length]} name={key} />
-              ))}
-            </LineChart>
-          </ResponsiveContainer>
-        );
-
-      case 'area':
-        return (
-          <ResponsiveContainer width="100%" height={widget.height}>
-            <AreaChart data={data as any[]} {...chartProps}>
-              {widget.showGrid && <CartesianGrid strokeDasharray="3 3" />}
-              <XAxis dataKey="month" />
-              <YAxis />
-              <Tooltip content={<CustomTooltip />} />
-              {widget.showLegend && <Legend />}
-              {dataKeys?.map((key, index) => (
-                 <Area key={key} type="monotone" dataKey={key} stackId="1" stroke={theme[index % theme.length]} fill={theme[index % theme.length]} name={key} />
-              ))}
-            </AreaChart>
-          </ResponsiveContainer>
-        );
-        
-      case 'pie':
-        const pieData = dataKeys.map(key => ({
-            name: key,
-            value: data.reduce((acc, month) => acc + (month[key] || 0), 0)
-        })).filter(d => d.value > 0);
-
-        return (
-          <ResponsiveContainer width="100%" height={widget.height}>
-            <RechartsPieChart>
-              <Tooltip content={<CustomTooltip />} />
-              <Pie data={pieData as any[]} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} fill={theme[0]}>
-                {(pieData as any[]).map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={theme[index % theme.length]} />
+          const CustomTooltip = ({ active, payload, label }: any) => {
+            if (!active || !payload || !payload.length) return null;
+            
+            return (
+              <div className="bg-background p-3 border rounded-lg shadow-lg">
+                <p className="font-medium">{label}</p>
+                {payload.map((entry: any, index: number) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <div 
+                      className="w-3 h-3 rounded-full" 
+                      style={{ backgroundColor: entry.color }} 
+                    />
+                    <span className="text-sm capitalize">
+                      {entry.name}: {new Intl.NumberFormat('en-US', { 
+                        style: 'currency', 
+                        currency: 'USD' 
+                      }).format(entry.value)}
+                    </span>
+                  </div>
                 ))}
-              </Pie>
-              {widget.showLegend && <Legend />}
-            </RechartsPieChart>
-          </ResponsiveContainer>
-        );
+              </div>
+            );
+          };
 
-      default:
-        return <div>Chart type not implemented</div>;
-    }
+          switch (widget.type) {
+            case 'composed':
+              return (
+                <ResponsiveContainer width="100%" height={widget.height}>
+                  <ComposedChart data={data as any[]} {...chartProps}>
+                    {widget.showGrid && <CartesianGrid strokeDasharray="3 3" />}
+                    <XAxis dataKey="month" />
+                    <YAxis yAxisId="left" />
+                    <YAxis yAxisId="right" orientation="right" />
+                    <Tooltip content={<CustomTooltip />} />
+                    {widget.showLegend && <Legend />}
+                    {dataKeys?.map((key: string, index: number) => (
+                      <Bar key={key} yAxisId="left" dataKey={key} fill={theme[index % theme.length]} name={key} />
+                    ))}
+                  </ComposedChart>
+                </ResponsiveContainer>
+              );
+
+            case 'scatter':
+              return (
+                <ResponsiveContainer width="100%" height={widget.height}>
+                  <ScatterChart data={data as any[]} {...chartProps}>
+                    {widget.showGrid && <CartesianGrid strokeDasharray="3 3" />}
+                    <XAxis dataKey="income" name="Income" />
+                    <YAxis dataKey="expense" name="Expense" />
+                    <Tooltip cursor={{ strokeDasharray: '3 3' }} content={<CustomTooltip />} />
+                    <Scatter name="Data" data={data as any[]} fill={theme[0]} />
+                  </ScatterChart>
+                </ResponsiveContainer>
+              );
+
+            case 'bar':
+              return (
+                <ResponsiveContainer width="100%" height={widget.height}>
+                  <BarChart data={data as any[]} {...chartProps}>
+                    {widget.showGrid && <CartesianGrid strokeDasharray="3 3" />}
+                    <XAxis dataKey="month" />
+                    <YAxis />
+                    <Tooltip content={<CustomTooltip />} />
+                    {widget.showLegend && <Legend />}
+                    {widget.showTargetLines && (
+                      <>
+                        <ReferenceLine y={kpiTargets.monthlyIncome} label={{ value: "Income Target", position: 'insideTopLeft' }} stroke="green" strokeDasharray="3 3" />
+                        <ReferenceLine y={kpiTargets.monthlyExpense} label={{ value: "Expense Target", position: 'insideTopLeft' }} stroke="red" strokeDasharray="3 3" />
+                      </>
+                    )}
+                    {dataKeys?.map((key: string, index: number) => (
+                      <Bar key={key} dataKey={key} fill={theme[index % theme.length]} name={key} />
+                    ))}
+                  </BarChart>
+                </ResponsiveContainer>
+              );
+              
+            case 'line':
+              return (
+                <ResponsiveContainer width="100%" height={widget.height}>
+                  <LineChart data={data as any[]} {...chartProps}>
+                    {widget.showGrid && <CartesianGrid strokeDasharray="3 3" />}
+                    <XAxis dataKey="month" />
+                    <YAxis />
+                    <Tooltip content={<CustomTooltip />} />
+                    {widget.showLegend && <Legend />}
+                    {widget.showTargetLines && (
+                      <>
+                        <ReferenceLine y={kpiTargets.monthlyIncome} label={{ value: "Income Target", position: 'insideTopLeft' }} stroke="green" strokeDasharray="3 3" />
+                        <ReferenceLine y={kpiTargets.monthlyExpense} label={{ value: "Expense Target", position: 'insideTopLeft' }} stroke="red" strokeDasharray="3 3" />
+                      </>
+                    )}
+                    {dataKeys?.map((key: string, index: number) => (
+                      <Line key={key} type="monotone" dataKey={key} stroke={theme[index % theme.length]} name={key} />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              );
+
+            case 'area':
+              return (
+                <ResponsiveContainer width="100%" height={widget.height}>
+                  <AreaChart data={data as any[]} {...chartProps}>
+                    {widget.showGrid && <CartesianGrid strokeDasharray="3 3" />}
+                    <XAxis dataKey="month" />
+                    <YAxis />
+                    <Tooltip content={<CustomTooltip />} />
+                    {widget.showLegend && <Legend />}
+                    {dataKeys?.map((key: string, index: number) => (
+                      <Area key={key} type="monotone" dataKey={key} stackId="1" stroke={theme[index % theme.length]} fill={theme[index % theme.length]} name={key} />
+                    ))}
+                  </AreaChart>
+                </ResponsiveContainer>
+              );
+              
+            case 'pie':
+              const pieData = dataKeys.map(key => ({
+                  name: key,
+                  value: data.reduce((acc: number, month: any) => acc + (month[key] || 0), 0)
+              })).filter(d => d.value > 0);
+
+              return (
+                <ResponsiveContainer width="100%" height={widget.height}>
+                  <RechartsPieChart>
+                    <Tooltip content={<CustomTooltip />} />
+                    <Pie data={pieData as any[]} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} fill={theme[0]}>
+                      {(pieData as any[]).map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={theme[index % theme.length]} />
+                      ))}
+                    </Pie>
+                    {widget.showLegend && <Legend />}
+                  </RechartsPieChart>
+                </ResponsiveContainer>
+              );
+
+            default:
+              return <div>Chart type not implemented</div>;
+          }
+        })()}
+      </ChartErrorBoundary>
+    )
   };
 
   const addWidget = useCallback(() => {
-    const newWidget = {
+    const newWidget: Widget = {
       id: `widget-${Date.now()}`,
       title: 'New Widget',
       type: 'bar',
@@ -1257,6 +1368,7 @@ function AdvancedReports() {
                   </PopoverContent>
                 </Popover>
             </div>
+            
           </div>
         </CardContent>
       </Card>
