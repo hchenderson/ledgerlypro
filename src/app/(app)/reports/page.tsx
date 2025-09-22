@@ -934,8 +934,10 @@ function AdvancedReports() {
       }
 
       dataKeys.forEach(key => {
-        if (key === transaction.type || key === transaction.category) {
-          acc[month][key] = (acc[month][key] || 0) + transaction.amount;
+        if (key === transaction.type) {
+            acc[month][key] = (acc[month][key] || 0) + transaction.amount;
+        } else if (key === transaction.category) {
+            acc[month][key] = (acc[month][key] || 0) + transaction.amount;
         }
       });
   
