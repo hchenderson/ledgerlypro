@@ -11,6 +11,7 @@ import {
   CommandItem,
   CommandInput
 } from "@/components/ui/command";
+import { cn } from "@/lib/utils";
 
 type Option = Record<"value" | "label", string>;
 
@@ -50,8 +51,14 @@ export function MultiSelect({ options, selected, onChange, className, placeholde
   const selectables = options.filter(option => !selected.includes(option.value));
 
   return (
-    <Command onKeyDown={handleKeyDown} className="overflow-visible bg-transparent">
-      <div className="group border border-input px-3 py-2 text-sm ring-offset-background rounded-md focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
+    <Command onKeyDown={handleKeyDown} className={cn("overflow-visible bg-transparent", className)}>
+      <div 
+        className="group border border-input px-3 py-2 text-sm ring-offset-background rounded-md focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2"
+        onClick={() => {
+            setOpen(true);
+            inputRef.current?.focus();
+        }}
+      >
         <div className="flex gap-1 flex-wrap">
           {selected.map((optionValue) => {
             const option = options.find(o => o.value === optionValue);
@@ -83,7 +90,7 @@ export function MultiSelect({ options, selected, onChange, className, placeholde
             onBlur={() => setOpen(false)}
             onFocus={() => setOpen(true)}
             placeholder={placeholder}
-            className="ml-2 bg-transparent outline-none placeholder:text-muted-foreground flex-1"
+            className="ml-2 bg-transparent outline-none placeholder:text-muted-foreground flex-1 h-full p-0"
           />
         </div>
       </div>
