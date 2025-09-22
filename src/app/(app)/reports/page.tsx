@@ -216,16 +216,18 @@ const evaluateFormula = (expression: string, context: Record<string, number>): n
   if (!expression || typeof expression !== 'string' || expression.trim() === '') {
     return null;
   }
-  
-  const variableNames = Object.keys(context);
-  const variableValues = Object.values(context);
-  
+
   try {
+    const variableDeclarations = Object.keys(context)
+      .map(key => `const ${key} = ${context[key]};`)
+      .join('\n');
+    
     const functionBody = `
       "use strict";
-      ${variableNames.map(name => `const ${name} = ${context[name]};`).join('\n')}
+      ${variableDeclarations}
       return (${expression});
     `;
+
     const func = new Function(functionBody);
     const result = func();
 
