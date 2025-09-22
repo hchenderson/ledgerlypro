@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
@@ -544,6 +545,9 @@ function FormulaBuilderTabContent({
 
       <div className="space-y-2">
         <h4 className="font-medium">Available Variables</h4>
+        <p className="text-xs text-muted-foreground">
+          The "Test Formula" button uses these sample values. Actual reports use your live data.
+        </p>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-32 overflow-y-auto border p-2 rounded-md">
           {availableVariables.map(variable => (
             <DraggableItem key={variable} value={variable} />
