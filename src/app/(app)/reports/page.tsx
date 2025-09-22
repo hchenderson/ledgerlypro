@@ -6,6 +6,7 @@ import { useUserData } from '@/hooks/use-user-data';
 import { useAuth } from '@/hooks/use-auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { Parser } from 'expr-eval';
 import { 
   Card, 
   CardContent, 
@@ -211,30 +212,28 @@ const sanitizeForVariableName = (name: string): string => {
     .replace(/^_|_$/g, '');         // Remove leading/trailing underscores
 };
 
-// Safe formula evaluator
-const evaluateFormula = (expression: string, context: Record<string, number>): number | null => {
+const safeEvaluateExpression = (expression: string, context: Record<string, number | string | boolean>): number | null => {
   if (!expression || typeof expression !== 'string' || expression.trim() === '') {
     return null;
   }
-
+  
   try {
-    const variableDeclarations = Object.keys(context)
-      .map(key => `const ${key} = ${context[key]};`)
-      .join('\n');
-    
-    const functionBody = `
-      "use strict";
-      ${variableDeclarations}
-      return (${expression});
-    `;
+    const parser = new Parser();
+    const expr = parser.parse(expression);
+    const identifiers = expr.variables();
+    const unknown = identifiers.filter(id => !(id in context));
 
-    const func = new Function(functionBody);
-    const result = func();
+    if (unknown.length > 0) {
+      throw new Error(`Unknown variable(s): ${unknown.join(', ')}`);
+    }
+
+    const result = expr.evaluate(context);
 
     return typeof result === 'number' && isFinite(result) ? result : null;
-  } catch (error) {
-    console.error("Error evaluating formula:", error);
-    return null;
+  } catch (error: any) {
+    console.error("Formula evaluation error:", error);
+    // Rethrow with just the message for UI display
+    throw new Error(error.message || "Invalid formula syntax.");
   }
 };
 
@@ -377,12 +376,13 @@ function FormulaBuilderTabContent({
 
   const handleAdd = async () => {
     if (name.trim() && expression.trim()) {
-      const testResultValue = evaluateFormula(expression.trim(), sampleContext);
-      if (testResultValue === null) {
+      try {
+        safeEvaluateExpression(expression.trim(), sampleContext);
+      } catch (e: any) {
         toast({
           variant: 'destructive',
           title: 'Invalid Formula',
-          description: 'Please check your formula syntax and try again.'
+          description: e.message || "Please check your formula syntax and try again.",
         });
         return;
       }
@@ -399,13 +399,16 @@ function FormulaBuilderTabContent({
   const testFormula = () => {
     if (expression.trim()) {
       setTestError("");
-      const result = evaluateFormula(expression.trim(), sampleContext);
-      if (result === null) {
-        setTestError("Formula evaluation failed. Check console for details.");
-        setTestResult(null);
-      } else {
-        setTestResult(result);
-        setTestError("");
+      setTestResult(null);
+      try {
+        const result = safeEvaluateExpression(expression.trim(), sampleContext);
+        if (result === null) {
+          setTestError("Formula evaluated to a non-number.");
+        } else {
+          setTestResult(result);
+        }
+      } catch (error: any) {
+        setTestError(error.message || "Formula evaluation failed. Check console for details.");
       }
     }
   };
@@ -978,8 +981,12 @@ function AdvancedReports() {
     if (widget.type === 'metric') {
       const formula = formulas.find(f => f.id === widget.formulaId);
       if (!formula) return { kpis, data: null };
-      const value = evaluateFormula(formula.expression, kpis);
-      return { kpis, data: [{ name: formula.name, value, formula: formula.expression }] };
+      try {
+        const value = safeEvaluateExpression(formula.expression, kpis);
+        return { kpis, data: [{ name: formula.name, value, formula: formula.expression }] };
+      } catch (error) {
+        return { kpis, data: null };
+      }
     }
     
     return { kpis, data: monthly, dataKeys };
@@ -1371,7 +1378,15 @@ function AdvancedReports() {
                   </PopoverContent>
                 </Popover>
             </div>
-            
+            <div className="space-y-2">
+                <Label>Categories</Label>
+                <MultiSelect
+                    options={allCategoryOptions}
+                    selected={globalFilters.categories}
+                    onChange={(value) => setGlobalFilters(prev => ({...prev, categories: value}))}
+                    placeholder="All Categories"
+                />
+            </div>
           </div>
         </CardContent>
       </Card>
