@@ -9,8 +9,8 @@ import {
   Command,
   CommandGroup,
   CommandItem,
+  CommandInput
 } from "@/components/ui/command";
-import { Command as CommandPrimitive } from "cmdk";
 
 type Option = Record<"value" | "label", string>;
 
@@ -76,7 +76,7 @@ export function MultiSelect({ options, selected, onChange, className, placeholde
               </Badge>
             );
           })}
-          <CommandPrimitive.Input
+          <CommandInput
             ref={inputRef}
             value={inputValue}
             onValueChange={setInputValue}
