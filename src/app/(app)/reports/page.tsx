@@ -137,15 +137,22 @@ const sanitizeForVariableName = (name: string) => {
 
 // Simple and safe formula evaluator
 const evaluateFormula = (expression: string, context: Record<string, number>): number | null => {
-  if (!expression || expression.trim() === '') {
+  if (!expression || typeof expression !== 'string' || expression.trim() === '') {
     return null;
   }
-
+  
   const variableNames = Object.keys(context);
   const variableValues = Object.values(context);
   
+  // Remove any potentially dangerous code patterns
+  const sanitizedExpression = expression.replace(/[^0-9+\-*/().a-zA-Z_\s]/g, '');
+
+  if (sanitizedExpression.trim() === '') {
+    return null;
+  }
+  
   try {
-    const func = new Function(...variableNames, `return ${expression}`);
+    const func = new Function(...variableNames, `return ${sanitizedExpression}`);
     const result = func(...variableValues);
 
     return typeof result === 'number' && isFinite(result) ? result : null;
