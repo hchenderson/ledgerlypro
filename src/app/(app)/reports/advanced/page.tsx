@@ -119,7 +119,7 @@ const COLOR_THEMES: Record<string, string[]> = {
   professional: ['#2C3E50', '#34495E', '#7F8C8D', '#95A5A6', '#BDC3C7'],
   warm: ['#E74C3C', '#E67E22', '#F39C12', '#F1C40F', '#D4AC0D'],
   cool: ['#3498DB', '#2980B9', '#1ABC9C', '#16A085', '#27AE60'],
-  pastel: ['#FFB6C1', '#98FB98', '#87CEEB', '#DDA0DD', '#F0E68C']
+  pastel: ['#FFB6C1', '#98FB98', '#87CEEB', '#DDA0DD', '#F0E68C'],
 };
 
 const COLOR_PALETTE = [
@@ -132,29 +132,72 @@ const COLOR_PALETTE = [
   '#a4de6c', '#d0ed57', '#ffc658'
 ];
 
+interface Widget {
+  id: string;
+  title: string;
+  type: 'bar' | 'line' | 'area' | 'pie' | 'scatter' | 'composed' | 'metric';
+  size: 'small' | 'medium' | 'large';
+  mainDataKey?: string;
+  comparisonKey?: string;
+  dataCategories: string[];
+  enabled: boolean;
+  position: number;
+  colorTheme: keyof typeof COLOR_THEMES;
+  showLegend: boolean;
+  showGrid: boolean;
+  showTargetLines: boolean;
+  height: number;
+  customFilters: {
+    categories: string[];
+  };
+  formulaId: string | null;
+}
 
-const sanitizeForVariableName = (name: string) => {
-  return name.replace(/[^a-zA-Z0-9_]/g, '_');
+interface Formula {
+  id: string;
+  name: string;
+  expression: string;
+}
+
+interface KPITargets {
+  monthlyIncome: number;
+  monthlyExpense: number;
+  savingsRate: number;
+}
+
+
+const sanitizeForVariableName = (name: string): string => {
+  if (!name) return '';
+  return name
+    .replace(/[^a-zA-Z0-9_]/g, '_') // Replace non-alphanumeric with underscore
+    .replace(/^[0-9]/, '_$&')      // Prefix with underscore if starts with number
+    .replace(/__+/g, '_')           // Replace multiple underscores with single
+    .replace(/^_|_$/g, '');         // Remove leading/trailing underscores
 };
 
-// Simple and safe formula evaluator
+// Safe formula evaluator
 const evaluateFormula = (expression: string, context: Record<string, number>): number | null => {
+  if (!expression || typeof expression !== 'string' || expression.trim() === '') {
+    return null;
+  }
+
+  const variableNames = Object.keys(context);
+  const variableValues = Object.values(context);
+  
+  // Whitelist approach: only allow known safe characters
+  const sanitizedExpression = expression.replace(/[^0-9a-zA-Z_+\-*/().\s]/g, '');
+
+  if (sanitizedExpression.trim() === '') {
+    return null;
+  }
+  
   try {
-    const variableNames = Object.keys(context);
-    const variableValues = Object.values(context);
-    
-    // Sanitize expression to only allow variable names, numbers, and basic operators
-    const sanitizedExpression = expression.replace(/[^a-zA-Z0-9_+\-*/(). ]/g, '');
-    if(sanitizedExpression !== expression) {
-        console.warn("Formula expression contained invalid characters and was sanitized.");
-    }
-    
-    const func = new Function(...variableNames, `return ${sanitizedExpression}`);
+    const func = new Function(...variableNames, `"use strict"; return (${sanitizedExpression})`);
     const result = func(...variableValues);
 
     return typeof result === 'number' && isFinite(result) ? result : null;
   } catch (error) {
-    console.error("Formula evaluation error:", error);
+    console.error("Error evaluating formula:", error);
     return null;
   }
 };
@@ -164,7 +207,7 @@ function KpiTargetsDialog({
   onSave, 
   children 
 }: {
-  targets: { monthlyIncome: number; monthlyExpense: number; savingsRate: number; };
+  targets: KPITargets;
   onSave: (newTargets: any) => void;
   children: React.ReactNode;
 }) {
@@ -248,14 +291,16 @@ function FormulaBuilderTabContent({
   onDeleteFormula,
   availableVariables
 }: {
-  formulas: { id: string; name: string; expression: string }[];
+  formulas: Formula[];
   onAddFormula: (name: string, expression: string) => Promise<boolean>;
   onDeleteFormula: (id: string) => void;
   availableVariables: string[];
 }) {
+  const { toast } = useToast();
   const [name, setName] = useState("");
   const [expression, setExpression] = useState("");
   const [testResult, setTestResult] = useState<number | null>(null);
+  const [testError, setTestError] = useState<string>("");
 
   const sampleContext = useMemo(() => {
     const context: Record<string, number> = {
@@ -268,7 +313,7 @@ function FormulaBuilderTabContent({
     };
     availableVariables.forEach(v => {
       if (!context[v]) {
-        context[v] = Math.random() * 1000; // Assign random value for testing
+        context[v] = Math.random() * 1000;
       }
     });
     return context;
@@ -276,19 +321,36 @@ function FormulaBuilderTabContent({
 
   const handleAdd = async () => {
     if (name.trim() && expression.trim()) {
+      const testResultValue = evaluateFormula(expression.trim(), sampleContext);
+      if (testResultValue === null) {
+        toast({
+          variant: 'destructive',
+          title: 'Invalid Formula',
+          description: 'Please check your formula syntax and try again.'
+        });
+        return;
+      }
       const success = await onAddFormula(name.trim(), expression.trim());
       if (success) {
         setName("");
         setExpression("");
         setTestResult(null);
+        setTestError("");
       }
     }
   };
 
   const testFormula = () => {
     if (expression.trim()) {
-      const result = evaluateFormula(expression, sampleContext);
-      setTestResult(result);
+      setTestError("");
+      const result = evaluateFormula(expression.trim(), sampleContext);
+      if (result === null) {
+        setTestError("Formula evaluation failed. Check console for details.");
+        setTestResult(null);
+      } else {
+        setTestResult(result);
+        setTestError("");
+      }
     }
   };
 
@@ -348,6 +410,12 @@ function FormulaBuilderTabContent({
               </p>
             </div>
           )}
+          {testError && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-md">
+              <p className="text-sm font-medium text-red-900">Error:</p>
+              <p className="text-sm text-red-700">{testError}</p>
+            </div>
+          )}
         </div>
 
         <div className="space-y-4">
@@ -401,7 +469,7 @@ export default function AdvancedReportsPage() {
   const [startingBalance, setStartingBalance] = useState(0);
   const { toast } = useToast();
 
-  const [widgets, setWidgets] = useState<any[]>([
+  const [widgets, setWidgets] = useState<Widget[]>([
     {
       id: 'income-expense',
       title: 'Income vs Expense',
@@ -436,17 +504,16 @@ export default function AdvancedReportsPage() {
       to: new Date()
     } as DateRange | undefined,
     categories: [] as string[],
-    amountRange: [0, 10000] as [number, number],
     tags: [] as string[]
   });
 
-  const [kpiTargets, setKpiTargets] = useState({
+  const [kpiTargets, setKpiTargets] = useState<KPITargets>({
     monthlyIncome: 5000,
     monthlyExpense: 3000,
     savingsRate: 40
   });
 
-  const [formulas, setFormulas] = useState<{ id: string; name: string; expression: string }[]>([]);
+  const [formulas, setFormulas] = useState<Formula[]>([]);
   const [isFormulaBuilderOpen, setIsFormulaBuilderOpen] = useState(false);
   
   // Load settings from Firebase
@@ -530,7 +597,7 @@ export default function AdvancedReportsPage() {
 
   const handleAddFormula = async (name: string, expression: string): Promise<boolean> => {
     if (name.trim() && expression.trim()) {
-      const newFormula = { 
+      const newFormula: Formula = { 
         id: `formula-${Date.now()}`, 
         name: name.trim(), 
         expression: expression.trim() 
@@ -573,7 +640,7 @@ export default function AdvancedReportsPage() {
     
     const categoryVars = new Set<string>();
     const recurse = (cats: (Category | SubCategory)[]) => {
-      cats.forEach(c => {
+      (cats || []).forEach(c => {
         categoryVars.add(sanitizeForVariableName(c.name));
         if (c.subCategories) recurse(c.subCategories);
       });
@@ -588,13 +655,12 @@ export default function AdvancedReportsPage() {
       const transactionDate = new Date(t.date);
       const inDateRange = globalFilters.dateRange?.from && globalFilters.dateRange?.to ?
         (transactionDate >= globalFilters.dateRange.from && transactionDate <= globalFilters.dateRange.to) : true;
-      const passesAmountFilter = t.amount >= globalFilters.amountRange[0] && t.amount <= globalFilters.amountRange[1];
       
       const globalCategoryCheck = globalFilters.categories.length === 0 || globalFilters.categories.includes(t.category);
       const widgetCategoryCheck = widget.customFilters?.categories?.length > 0 ? 
         widget.customFilters.categories.includes(t.category) : true;
       
-      return inDateRange && passesAmountFilter && globalCategoryCheck && widgetCategoryCheck;
+      return inDateRange && globalCategoryCheck && widgetCategoryCheck;
     });
     
     const dataKeys = (widget.dataCategories || []).length > 0
@@ -608,12 +674,12 @@ export default function AdvancedReportsPage() {
         dataKeys.forEach(key => (acc[month][key] = 0));
       }
 
-      if (dataKeys.includes(transaction.type)) {
-        acc[month][transaction.type] = (acc[month][transaction.type] || 0) + transaction.amount;
-      }
-      if (dataKeys.includes(transaction.category)) {
-        acc[month][transaction.category] = (acc[month][transaction.category] || 0) + transaction.amount;
-      }
+      dataKeys.forEach(key => {
+        if (key === transaction.type || key === transaction.category) {
+          acc[month][key] = (acc[month][key] || 0) + transaction.amount;
+        }
+      });
+  
       return acc;
     }, {});
 
@@ -622,11 +688,15 @@ export default function AdvancedReportsPage() {
     const totalExpense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
 
     const categoryTotals = transactions.reduce((acc, t) => {
-      const sanitizedName = sanitizeForVariableName(t.category);
-      if (!acc[sanitizedName]) {
-        acc[sanitizedName] = 0;
+      if (t.category) {
+        const sanitizedName = sanitizeForVariableName(t.category);
+        if (sanitizedName) {
+            if (!acc[sanitizedName]) {
+                acc[sanitizedName] = 0;
+            }
+            acc[sanitizedName] += t.amount;
+        }
       }
-      acc[sanitizedName] += t.amount;
       return acc;
     }, {} as Record<string, number>);
 
@@ -755,7 +825,7 @@ export default function AdvancedReportsPage() {
               <YAxis yAxisId="right" orientation="right" />
               <Tooltip content={<CustomTooltip />} />
               {widget.showLegend && <Legend />}
-              {dataKeys?.map((key, index) => (
+              {dataKeys?.map((key: string, index: number) => (
                 <Bar key={key} yAxisId="left" dataKey={key} fill={theme[index % theme.length]} name={key} />
               ))}
             </ComposedChart>
@@ -790,7 +860,7 @@ export default function AdvancedReportsPage() {
                   <ReferenceLine y={kpiTargets.monthlyExpense} label={{ value: "Expense Target", position: 'insideTopLeft' }} stroke="red" strokeDasharray="3 3" />
                 </>
               )}
-               {dataKeys?.map((key, index) => (
+               {dataKeys?.map((key: string, index: number) => (
                 <Bar key={key} dataKey={key} fill={theme[index % theme.length]} name={key} />
               ))}
             </BarChart>
@@ -812,7 +882,7 @@ export default function AdvancedReportsPage() {
                   <ReferenceLine y={kpiTargets.monthlyExpense} label={{ value: "Expense Target", position: 'insideTopLeft' }} stroke="red" strokeDasharray="3 3" />
                 </>
               )}
-              {dataKeys?.map((key, index) => (
+              {dataKeys?.map((key: string, index: number) => (
                 <Line key={key} type="monotone" dataKey={key} stroke={theme[index % theme.length]} name={key} />
               ))}
             </LineChart>
@@ -828,7 +898,7 @@ export default function AdvancedReportsPage() {
               <YAxis />
               <Tooltip content={<CustomTooltip />} />
               {widget.showLegend && <Legend />}
-              {dataKeys?.map((key, index) => (
+              {dataKeys?.map((key: string, index: number) => (
                  <Area key={key} type="monotone" dataKey={key} stackId="1" stroke={theme[index % theme.length]} fill={theme[index % theme.length]} name={key} />
               ))}
             </AreaChart>
@@ -838,7 +908,7 @@ export default function AdvancedReportsPage() {
       case 'pie':
         const pieData = dataKeys.map(key => ({
             name: key,
-            value: data.reduce((acc, month) => acc + (month[key] || 0), 0)
+            value: data.reduce((acc: number, month: any) => acc + (month[key] || 0), 0)
         })).filter(d => d.value > 0);
 
         return (
@@ -861,7 +931,7 @@ export default function AdvancedReportsPage() {
   };
 
   const addWidget = useCallback(() => {
-    const newWidget = {
+    const newWidget: Widget = {
       id: `widget-${Date.now()}`,
       title: 'New Widget',
       type: 'bar',
@@ -913,7 +983,7 @@ export default function AdvancedReportsPage() {
   const allCategoryOptions = useMemo(() => {
     const options: { value: string; label: string }[] = [];
     const recurse = (cats: (Category | SubCategory)[]) => {
-      cats.forEach(c => {
+      (cats || []).forEach(c => {
         options.push({ value: c.name, label: c.name });
         if(c.subCategories) recurse(c.subCategories);
       });
@@ -933,7 +1003,7 @@ export default function AdvancedReportsPage() {
     ];
     userCategories.forEach(cat => {
       fields.push({ value: cat.name, label: `Category: ${cat.name}` });
-      cat.subCategories?.forEach(sub => {
+      (cat.subCategories || []).forEach(sub => {
         fields.push({ value: sub.name, label: `  - ${sub.name}` });
       });
     });
@@ -1034,21 +1104,7 @@ export default function AdvancedReportsPage() {
                   </PopoverContent>
                 </Popover>
             </div>
-            <div className="space-y-2">
-              <Label>Amount Range</Label>
-              <Slider
-                value={globalFilters.amountRange}
-                onValueChange={(value) => setGlobalFilters(prev => ({ ...prev, amountRange: value as [number, number] }))}
-                min={0}
-                max={10000}
-                step={100}
-                className="w-full"
-              />
-              <div className="flex justify-between text-sm text-muted-foreground">
-                <span>${globalFilters.amountRange[0]}</span>
-                <span>${globalFilters.amountRange[1]}</span>
-              </div>
-            </div>
+            
           </div>
         </CardContent>
       </Card>
