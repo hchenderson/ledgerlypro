@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
@@ -136,18 +137,15 @@ const sanitizeForVariableName = (name: string) => {
 
 // Simple and safe formula evaluator
 const evaluateFormula = (expression: string, context: Record<string, number>): number | null => {
+  if (!expression || expression.trim() === '') {
+    return null;
+  }
+
   const variableNames = Object.keys(context);
   const variableValues = Object.values(context);
   
-  // Sanitize expression to only allow variable names, numbers, and basic operators
-  const sanitizedExpression = expression.replace(/[^a-zA-Z0-9_+\-*/(). ]/g, '').trim();
-  
-  if (sanitizedExpression === '') {
-      return null;
-  }
-  
   try {
-    const func = new Function(...variableNames, `return ${sanitizedExpression}`);
+    const func = new Function(...variableNames, `return ${expression}`);
     const result = func(...variableValues);
 
     return typeof result === 'number' && isFinite(result) ? result : null;
@@ -156,6 +154,7 @@ const evaluateFormula = (expression: string, context: Record<string, number>): n
     return null;
   }
 };
+
 
 function KpiTargetsDialog({ 
   targets, 
@@ -533,7 +532,7 @@ function BasicReports() {
       });
   
     return Object.entries(data)
-      .map(([name, amount], index) => ({
+      .map(([name, amount]) => ({
         category: name,
         amount: amount,
       }))
