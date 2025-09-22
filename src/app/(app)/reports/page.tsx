@@ -144,20 +144,20 @@ const evaluateFormula = (expression: string, context: Record<string, number>): n
   const variableNames = Object.keys(context);
   const variableValues = Object.values(context);
   
-  // Remove any potentially dangerous code patterns
-  const sanitizedExpression = expression.replace(/[^0-9+\-*/().a-zA-Z_\s]/g, '');
+  // Whitelist approach: only allow known safe characters
+  const sanitizedExpression = expression.replace(/[^0-9a-zA-Z_+\-*/().\s]/g, '');
 
   if (sanitizedExpression.trim() === '') {
     return null;
   }
   
   try {
-    const func = new Function(...variableNames, `return ${sanitizedExpression}`);
+    const func = new Function(...variableNames, `"use strict"; return (${sanitizedExpression})`);
     const result = func(...variableValues);
 
     return typeof result === 'number' && isFinite(result) ? result : null;
   } catch (error) {
-    console.error("Formula evaluation error:", error);
+    console.error("Error evaluating formula:", error);
     return null;
   }
 };
