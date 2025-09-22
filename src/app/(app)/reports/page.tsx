@@ -148,6 +148,7 @@ class ChartErrorBoundary extends React.Component<
   }
 }
 
+
 const CHART_TYPES = {
   bar: { name: 'Bar Chart', icon: BarChart3, allowsComparison: true },
   line: { name: 'Line Chart', icon: TrendingUp, allowsComparison: true },
@@ -215,20 +216,18 @@ const evaluateFormula = (expression: string, context: Record<string, number>): n
   if (!expression || typeof expression !== 'string' || expression.trim() === '') {
     return null;
   }
-
+  
   const variableNames = Object.keys(context);
   const variableValues = Object.values(context);
   
-  // Whitelist approach: only allow known safe characters
-  const sanitizedExpression = expression.replace(/[^0-9a-zA-Z_+\-*/().\s]/g, '');
-
-  if (sanitizedExpression.trim() === '') {
-    return null;
-  }
-  
   try {
-    const func = new Function(...variableNames, `"use strict"; return (${sanitizedExpression})`);
-    const result = func(...variableValues);
+    const functionBody = `
+      "use strict";
+      ${variableNames.map(name => `const ${name} = ${context[name]};`).join('\n')}
+      return (${expression});
+    `;
+    const func = new Function(functionBody);
+    const result = func();
 
     return typeof result === 'number' && isFinite(result) ? result : null;
   } catch (error) {
