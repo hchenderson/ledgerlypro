@@ -1,37 +1,101 @@
-// Enhanced customization components for the reports system
+
+"use client";
 
 import React, { useState, useEffect } from 'react';
-import { 
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
-  Button, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-  Tabs, TabsContent, TabsList, TabsTrigger, Switch, Slider, Textarea,
-  Card, CardContent, CardHeader, CardTitle, Badge, Separator
-} from '@/components/ui';
-import { 
-  Palette, Type, BarChart3, Settings, Plus, Trash2, Move,
-  Eye, EyeOff, Grid, List, Download, Save, Upload, RefreshCw
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from '@/components/ui/tabs';
+import { Switch } from '@/components/ui/switch';
+import { Slider } from '@/components/ui/slider';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import {
+  Palette,
+  Settings,
+  Plus,
+  Trash2,
+  Grid,
 } from 'lucide-react';
 import { HexColorPicker } from 'react-colorful';
 import { MultiSelect } from '../ui/multi-select';
+import { Separator } from '../ui/separator';
 
-// Enhanced Widget Customization Dialog
+interface Widget {
+  id: string;
+  title: string;
+  type: 'bar' | 'line' | 'area' | 'pie' | 'scatter' | 'composed' | 'metric';
+  size: 'small' | 'medium' | 'large';
+  mainDataKey?: string;
+  comparisonKey?: string;
+  dataCategories: string[];
+  enabled: boolean;
+  position: number;
+  colorTheme: string;
+  customColors?: string[];
+  showLegend: boolean;
+  showGrid: boolean;
+  showTargetLines: boolean;
+  height: number;
+  customFilters: {
+    categories: string[];
+  };
+  formulaId: string | null;
+  titleFontSize?: number;
+  axisFontSize?: number;
+  titleFontWeight?: string;
+  showDataLabels?: boolean;
+  animateChart?: boolean;
+  padding?: { top: number; right: number; bottom: number; left: number };
+  legendPosition?: 'top' | 'bottom' | 'left' | 'right';
+  responsive?: boolean;
+}
+
+interface AdvancedWidgetCustomizerProps {
+    widget: Widget | null;
+    onUpdate: (id: string, updates: Partial<Widget>) => void;
+    onClose: () => void;
+    allCategoryOptions: { value: string; label: string }[];
+    availableDataFields: { value: string; label: string }[];
+}
+
+
 export function AdvancedWidgetCustomizer({ 
   widget, 
   onUpdate, 
   onClose, 
   allCategoryOptions,
   availableDataFields 
-}: {
-  widget: any | null;
-  onUpdate: (id: string, updates: any) => void;
-  onClose: () => void;
-  allCategoryOptions: { value: string; label: string }[];
-  availableDataFields: { value: string; label: string }[];
-}) {
-  const [localWidget, setLocalWidget] = useState<any>(null);
+}: AdvancedWidgetCustomizerProps) {
+  const [localWidget, setLocalWidget] = useState<Widget | null>(null);
   const [activeTab, setActiveTab] = useState('data');
 
   useEffect(() => {
+    // Only set the local widget when the dialog is opened with a new widget
     if (widget) {
       setLocalWidget({ ...widget });
     }
@@ -39,12 +103,16 @@ export function AdvancedWidgetCustomizer({
 
   if (!widget || !localWidget) return null;
 
-  const handleLocalUpdate = (updates: any) => {
-    setLocalWidget(prev => ({ ...prev, ...updates }));
+  const handleLocalUpdate = (updates: Partial<Widget>) => {
+    if (localWidget) {
+        setLocalWidget(prev => prev ? ({ ...prev, ...updates }) : null);
+    }
   };
 
   const handleSave = () => {
-    onUpdate(widget.id, localWidget);
+    if (localWidget) {
+        onUpdate(widget.id, localWidget);
+    }
     onClose();
   };
 
@@ -62,17 +130,15 @@ export function AdvancedWidgetCustomizer({
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid grid-cols-6 w-full">
+          <TabsList className="grid grid-cols-4 w-full">
             <TabsTrigger value="data">Data</TabsTrigger>
             <TabsTrigger value="appearance">Appearance</TabsTrigger>
             <TabsTrigger value="layout">Layout</TabsTrigger>
             <TabsTrigger value="filters">Filters</TabsTrigger>
-            <TabsTrigger value="annotations">Annotations</TabsTrigger>
-            <TabsTrigger value="advanced">Advanced</TabsTrigger>
           </TabsList>
 
           {/* Data Configuration Tab */}
-          <TabsContent value="data" className="space-y-4">
+          <TabsContent value="data" className="space-y-4 pt-4">
             <Card>
               <CardHeader>
                 <CardTitle>Data Configuration</CardTitle>
@@ -83,7 +149,7 @@ export function AdvancedWidgetCustomizer({
                     <Label>Chart Type</Label>
                     <Select
                       value={localWidget.type}
-                      onValueChange={(value) => handleLocalUpdate({ type: value })}
+                      onValueChange={(value) => handleLocalUpdate({ type: value as Widget['type'] })}
                     >
                       <SelectTrigger>
                         <SelectValue />
@@ -126,7 +192,7 @@ export function AdvancedWidgetCustomizer({
                     <Select
                       value={localWidget.comparisonKey || 'none'}
                       onValueChange={(value) => handleLocalUpdate({ 
-                        comparisonKey: value === 'none' ? null : value 
+                        comparisonKey: value === 'none' ? undefined : value 
                       })}
                     >
                       <SelectTrigger>
@@ -142,51 +208,13 @@ export function AdvancedWidgetCustomizer({
                       </SelectContent>
                     </Select>
                   </div>
-
-                  <div>
-                    <Label>Data Aggregation</Label>
-                    <Select
-                      value={localWidget.aggregation || 'sum'}
-                      onValueChange={(value) => handleLocalUpdate({ aggregation: value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="sum">Sum</SelectItem>
-                        <SelectItem value="average">Average</SelectItem>
-                        <SelectItem value="count">Count</SelectItem>
-                        <SelectItem value="max">Maximum</SelectItem>
-                        <SelectItem value="min">Minimum</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div>
-                  <Label>Time Period Grouping</Label>
-                  <Select
-                    value={localWidget.timePeriod || 'monthly'}
-                    onValueChange={(value) => handleLocalUpdate({ timePeriod: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="daily">Daily</SelectItem>
-                      <SelectItem value="weekly">Weekly</SelectItem>
-                      <SelectItem value="monthly">Monthly</SelectItem>
-                      <SelectItem value="quarterly">Quarterly</SelectItem>
-                      <SelectItem value="yearly">Yearly</SelectItem>
-                    </SelectContent>
-                  </Select>
                 </div>
               </CardContent>
             </Card>
           </TabsContent>
 
           {/* Appearance Tab */}
-          <TabsContent value="appearance" className="space-y-4">
+          <TabsContent value="appearance" className="space-y-4 pt-4">
             <AppearanceCustomizer 
               widget={localWidget}
               onUpdate={handleLocalUpdate}
@@ -194,7 +222,7 @@ export function AdvancedWidgetCustomizer({
           </TabsContent>
 
           {/* Layout Tab */}
-          <TabsContent value="layout" className="space-y-4">
+          <TabsContent value="layout" className="space-y-4 pt-4">
             <LayoutCustomizer 
               widget={localWidget}
               onUpdate={handleLocalUpdate}
@@ -202,27 +230,11 @@ export function AdvancedWidgetCustomizer({
           </TabsContent>
 
           {/* Filters Tab */}
-          <TabsContent value="filters" className="space-y-4">
+          <TabsContent value="filters" className="space-y-4 pt-4">
             <FiltersCustomizer 
               widget={localWidget}
               onUpdate={handleLocalUpdate}
               allCategoryOptions={allCategoryOptions}
-            />
-          </TabsContent>
-
-          {/* Annotations Tab */}
-          <TabsContent value="annotations" className="space-y-4">
-            <AnnotationsCustomizer 
-              widget={localWidget}
-              onUpdate={handleLocalUpdate}
-            />
-          </TabsContent>
-
-          {/* Advanced Tab */}
-          <TabsContent value="advanced" className="space-y-4">
-            <AdvancedCustomizer 
-              widget={localWidget}
-              onUpdate={handleLocalUpdate}
             />
           </TabsContent>
         </Tabs>
@@ -241,11 +253,11 @@ export function AdvancedWidgetCustomizer({
 }
 
 // Appearance Customization Component
-function AppearanceCustomizer({ widget, onUpdate }: { widget: any; onUpdate: (updates: any) => void }) {
+function AppearanceCustomizer({ widget, onUpdate }: { widget: Widget; onUpdate: (updates: Partial<Widget>) => void }) {
   const [customColors, setCustomColors] = useState(widget.customColors || []);
   const [selectedColorIndex, setSelectedColorIndex] = useState(0);
 
-  const colorThemes = {
+  const colorThemes: Record<string, string[]> = {
     default: ['#8884d8', '#82ca9d', '#ffc658', '#ff7c7c', '#8dd1e1'],
     vibrant: ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7'],
     professional: ['#2C3E50', '#34495E', '#7F8C8D', '#95A5A6', '#BDC3C7'],
@@ -283,7 +295,7 @@ function AppearanceCustomizer({ widget, onUpdate }: { widget: any; onUpdate: (up
                 onClick={() => onUpdate({ colorTheme: theme })}
               >
                 <div className="flex gap-1 mb-2">
-                  {colors.slice(0, 4).map((color, i) => (
+                  {(colors.length > 0 ? colors : ['#ccc', '#bbb', '#aaa', '#999']).slice(0, 4).map((color, i) => (
                     <div
                       key={i}
                       className="w-4 h-4 rounded-sm border"
@@ -324,68 +336,15 @@ function AppearanceCustomizer({ widget, onUpdate }: { widget: any; onUpdate: (up
               </Button>
             </div>
             {customColors.length > 0 && (
-              <HexColorPicker
-                color={customColors[selectedColorIndex]}
-                onChange={handleColorChange}
-              />
+                <input
+                    type="color"
+                    value={customColors[selectedColorIndex] || '#000000'}
+                    onChange={(e) => handleColorChange(e.target.value)}
+                    className="w-full h-10 rounded border"
+                />
             )}
           </div>
         )}
-
-        <Separator />
-
-        {/* Typography and Text */}
-        <div className="space-y-4">
-          <Label className="text-base font-medium">Typography</Label>
-          
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label>Title Font Size</Label>
-              <Slider
-                value={[widget.titleFontSize || 16]}
-                onValueChange={([value]) => onUpdate({ titleFontSize: value })}
-                min={12}
-                max={24}
-                step={1}
-              />
-              <div className="text-sm text-muted-foreground mt-1">
-                {widget.titleFontSize || 16}px
-              </div>
-            </div>
-
-            <div>
-              <Label>Axis Font Size</Label>
-              <Slider
-                value={[widget.axisFontSize || 12]}
-                onValueChange={([value]) => onUpdate({ axisFontSize: value })}
-                min={8}
-                max={16}
-                step={1}
-              />
-              <div className="text-sm text-muted-foreground mt-1">
-                {widget.axisFontSize || 12}px
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <Label>Title Font Weight</Label>
-            <Select
-              value={widget.titleFontWeight || 'normal'}
-              onValueChange={(value) => onUpdate({ titleFontWeight: value })}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="normal">Normal</SelectItem>
-                <SelectItem value="bold">Bold</SelectItem>
-                <SelectItem value="bolder">Bolder</SelectItem>
-                <SelectItem value="lighter">Lighter</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
 
         <Separator />
 
@@ -433,7 +392,7 @@ function AppearanceCustomizer({ widget, onUpdate }: { widget: any; onUpdate: (up
 }
 
 // Layout Customization Component
-function LayoutCustomizer({ widget, onUpdate }: { widget: any; onUpdate: (updates: any) => void }) {
+function LayoutCustomizer({ widget, onUpdate }: { widget: Widget; onUpdate: (updates: Partial<Widget>) => void }) {
   return (
     <Card>
       <CardHeader>
@@ -448,16 +407,15 @@ function LayoutCustomizer({ widget, onUpdate }: { widget: any; onUpdate: (update
             <Label>Widget Width</Label>
             <Select
               value={widget.size || 'medium'}
-              onValueChange={(value) => onUpdate({ size: value })}
+              onValueChange={(value) => onUpdate({ size: value as Widget['size'] })}
             >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="small">Small (1 column)</SelectItem>
-                <SelectItem value="medium">Medium (1 column)</SelectItem>
-                <SelectItem value="large">Large (2 columns)</SelectItem>
-                <SelectItem value="full">Full Width</SelectItem>
+                <SelectItem value="small">Small</SelectItem>
+                <SelectItem value="medium">Medium</SelectItem>
+                <SelectItem value="large">Large</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -475,64 +433,10 @@ function LayoutCustomizer({ widget, onUpdate }: { widget: any; onUpdate: (update
         </div>
 
         <div>
-          <Label>Padding</Label>
-          <div className="grid grid-cols-4 gap-2 mt-2">
-            <div>
-              <Label className="text-xs">Top</Label>
-              <Input
-                type="number"
-                value={widget.padding?.top || 20}
-                onChange={(e) => onUpdate({
-                  padding: { ...widget.padding, top: parseInt(e.target.value) || 20 }
-                })}
-                min={0}
-                max={100}
-              />
-            </div>
-            <div>
-              <Label className="text-xs">Right</Label>
-              <Input
-                type="number"
-                value={widget.padding?.right || 30}
-                onChange={(e) => onUpdate({
-                  padding: { ...widget.padding, right: parseInt(e.target.value) || 30 }
-                })}
-                min={0}
-                max={100}
-              />
-            </div>
-            <div>
-              <Label className="text-xs">Bottom</Label>
-              <Input
-                type="number"
-                value={widget.padding?.bottom || 20}
-                onChange={(e) => onUpdate({
-                  padding: { ...widget.padding, bottom: parseInt(e.target.value) || 20 }
-                })}
-                min={0}
-                max={100}
-              />
-            </div>
-            <div>
-              <Label className="text-xs">Left</Label>
-              <Input
-                type="number"
-                value={widget.padding?.left || 20}
-                onChange={(e) => onUpdate({
-                  padding: { ...widget.padding, left: parseInt(e.target.value) || 20 }
-                })}
-                min={0}
-                max={100}
-              />
-            </div>
-          </div>
-        </div>
-
-        <div>
           <Label>Legend Position</Label>
           <Select
             value={widget.legendPosition || 'bottom'}
-            onValueChange={(value) => onUpdate({ legendPosition: value })}
+            onValueChange={(value) => onUpdate({ legendPosition: value as Widget['legendPosition'] })}
           >
             <SelectTrigger>
               <SelectValue />
@@ -564,8 +468,8 @@ function FiltersCustomizer({
   onUpdate, 
   allCategoryOptions 
 }: { 
-  widget: any; 
-  onUpdate: (updates: any) => void;
+  widget: Widget; 
+  onUpdate: (updates: Partial<Widget>) => void;
   allCategoryOptions: { value: string; label: string }[];
 }) {
   return (
@@ -585,317 +489,9 @@ function FiltersCustomizer({
           <MultiSelect
             options={allCategoryOptions}
             selected={widget.customFilters?.categories || []}
-            onChange={(value) => onUpdate({ customFilters: { ...widget.customFilters, categories: value } })}
+            onChange={(value) => onUpdate({ customFilters: { ...(widget.customFilters || { categories: [] }), categories: value } })}
             placeholder="Select categories..."
           />
-        </div>
-
-        <div>
-          <Label>Date Range Override</Label>
-          <div className="flex items-center space-x-2">
-            <Switch
-              checked={widget.customFilters?.dateOverride || false}
-              onCheckedChange={(checked) => onUpdate({
-                customFilters: { 
-                  ...widget.customFilters, 
-                  dateOverride: checked 
-                }
-              })}
-            />
-            <span className="text-sm">Use custom date range</span>
-          </div>
-        </div>
-
-        <div>
-          <Label>Amount Filter</Label>
-          <div className="space-y-2">
-            <div className="flex items-center space-x-2">
-              <Label className="text-sm">Min:</Label>
-              <Input
-                type="number"
-                value={widget.customFilters?.amountMin || 0}
-                onChange={(e) => onUpdate({
-                  customFilters: {
-                    ...widget.customFilters,
-                    amountMin: parseFloat(e.target.value) || 0
-                  }
-                })}
-                className="w-24"
-              />
-              <Label className="text-sm">Max:</Label>
-              <Input
-                type="number"
-                value={widget.customFilters?.amountMax || 10000}
-                onChange={(e) => onUpdate({
-                  customFilters: {
-                    ...widget.customFilters,
-                    amountMax: parseFloat(e.target.value) || 10000
-                  }
-                })}
-                className="w-24"
-              />
-            </div>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-// Annotations Customization Component
-function AnnotationsCustomizer({ widget, onUpdate }: { widget: any; onUpdate: (updates: any) => void }) {
-  const [annotations, setAnnotations] = useState(widget.annotations || []);
-
-  const addAnnotation = () => {
-    const newAnnotation = {
-      id: Date.now(),
-      type: 'line', // line, area, point
-      value: 0,
-      label: 'Annotation',
-      color: '#ff0000',
-      axis: 'y' // x or y
-    };
-    const updated = [...annotations, newAnnotation];
-    setAnnotations(updated);
-    onUpdate({ annotations: updated });
-  };
-
-  const updateAnnotation = (id: number, updates: any) => {
-    const updated = annotations.map(ann => 
-      ann.id === id ? { ...ann, ...updates } : ann
-    );
-    setAnnotations(updated);
-    onUpdate({ annotations: updated });
-  };
-
-  const removeAnnotation = (id: number) => {
-    const updated = annotations.filter(ann => ann.id !== id);
-    setAnnotations(updated);
-    onUpdate({ annotations: updated });
-  };
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 justify-between">
-          <div className="flex items-center gap-2">
-            <Type className="h-5 w-5" />
-            Annotations & Reference Lines
-          </div>
-          <Button size="sm" onClick={addAnnotation}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Annotation
-          </Button>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {annotations.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-8">
-            No annotations added. Click "Add Annotation" to create reference lines or markers.
-          </p>
-        ) : (
-          annotations.map((annotation) => (
-            <Card key={annotation.id} className="p-4">
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <Input
-                    placeholder="Annotation label"
-                    value={annotation.label}
-                    onChange={(e) => updateAnnotation(annotation.id, { label: e.target.value })}
-                    className="flex-1 mr-2"
-                  />
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => removeAnnotation(annotation.id)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <Label className="text-xs">Type</Label>
-                    <Select
-                      value={annotation.type}
-                      onValueChange={(value) => updateAnnotation(annotation.id, { type: value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="line">Reference Line</SelectItem>
-                        <SelectItem value="area">Reference Area</SelectItem>
-                        <SelectItem value="point">Point Marker</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div>
-                    <Label className="text-xs">Value</Label>
-                    <Input
-                      type="number"
-                      value={annotation.value}
-                      onChange={(e) => updateAnnotation(annotation.id, { 
-                        value: parseFloat(e.target.value) || 0 
-                      })}
-                    />
-                  </div>
-
-                  <div>
-                    <Label className="text-xs">Color</Label>
-                    <Input
-                      type="color"
-                      value={annotation.color}
-                      onChange={(e) => updateAnnotation(annotation.id, { color: e.target.value })}
-                    />
-                  </div>
-                </div>
-              </div>
-            </Card>
-          ))
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-// Advanced Customization Component
-function AdvancedCustomizer({ widget, onUpdate }: { widget: any; onUpdate: (updates: any) => void }) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Settings className="h-5 w-5" />
-          Advanced Options
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <div>
-          <Label>Custom CSS Classes</Label>
-          <Input
-            placeholder="custom-chart-style responsive-chart"
-            value={widget.customClasses || ''}
-            onChange={(e) => onUpdate({ customClasses: e.target.value })}
-          />
-          <p className="text-xs text-muted-foreground mt-1">
-            Space-separated CSS class names
-          </p>
-        </div>
-
-        <div>
-          <Label>Custom Tooltip Template</Label>
-          <Textarea
-            placeholder="Custom tooltip HTML template..."
-            value={widget.customTooltip || ''}
-            onChange={(e) => onUpdate({ customTooltip: e.target.value })}
-            rows={3}
-          />
-        </div>
-
-        <div>
-          <Label>Data Processing Script</Label>
-          <Textarea
-            placeholder="// Custom data transformation
-return data.map(item => ({ ...item, processed: true }));"
-            value={widget.dataProcessor || ''}
-            onChange={(e) => onUpdate({ dataProcessor: e.target.value })}
-            rows={4}
-            className="font-mono text-xs"
-          />
-          <p className="text-xs text-muted-foreground mt-1">
-            JavaScript code to transform data before charting
-          </p>
-        </div>
-
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <Label>Enable Data Export</Label>
-            <Switch
-              checked={widget.allowExport !== false}
-              onCheckedChange={(checked) => onUpdate({ allowExport: checked })}
-            />
-          </div>
-
-          <div className="flex items-center justify-between">
-            <Label>Show Refresh Button</Label>
-            <Switch
-              checked={widget.showRefresh || false}
-              onCheckedChange={(checked) => onUpdate({ showRefresh: checked })}
-            />
-          </div>
-
-          <div className="flex items-center justify-between">
-            <Label>Auto-refresh Data</Label>
-            <Switch
-              checked={widget.autoRefresh || false}
-              onCheckedChange={(checked) => onUpdate({ autoRefresh: checked })}
-            />
-          </div>
-        </div>
-
-        {widget.autoRefresh && (
-          <div>
-            <Label>Refresh Interval (seconds)</Label>
-            <Input
-              type="number"
-              value={widget.refreshInterval || 60}
-              onChange={(e) => onUpdate({ refreshInterval: parseInt(e.target.value) || 60 })}
-              min={10}
-              max={3600}
-            />
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-// Dashboard Layout Manager
-export function DashboardLayoutManager({ 
-  widgets, 
-  onUpdateLayout,
-  onUpdateWidget 
-}: {
-  widgets: any[];
-  onUpdateLayout: (newLayout: string) => void;
-  onUpdateWidget: (id: string, updates: any) => void;
-}) {
-  const [layout, setLayout] = useState('grid');
-  const [draggedWidget, setDraggedWidget] = useState<any>(null);
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Dashboard Layout</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div>
-          <Label>Layout Style</Label>
-          <div className="flex gap-2 mt-2">
-            <Button
-              variant={layout === 'grid' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => {
-                setLayout('grid');
-                onUpdateLayout('grid');
-              }}
-            >
-              <Grid className="h-4 w-4 mr-2" />
-              Grid
-            </Button>
-            <Button
-              variant={layout === 'list' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => {
-                setLayout('list');
-                onUpdateLayout('list');
-              }}
-            >
-              <List className="h-4 w-4 mr-2" />
-              List
-            </Button>
-          </div>
         </div>
       </CardContent>
     </Card>
