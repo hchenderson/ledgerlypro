@@ -2,7 +2,7 @@
 "use client";
 
 import * as React from "react";
-import { X } from "lucide-react";
+import { X, Check } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import {
@@ -50,8 +50,12 @@ export function MultiSelect({ options, selected, onChange, className, placeholde
   
   const handleSelect = React.useCallback((optionValue: string) => {
     setInputValue("");
-    onChange([...selected, optionValue]);
-  }, [onChange, selected]);
+    if (selected.includes(optionValue)) {
+      handleUnselect(optionValue);
+    } else {
+      onChange([...selected, optionValue]);
+    }
+  }, [onChange, selected, handleUnselect]);
   
   const handleBlur = React.useCallback(() => {
     // Delay blur handling to allow onSelect to fire
@@ -61,6 +65,7 @@ export function MultiSelect({ options, selected, onChange, className, placeholde
   }, []);
 
   const selectables = options.filter(option => !selected.includes(option.value));
+  const selectedOptions = options.filter(option => selected.includes(option.value));
   
   const effectivePlaceholder = selected.length > 0 ? '' : placeholder;
 
@@ -112,10 +117,11 @@ export function MultiSelect({ options, selected, onChange, className, placeholde
         </div>
       </div>
       <div className="relative mt-2">
-        {open && selectables.length > 0 ? (
+        {open && (options.length > 0) ? (
           <div className="absolute w-full z-10 top-0 rounded-md border bg-popover text-popover-foreground shadow-md outline-none animate-in max-h-64 overflow-y-auto">
             <CommandGroup>
-              {selectables.map((option) => {
+              {[...selectedOptions, ...selectables].map((option) => {
+                 const isSelected = selected.includes(option.value);
                 return (
                   <CommandItem
                     key={option.value}
@@ -127,9 +133,10 @@ export function MultiSelect({ options, selected, onChange, className, placeholde
                       handleSelect(option.value);
                       inputRef.current?.focus();
                     }}
-                    className={"cursor-pointer"}
+                    className={"cursor-pointer flex items-center justify-between"}
                   >
                     {option.label}
+                    {isSelected && <Check className="h-4 w-4" />}
                   </CommandItem>
                 );
               })}
