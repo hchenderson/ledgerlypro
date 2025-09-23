@@ -729,6 +729,21 @@ function BasicReports() {
                 onChange={setSelectedCategories}
                 placeholder="Filter categories..."
             />
+             {selectedCategories.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {selectedCategories.map(category => (
+                  <Badge key={category} variant="secondary" className="pr-1">
+                    {category}
+                    <button
+                      onClick={() => setSelectedCategories(prev => prev.filter(c => c !== category))}
+                      className="ml-1 rounded-full p-0.5 hover:bg-muted-foreground/20"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            )}
             <CategoryPieChart data={expenseByCategory} />
           </CardContent>
         </Card>
@@ -1741,3 +1756,5 @@ export default function ReportsPage() {
         </Tabs>
     )
 }
+
+    
