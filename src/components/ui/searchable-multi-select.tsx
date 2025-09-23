@@ -55,6 +55,15 @@ function SearchableMultiSelect({
     onChange([]);
   };
 
+  const handleToggleOption = (optionValue: string) => {
+    const isSelected = selected.includes(optionValue);
+    if (isSelected) {
+      onChange(selected.filter((v) => v !== optionValue));
+    } else {
+      onChange([...selected, optionValue]);
+    }
+  };
+
   const displayedBadges = options
     .filter((option) => selected.includes(option.value))
     .slice(0, maxDisplayItems);
@@ -77,7 +86,7 @@ function SearchableMultiSelect({
                   <Badge
                     variant="secondary"
                     key={option.value}
-                    className="mr-1"
+                    className="mr-1 cursor-pointer"
                     onClick={(e) => {
                       e.stopPropagation();
                       onChange(selected.filter((v) => v !== option.value));
@@ -106,10 +115,28 @@ function SearchableMultiSelect({
           <CommandList>
             <CommandEmpty>No results found.</CommandEmpty>
             <CommandGroup>
-              <CommandItem onSelect={handleSelectAll} className="cursor-pointer">
+              <CommandItem 
+                className="cursor-pointer"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                onSelect={() => {
+                  handleSelectAll();
+                }}
+              >
                 Select All
               </CommandItem>
-              <CommandItem onSelect={handleClearAll} className="cursor-pointer">
+              <CommandItem 
+                className="cursor-pointer"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                onSelect={() => {
+                  handleClearAll();
+                }}
+              >
                 Clear All
               </CommandItem>
             </CommandGroup>
@@ -119,14 +146,15 @@ function SearchableMultiSelect({
                 return (
                   <CommandItem
                     key={option.value}
-                    onSelect={() => {
-                      if (isSelected) {
-                        onChange(selected.filter((v) => v !== option.value));
-                      } else {
-                        onChange([...selected, option.value]);
-                      }
-                    }}
+                    value={option.value}
                     className="cursor-pointer"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    onSelect={() => {
+                      handleToggleOption(option.value);
+                    }}
                   >
                     <Check
                       className={cn(
