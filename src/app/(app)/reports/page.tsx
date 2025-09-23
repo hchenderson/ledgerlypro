@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
@@ -574,7 +573,7 @@ function BasicReports() {
         if (c.subCategories) recurse(c.subCategories);
       });
     };
-    recurse(categories);
+    recurse(categories.filter(c => c.type === 'expense'));
     return options.sort((a,b) => a.label.localeCompare(b.label));
   }, [categories]);
 
@@ -677,7 +676,7 @@ function BasicReports() {
         <CardHeader>
             <CardTitle>Filters</CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Select onValueChange={handlePresetChange}>
                 <SelectTrigger>
                     <SelectValue placeholder="Select a preset" />
@@ -723,12 +722,6 @@ function BasicReports() {
                 />
             </PopoverContent>
             </Popover>
-             <MultiSelect
-                options={allCategoryOptions}
-                selected={selectedCategories}
-                onChange={setSelectedCategories}
-                placeholder="Filter categories..."
-            />
         </CardContent>
       </Card>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -744,7 +737,13 @@ function BasicReports() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><PieChartIcon/> Expense Breakdown</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
+             <MultiSelect
+                options={allCategoryOptions}
+                selected={selectedCategories}
+                onChange={setSelectedCategories}
+                placeholder="Filter categories..."
+            />
             <CategoryPieChart data={expenseByCategory} />
           </CardContent>
         </Card>
@@ -1757,6 +1756,3 @@ export default function ReportsPage() {
         </Tabs>
     )
 }
-
-
-    
