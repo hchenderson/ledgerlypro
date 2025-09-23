@@ -1,35 +1,40 @@
-
 {
   "name": "Ledgerly Pro",
   "short_name": "Ledgerly",
-  "description": "Modern Bookkeeping, Simplified.",
-  "start_url": "/",
+  "start_url": ".",
   "display": "standalone",
-  "background_color": "#F2FCF9",
-  "theme_color": "#285A43",
+  "background_color": "#eef8f7",
+  "theme_color": "#2a584f",
+  "description": "Modern Bookkeeping, Simplified.",
+  "lang": "en-US",
+  "scope": "/",
+  "orientation": "portrait",
+  "categories": [
+    "finance",
+    "business",
+    "utilities"
+  ],
   "icons": [
     {
-      "src": "/icons/icon-192x192.svg",
+      "src": "/icons/icon-192x192.png",
       "sizes": "192x192",
-      "type": "image/svg+xml",
-      "purpose": "any"
+      "type": "image/png"
     },
     {
-      "src": "/icons/icon-512x512.svg",
+      "src": "/icons/icon-512x512.png",
       "sizes": "512x512",
-      "type": "image/svg+xml",
-      "purpose": "any"
+      "type": "image/png"
     },
     {
-      "src": "/icons/icon-maskable-192x192.svg",
+      "src": "/icons/icon-maskable-192x192.png",
       "sizes": "192x192",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "/icons/icon-maskable-512x512.svg",
+      "src": "/icons/icon-maskable-512x512.png",
       "sizes": "512x512",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "maskable"
     }
   ]
