@@ -207,7 +207,7 @@ interface KPITargets {
 const sanitizeForVariableName = (name: string): string => {
   if (!name) return '';
   return name
-    .replace(/[^a-zA-Z0-9_]/g, '_') // Replace non-alphanumeric with underscore, but allow underscores
+    .replace(/[^a-zA-Z0-9_]/g, '_') // Replace non-alphanumeric with underscore
     .replace(/^[0-9]/, '_$&')      // Prefix with underscore if starts with number
     .replace(/__+/g, '_')           // Replace multiple underscores with single
     .replace(/^_|_$/g, '');         // Remove leading/trailing underscores
@@ -228,11 +228,13 @@ const safeEvaluateExpression = (expression: string, context: Record<string, numb
   }
 
   try {
-    const result = Parser.evaluate(cleanedExpression, context);
+    const parser = new Parser();
+    const expr = parser.parse(expression);
+    const result = expr.evaluate(context);
 
     return typeof result === 'number' && isFinite(result) ? result : null;
   } catch (error: any) {
-    console.error("Formula evaluation error:", { cleanedExpression, error });
+    console.error("Formula evaluation error:", { expression, error });
     // Rethrow with a more user-friendly message
     throw new Error(`Invalid formula: ${error.message}`);
   }
@@ -1730,3 +1732,5 @@ export default function ReportsPage() {
         </Tabs>
     )
 }
+
+    
