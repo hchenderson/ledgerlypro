@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
@@ -449,101 +448,97 @@ function FormulaBuilderTabContent({
   return (
     <ScrollArea className="h-[60vh]">
       <div className="space-y-6 p-1">
-        <div>
-          <h3 className="text-lg font-medium">Custom Calculations</h3>
-          <p className="text-sm text-muted-foreground">
-            Create custom metrics using formulas. Drag items into the expression box.
-          </p>
-        </div>
+        <Tabs defaultValue="create">
+            <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="create">Create</TabsTrigger>
+                <TabsTrigger value="existing">Existing</TabsTrigger>
+            </TabsList>
+            <TabsContent value="create" className="pt-4 space-y-4">
+                <div className="space-y-2">
+                    <Label htmlFor="formula-name">Formula Name</Label>
+                    <Input 
+                    id="formula-name" 
+                    placeholder="e.g., Net Income" 
+                    value={name} 
+                    onChange={e => setName(e.target.value)} 
+                    />
+                </div>
+                
+                <div className="space-y-2">
+                    <Label htmlFor="formula-expression">Formula Expression</Label>
+                    <Textarea
+                    id="formula-expression"
+                    ref={expressionRef}
+                    placeholder="e.g., totalIncome - totalExpense"
+                    rows={3}
+                    value={expression}
+                    onChange={e => setExpression(e.target.value)}
+                    onDrop={handleDrop}
+                    onDragOver={handleDragOver}
+                    />
+                </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="formula-name">Formula Name</Label>
-              <Input 
-                id="formula-name" 
-                placeholder="e.g., Net Income" 
-                value={name} 
-                onChange={e => setName(e.target.value)} 
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="formula-expression">Formula Expression</Label>
-              <Textarea
-                id="formula-expression"
-                ref={expressionRef}
-                placeholder="e.g., totalIncome - totalExpense"
-                rows={3}
-                value={expression}
-                onChange={e => setExpression(e.target.value)}
-                onDrop={handleDrop}
-                onDragOver={handleDragOver}
-              />
-            </div>
-
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={testFormula}>
-                Test Formula
-              </Button>
-              <Button size="sm" onClick={handleAdd} disabled={!name.trim() || !expression.trim()}>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Formula
-              </Button>
-            </div>
-
-            {testResult !== null && (
-              <div className="p-3 bg-muted rounded-md">
-                <p className="text-sm font-medium">Test Result:</p>
-                <p className="text-lg font-mono">
-                  {new Intl.NumberFormat('en-US', { 
-                    style: 'currency', 
-                    currency: 'USD' 
-                  }).format(testResult)}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Using sample data.
-                </p>
-              </div>
-            )}
-            {testError && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-md">
-                <p className="text-sm font-medium text-red-900">Error:</p>
-                <p className="text-sm text-red-700">{testError}</p>
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-4">
-            <h4 className="font-medium">Existing Formulas</h4>
-            {formulas.length === 0 ? (
-              <div className="text-sm text-muted-foreground p-4 border rounded-md text-center">
-                No formulas created yet.
-              </div>
-            ) : (
-              <div className="border rounded-md max-h-60 overflow-y-auto">
-                {formulas.map(formula => (
-                  <div key={formula.id} className="flex items-center justify-between p-3 border-b last:border-b-0">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold truncate">{formula.name}</p>
-                      <p className="text-xs text-muted-foreground font-mono truncate">
-                        {formula.expression}
-                      </p>
-                    </div>
-                    <Button 
-                      variant="ghost" 
-                      size="icon"
-                      onClick={() => onDeleteFormula(formula.id)}
-                      className="flex-shrink-0 ml-2"
-                    >
-                      <Trash2 className="h-4 w-4 text-red-500" />
+                <div className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={testFormula}>
+                    Test Formula
                     </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+                    <Button size="sm" onClick={handleAdd} disabled={!name.trim() || !expression.trim()}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Formula
+                    </Button>
+                </div>
+
+                 {testResult !== null && (
+                    <div className="p-3 bg-muted rounded-md">
+                        <p className="text-sm font-medium">Test Result:</p>
+                        <p className="text-lg font-mono">
+                        {new Intl.NumberFormat('en-US', { 
+                            style: 'currency', 
+                            currency: 'USD' 
+                        }).format(testResult)}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                        Using sample data.
+                        </p>
+                    </div>
+                )}
+                {testError && (
+                    <div className="p-3 bg-red-50 border border-red-200 rounded-md">
+                        <p className="text-sm font-medium text-red-900">Error:</p>
+                        <p className="text-sm text-red-700">{testError}</p>
+                    </div>
+                )}
+
+            </TabsContent>
+            <TabsContent value="existing" className="pt-4 space-y-4">
+                 {formulas.length === 0 ? (
+                    <div className="text-sm text-muted-foreground p-4 border rounded-md text-center">
+                        No formulas created yet.
+                    </div>
+                    ) : (
+                    <div className="border rounded-md max-h-60 overflow-y-auto">
+                        {formulas.map(formula => (
+                        <div key={formula.id} className="flex items-center justify-between p-3 border-b last:border-b-0">
+                            <div className="flex-1 min-w-0">
+                            <p className="font-semibold truncate">{formula.name}</p>
+                            <p className="text-xs text-muted-foreground font-mono truncate">
+                                {formula.expression}
+                            </p>
+                            </div>
+                            <Button 
+                            variant="ghost" 
+                            size="icon"
+                            onClick={() => onDeleteFormula(formula.id)}
+                            className="flex-shrink-0 ml-2"
+                            >
+                            <Trash2 className="h-4 w-4 text-red-500" />
+                            </Button>
+                        </div>
+                        ))}
+                    </div>
+                )}
+            </TabsContent>
+        </Tabs>
         
         <div className="space-y-2">
             <h4 className="font-medium">Operators</h4>
