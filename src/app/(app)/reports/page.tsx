@@ -610,20 +610,18 @@ function BasicReports() {
     setDateRange({ from: fromDate, to: toDate });
   };
 
-  const filteredTransactions = useMemo(() => {
+  const dateFilteredTransactions = useMemo(() => {
     return allTransactions.filter(t => {
       const transactionDate = new Date(t.date);
-      const inDateRange = dateRange?.from && dateRange?.to
+      return dateRange?.from && dateRange?.to
         ? transactionDate >= dateRange.from && transactionDate <= dateRange.to
         : true;
-      const inCategory = selectedCategories.length === 0 || selectedCategories.includes(t.category);
-      return inDateRange && inCategory;
     });
-  }, [allTransactions, dateRange, selectedCategories]);
+  }, [allTransactions, dateRange]);
 
   const overviewData = useMemo(() => {
     const dataByMonth: { [key: string]: { name: string; income: number; expense: number } } = {};
-    filteredTransactions.forEach(t => {
+    dateFilteredTransactions.forEach(t => {
       const month = format(new Date(t.date), 'MMM yy');
       if (!dataByMonth[month]) {
         dataByMonth[month] = { name: month, income: 0, expense: 0 };
@@ -631,9 +629,13 @@ function BasicReports() {
       dataByMonth[month][t.type] += t.amount;
     });
     return Object.values(dataByMonth).sort((a, b) => new Date(a.name) > new Date(b.name) ? 1 : -1);
-  }, [filteredTransactions]);
+  }, [dateFilteredTransactions]);
 
   const expenseByCategory = useMemo(() => {
+    const transactionsForPieChart = dateFilteredTransactions.filter(t => {
+        return selectedCategories.length === 0 || selectedCategories.includes(t.category);
+    });
+
     const findMainCategory = (subCategoryName: string, allCategories: Category[]): string => {
       for (const mainCat of allCategories) {
         if (mainCat.name === subCategoryName) return mainCat.name;
@@ -654,7 +656,7 @@ function BasicReports() {
     };
   
     const data: { [key: string]: number } = {};
-    filteredTransactions
+    transactionsForPieChart
       .filter(t => t.type === 'expense')
       .forEach(t => {
         const mainCategory = findMainCategory(t.category, categories);
@@ -667,7 +669,7 @@ function BasicReports() {
         amount: amount,
       }))
       .sort((a, b) => b.amount - a.amount);
-  }, [filteredTransactions, categories]);
+  }, [dateFilteredTransactions, categories, selectedCategories]);
 
   return (
     <div className="space-y-6">
@@ -1755,5 +1757,6 @@ export default function ReportsPage() {
         </Tabs>
     )
 }
+
 
     
