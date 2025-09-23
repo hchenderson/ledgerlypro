@@ -228,16 +228,7 @@ const safeEvaluateExpression = (expression: string, context: Record<string, numb
   }
 
   try {
-    const parser = new Parser();
-    const expr = parser.parse(cleanedExpression);
-    const identifiers = expr.variables();
-    const unknown = identifiers.filter(id => !(id in context));
-
-    if (unknown.length > 0) {
-      throw new Error(`Unknown variable(s): ${unknown.join(', ')}`);
-    }
-
-    const result = expr.evaluate(context);
+    const result = Parser.evaluate(cleanedExpression, context);
 
     return typeof result === 'number' && isFinite(result) ? result : null;
   } catch (error: any) {
