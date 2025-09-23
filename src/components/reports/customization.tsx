@@ -27,7 +27,6 @@ import {
   TabsTrigger,
 } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
-import { Slider } from '@/components/ui/slider';
 import {
   Card,
   CardContent,
@@ -38,12 +37,11 @@ import {
   Palette,
   Settings,
   Plus,
-  Trash2,
   Grid,
 } from 'lucide-react';
 import { HexColorPicker } from 'react-colorful';
-import { MultiSelect } from '../ui/multi-select';
 import { Separator } from '../ui/separator';
+import { SearchableMultiSelect } from '../ui/searchable-multi-select';
 
 interface Widget {
   id: string;
@@ -96,10 +94,13 @@ export function AdvancedWidgetCustomizer({
 
   useEffect(() => {
     // Only set the local widget when the dialog is opened with a new widget
-    if (widget) {
+    if (widget && !localWidget) {
       setLocalWidget({ ...widget });
     }
-  }, [widget]);
+    if (!widget && localWidget) {
+      setLocalWidget(null);
+    }
+  }, [widget, localWidget]);
 
   if (!widget || !localWidget) return null;
 
@@ -486,7 +487,7 @@ function FiltersCustomizer({
           <p className="text-sm text-muted-foreground mb-2">
             Override global category filters for this widget only
           </p>
-          <MultiSelect
+          <SearchableMultiSelect
             options={allCategoryOptions}
             selected={widget.customFilters?.categories || []}
             onChange={(value) => onUpdate({ customFilters: { ...(widget.customFilters || { categories: [] }), categories: value } })}

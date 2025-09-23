@@ -102,8 +102,8 @@ import { useToast } from '@/hooks/use-toast';
 import { AdvancedWidgetCustomizer } from '@/components/reports/customization';
 import { OverviewChart } from '@/components/dashboard/overview-chart';
 import { CategoryPieChart } from '@/components/reports/category-pie-chart';
-import { MultiSelect } from '@/components/ui/multi-select';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { SearchableMultiSelect } from '@/components/ui/searchable-multi-select';
 
 
 const PRESET_RANGES = [
@@ -214,28 +214,13 @@ const sanitizeForVariableName = (name: string): string => {
 };
 
 const safeEvaluateExpression = (expression: string, context: Record<string, number | string | boolean>): number | null => {
-  const rawExpression = expression || '';
-  const cleanedExpression = rawExpression
-    .replace(/[\u200B-\u200D\uFEFF]/g, '') // remove zero-width chars
-    .trim();
-
-  if (cleanedExpression === '') {
-    return null;
-  }
-  
-  if (/[\+\-\*\/]$/.test(cleanedExpression)) {
-    throw new Error('Formula cannot end with an operator');
-  }
-
   try {
-    const parser = new Parser();
-    const result = parser.evaluate(cleanedExpression, context);
-
-    return typeof result === 'number' && isFinite(result) ? result : null;
+      const parser = new Parser();
+      const result = parser.evaluate(expression, context);
+      return typeof result === 'number' && isFinite(result) ? result : null;
   } catch (error: any) {
-    console.error("Formula evaluation error:", { cleanedExpression, error });
-    // Rethrow with a more user-friendly message
-    throw new Error(`Invalid formula: ${error.message}`);
+      console.error("Formula evaluation error:", error);
+      throw new Error(`Invalid formula: ${error.message}`);
   }
 };
 
@@ -738,7 +723,7 @@ function BasicReports() {
             <CardTitle className="flex items-center gap-2"><PieChartIcon/> Expense Breakdown</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-             <MultiSelect
+             <SearchableMultiSelect
                 options={allCategoryOptions}
                 selected={selectedCategories}
                 onChange={setSelectedCategories}
@@ -1408,7 +1393,7 @@ function AdvancedReports() {
             </div>
             <div className="space-y-2">
                 <Label>Categories</Label>
-                <MultiSelect
+                <SearchableMultiSelect
                     options={allCategoryOptions}
                     selected={globalFilters.categories}
                     onChange={(value) => setGlobalFilters(prev => ({...prev, categories: value}))}
@@ -1546,7 +1531,7 @@ function AdvancedReports() {
                           <>
                             <div className="col-span-2 lg:col-span-3">
                               <Label>Categories to Display</Label>
-                              <MultiSelect
+                              <SearchableMultiSelect
                                 options={allCategoryOptions}
                                 selected={widget.dataCategories || []}
                                 onChange={(value: string[]) => updateWidget(widget.id, { dataCategories: value })}
