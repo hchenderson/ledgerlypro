@@ -54,7 +54,7 @@ export function MultiSelect({ options, selected, onChange, className, placeholde
     <Command onKeyDown={handleKeyDown} className={cn("overflow-visible bg-transparent", className)}>
       <div 
         className="group border border-input px-3 py-2 text-sm ring-offset-background rounded-md focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2"
-        onClick={() => {
+         onClick={() => {
             setOpen(true);
             inputRef.current?.focus();
         }}
@@ -76,7 +76,10 @@ export function MultiSelect({ options, selected, onChange, className, placeholde
                     e.preventDefault();
                     e.stopPropagation();
                   }}
-                  onClick={() => handleUnselect(optionValue)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleUnselect(optionValue)
+                  }}
                 >
                   <X className="h-3 w-3 text-muted-foreground hover:text-foreground" />
                 </button>
