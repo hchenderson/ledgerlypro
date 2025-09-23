@@ -8,6 +8,7 @@ import { ThemeProvider } from 'next-themes';
 export const metadata: Metadata = {
   title: 'Ledgerly Pro',
   description: 'Modern Bookkeeping, Simplified.',
+  manifest: '/manifest.json',
 };
 
 export default function RootLayout({
