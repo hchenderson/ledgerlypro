@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
@@ -229,12 +230,11 @@ const safeEvaluateExpression = (expression: string, context: Record<string, numb
 
   try {
     const parser = new Parser();
-    const expr = parser.parse(expression);
-    const result = expr.evaluate(context);
+    const result = parser.evaluate(cleanedExpression, context);
 
     return typeof result === 'number' && isFinite(result) ? result : null;
   } catch (error: any) {
-    console.error("Formula evaluation error:", { expression, error });
+    console.error("Formula evaluation error:", { cleanedExpression, error });
     // Rethrow with a more user-friendly message
     throw new Error(`Invalid formula: ${error.message}`);
   }
@@ -564,6 +564,19 @@ function BasicReports() {
     from: startOfMonth(new Date()),
     to: endOfMonth(new Date()),
   });
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  
+  const allCategoryOptions = useMemo(() => {
+    const options: { value: string; label: string }[] = [];
+    const recurse = (cats: (Category | SubCategory)[]) => {
+      (cats || []).forEach(c => {
+        options.push({ value: c.name, label: c.name });
+        if (c.subCategories) recurse(c.subCategories);
+      });
+    };
+    recurse(categories);
+    return options.sort((a,b) => a.label.localeCompare(b.label));
+  }, [categories]);
 
   const handlePresetChange = (value: string) => {
     const now = new Date();
@@ -600,11 +613,13 @@ function BasicReports() {
   const filteredTransactions = useMemo(() => {
     return allTransactions.filter(t => {
       const transactionDate = new Date(t.date);
-      return dateRange?.from && dateRange?.to
+      const inDateRange = dateRange?.from && dateRange?.to
         ? transactionDate >= dateRange.from && transactionDate <= dateRange.to
         : true;
+      const inCategory = selectedCategories.length === 0 || selectedCategories.includes(t.category);
+      return inDateRange && inCategory;
     });
-  }, [allTransactions, dateRange]);
+  }, [allTransactions, dateRange, selectedCategories]);
 
   const overviewData = useMemo(() => {
     const dataByMonth: { [key: string]: { name: string; income: number; expense: number } } = {};
@@ -656,11 +671,13 @@ function BasicReports() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-        <div className="flex-1" />
-        <div className="flex flex-wrap gap-2">
+      <Card>
+        <CardHeader>
+            <CardTitle>Filters</CardTitle>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <Select onValueChange={handlePresetChange}>
-                <SelectTrigger className="w-[180px]">
+                <SelectTrigger>
                     <SelectValue placeholder="Select a preset" />
                 </SelectTrigger>
                 <SelectContent>
@@ -675,7 +692,7 @@ function BasicReports() {
                 id="date"
                 variant="outline"
                 className={cn(
-                    'w-[300px] justify-start text-left font-normal',
+                    'justify-start text-left font-normal',
                     !dateRange && 'text-muted-foreground'
                 )}
                 >
@@ -704,8 +721,14 @@ function BasicReports() {
                 />
             </PopoverContent>
             </Popover>
-        </div>
-      </div>
+             <MultiSelect
+                options={allCategoryOptions}
+                selected={selectedCategories}
+                onChange={setSelectedCategories}
+                placeholder="Filter categories..."
+            />
+        </CardContent>
+      </Card>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
