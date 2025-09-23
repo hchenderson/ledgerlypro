@@ -47,8 +47,22 @@ export function MultiSelect({ options, selected, onChange, className, placeholde
       }
     }
   }, [onChange, selected]);
+  
+  const handleSelect = React.useCallback((optionValue: string) => {
+    setInputValue("");
+    onChange([...selected, optionValue]);
+  }, [onChange, selected]);
+  
+  const handleBlur = React.useCallback(() => {
+    // Delay blur handling to allow onSelect to fire
+    setTimeout(() => {
+        setOpen(false);
+    }, 100);
+  }, []);
 
   const selectables = options.filter(option => !selected.includes(option.value));
+  
+  const effectivePlaceholder = selected.length > 0 ? '' : placeholder;
 
   return (
     <Command onKeyDown={handleKeyDown} className={cn("overflow-visible bg-transparent", className)}>
@@ -90,17 +104,17 @@ export function MultiSelect({ options, selected, onChange, className, placeholde
             ref={inputRef}
             value={inputValue}
             onValueChange={setInputValue}
-            onBlur={() => setOpen(false)}
+            onBlur={handleBlur}
             onFocus={() => setOpen(true)}
-            placeholder={placeholder}
+            placeholder={effectivePlaceholder}
             className="ml-2 bg-transparent outline-none placeholder:text-muted-foreground flex-1 h-full p-0"
           />
         </div>
       </div>
       <div className="relative mt-2">
         {open && selectables.length > 0 ? (
-          <div className="absolute w-full z-10 top-0 rounded-md border bg-popover text-popover-foreground shadow-md outline-none animate-in">
-            <CommandGroup className="h-full overflow-auto">
+          <div className="absolute w-full z-10 top-0 rounded-md border bg-popover text-popover-foreground shadow-md outline-none animate-in max-h-64 overflow-y-auto">
+            <CommandGroup>
               {selectables.map((option) => {
                 return (
                   <CommandItem
@@ -110,8 +124,8 @@ export function MultiSelect({ options, selected, onChange, className, placeholde
                       e.stopPropagation();
                     }}
                     onSelect={(_value) => {
-                      setInputValue("");
-                      onChange([...selected, option.value]);
+                      handleSelect(option.value);
+                      inputRef.current?.focus();
                     }}
                     className={"cursor-pointer"}
                   >
