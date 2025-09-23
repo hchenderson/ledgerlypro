@@ -1,19 +1,11 @@
-
 "use client";
 
 import * as React from "react";
-import { Check, X, ChevronsUpDown } from "lucide-react";
+import { Check, X, ChevronsUpDown, Search } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
+import { Input } from "@/components/ui/input";
 import {
   Popover,
   PopoverContent,
@@ -46,9 +38,19 @@ function SearchableMultiSelect({
   className,
 }: SearchableMultiSelectProps) {
   const [open, setOpen] = React.useState(false);
+  const [searchValue, setSearchValue] = React.useState("");
+
+  // Filter options based on search
+  const filteredOptions = React.useMemo(() => {
+    if (!searchValue) return options;
+    return options.filter(option =>
+      option.label.toLowerCase().includes(searchValue.toLowerCase()) ||
+      option.value.toLowerCase().includes(searchValue.toLowerCase())
+    );
+  }, [options, searchValue]);
 
   const handleSelectAll = () => {
-    onChange(options.map((option) => option.value));
+    onChange(filteredOptions.map((option) => option.value));
   };
 
   const handleClearAll = () => {
@@ -72,14 +74,14 @@ function SearchableMultiSelect({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild className={className}>
+      <PopoverTrigger asChild>
         <Button
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          className="w-full justify-between h-auto min-h-10"
+          className={cn("w-full justify-between h-auto min-h-10", className)}
         >
-          <div className="flex flex-wrap gap-1 items-center">
+          <div className="flex flex-wrap gap-1 items-center flex-1">
             {displayedBadges.length > 0 ? (
               <>
                 {displayedBadges.map((option) => (
@@ -103,72 +105,96 @@ function SearchableMultiSelect({
                 )}
               </>
             ) : (
-              <span className="text-muted-foreground">{placeholder}</span>
+              <span className="text-muted-foreground text-sm">{placeholder}</span>
             )}
           </div>
           <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
-        <Command>
-          <CommandInput placeholder={searchPlaceholder} />
-          <CommandList>
-            <CommandEmpty>No results found.</CommandEmpty>
-            <CommandGroup>
-              <CommandItem 
-                className="cursor-pointer"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                }}
-                onSelect={() => {
-                  handleSelectAll();
-                }}
-              >
-                Select All
-              </CommandItem>
-              <CommandItem 
-                className="cursor-pointer"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                }}
-                onSelect={() => {
-                  handleClearAll();
-                }}
-              >
-                Clear All
-              </CommandItem>
-            </CommandGroup>
-            <CommandGroup>
-              {options.map((option) => {
+      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+        {/* Search Input */}
+        <div className="flex items-center border-b px-3 py-2">
+          <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+          <Input
+            placeholder={searchPlaceholder}
+            value={searchValue}
+            onChange={(e) => setSearchValue(e.target.value)}
+            className="border-0 p-0 h-6 focus-visible:ring-0 focus-visible:ring-offset-0"
+          />
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex items-center justify-between p-2 border-b bg-muted/50">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleSelectAll}
+            className="text-xs h-7"
+          >
+            Select All ({filteredOptions.length})
+          </Button>
+          {selected.length > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleClearAll}
+              className="text-xs h-7"
+            >
+              Clear All
+            </Button>
+          )}
+        </div>
+
+        {/* Options List */}
+        <div className="max-h-60 overflow-y-auto">
+          {filteredOptions.length === 0 ? (
+            <div className="py-6 text-center text-sm text-muted-foreground">
+              {searchValue ? "No matching options found." : "No options available."}
+            </div>
+          ) : (
+            <div className="p-1">
+              {filteredOptions.map((option) => {
                 const isSelected = selected.includes(option.value);
                 return (
-                  <CommandItem
+                  <div
                     key={option.value}
-                    value={option.value}
-                    className="cursor-pointer"
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                    }}
-                    onSelect={() => {
-                      handleToggleOption(option.value);
-                    }}
+                    className={cn(
+                      "flex items-center px-2 py-2 text-sm cursor-pointer rounded-sm hover:bg-accent hover:text-accent-foreground",
+                      isSelected && "bg-accent/50"
+                    )}
+                    onClick={() => handleToggleOption(option.value)}
                   >
-                    <Check
+                    <div
                       className={cn(
-                        "mr-2 h-4 w-4",
-                        isSelected ? "opacity-100" : "opacity-0"
+                        "flex h-4 w-4 items-center justify-center rounded-sm border border-primary mr-2",
+                        isSelected
+                          ? "bg-primary text-primary-foreground"
+                          : "opacity-50"
                       )}
-                    />
-                    {option.label}
-                  </CommandItem>
+                    >
+                      <Check className={cn("h-3 w-3", isSelected ? "opacity-100" : "opacity-0")} />
+                    </div>
+                    <span className="flex-1">{option.label}</span>
+                    {isSelected && (
+                      <Badge variant="outline" className="text-xs ml-2">
+                        Selected
+                      </Badge>
+                    )}
+                  </div>
                 );
               })}
-            </CommandGroup>
-          </CommandList>
-        </Command>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        {selected.length > 0 && (
+          <div className="border-t p-2 bg-muted/30">
+            <div className="text-xs text-muted-foreground text-center">
+              {selected.length} of {options.length} selected
+            </div>
+          </div>
+        )}
       </PopoverContent>
     </Popover>
   );
