@@ -1,19 +1,15 @@
 {
   "name": "Ledgerly Pro",
   "short_name": "Ledgerly",
-  "start_url": ".",
+  "theme_color": "#1F4E46",
+  "background_color": "#F3FBF9",
   "display": "standalone",
-  "background_color": "#eef8f7",
-  "theme_color": "#2a584f",
+  "orientation": "portrait",
+  "scope": "/",
+  "start_url": "/dashboard",
   "description": "Modern Bookkeeping, Simplified.",
   "lang": "en-US",
-  "scope": "/",
-  "orientation": "portrait",
-  "categories": [
-    "finance",
-    "business",
-    "utilities"
-  ],
+  "categories": ["finance", "business"],
   "icons": [
     {
       "src": "/icons/icon-192x192.png",
@@ -26,16 +22,9 @@
       "type": "image/png"
     },
     {
-      "src": "/icons/icon-maskable-192x192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "maskable"
-    },
-    {
-      "src": "/icons/icon-maskable-512x512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
     }
   ]
 }
