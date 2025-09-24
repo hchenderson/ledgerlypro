@@ -24,7 +24,7 @@ import { Calendar } from "./ui/calendar";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { Input } from "./ui/input";
-import { MultiSelect } from "./ui/multi-select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 
 interface ExportTransactionsDialogProps {
@@ -43,7 +43,7 @@ export function ExportTransactionsDialog({
   
   // Filter states
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [minAmount, setMinAmount] = useState("");
   const [maxAmount, setMaxAmount] = useState("");
 
@@ -51,7 +51,7 @@ export function ExportTransactionsDialog({
 
   const resetState = () => {
     setDateRange(undefined);
-    setSelectedCategories([]);
+    setSelectedCategory("all");
     setMinAmount("");
     setMaxAmount("");
     setExportType("all");
@@ -79,38 +79,35 @@ export function ExportTransactionsDialog({
   const filteredTransactions = useMemo(() => {
     if (exportType === "all") return transactions;
 
-    const getSubCategoryNames = (category: Category | SubCategory): string[] => {
-        let names = [category.name];
-        if (category.subCategories) {
-            category.subCategories.forEach(sub => {
-                names = [...names, ...getSubCategoryNames(sub)];
-            });
-        }
-        return names;
-    };
-
-    const findCategoryByName = (name: string, cats: (Category|SubCategory)[]): Category | SubCategory | undefined => {
-        for (const cat of cats) {
-            if (cat.name === name) return cat;
-            if (cat.subCategories) {
-                const found = findCategoryByName(name, cat.subCategories);
-                if (found) return found;
-            }
-        }
-        return undefined;
-    };
-
     let finalCategoryFilter: string[] = [];
-    if (selectedCategories.length > 0) {
-      selectedCategories.forEach(catName => {
-        const mainCategory = findCategoryByName(catName, categories);
-        if(mainCategory) {
-          finalCategoryFilter.push(...getSubCategoryNames(mainCategory));
-        } else {
-          finalCategoryFilter.push(catName);
-        }
-      });
-      finalCategoryFilter = [...new Set(finalCategoryFilter)]; // Remove duplicates
+    if (selectedCategory && selectedCategory !== 'all') {
+      const getSubCategoryNames = (category: Category | SubCategory): string[] => {
+          let names = [category.name];
+          if (category.subCategories) {
+              category.subCategories.forEach(sub => {
+                  names = [...names, ...getSubCategoryNames(sub)];
+              });
+          }
+          return names;
+      };
+
+      const findCategoryByName = (name: string, cats: (Category|SubCategory)[]): Category | SubCategory | undefined => {
+          for (const cat of cats) {
+              if (cat.name === name) return cat;
+              if (cat.subCategories) {
+                  const found = findCategoryByName(name, cat.subCategories);
+                  if (found) return found;
+              }
+          }
+          return undefined;
+      };
+      
+      const mainCategory = findCategoryByName(selectedCategory, categories);
+      if (mainCategory) {
+        finalCategoryFilter = getSubCategoryNames(mainCategory);
+      } else {
+        finalCategoryFilter = [selectedCategory];
+      }
     }
 
 
@@ -127,7 +124,7 @@ export function ExportTransactionsDialog({
 
       return inDateRange && inCategory && inAmountRange;
     });
-  }, [transactions, exportType, dateRange, selectedCategories, minAmount, maxAmount, categories]);
+  }, [transactions, exportType, dateRange, selectedCategory, minAmount, maxAmount, categories]);
 
   const handleExport = useCallback(() => {
     try {
@@ -262,13 +259,20 @@ export function ExportTransactionsDialog({
                             </div>
                         </div>
                         <div className="flex flex-col gap-2">
-                            <Label>Categories</Label>
-                            <MultiSelect
-                                options={allCategoryOptions}
-                                selected={selectedCategories}
-                                onChange={setSelectedCategories}
-                                placeholder="All categories"
-                            />
+                            <Label>Category</Label>
+                             <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="All Categories" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Categories</SelectItem>
+                                    {allCategoryOptions.map(opt => (
+                                    <SelectItem key={opt.value} value={opt.value}>
+                                        {opt.label}
+                                    </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                         </div>
                     </div>
                 )}
