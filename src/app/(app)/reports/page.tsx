@@ -215,6 +215,9 @@ const sanitizeForVariableName = (name: string): string => {
 
 const safeEvaluateExpression = (expression: string, context: Record<string, number | string | boolean>): number | null => {
   try {
+      if (!expression || typeof expression !== 'string' || expression.trim() === '') {
+        return null;
+      }
       const parser = new Parser();
       const result = parser.evaluate(expression, context);
       return typeof result === 'number' && isFinite(result) ? result : null;
@@ -1756,5 +1759,3 @@ export default function ReportsPage() {
         </Tabs>
     )
 }
-
-    
