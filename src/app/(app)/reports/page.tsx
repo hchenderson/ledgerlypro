@@ -616,7 +616,7 @@ function BasicReports() {
       }
       dataByMonth[month][t.type] += t.amount;
     });
-    return Object.values(dataByMonth).sort((a, b) => new Date(a.name) > new Date(b.name) ? 1 : -1);
+    return Object.values(dataByMonth).sort((a, b) => new Date(`1 ${a.name}`).getTime() - new Date(`1 ${b.name}`).getTime());
   }, [dateFilteredTransactions]);
 
   const expenseByCategory = useMemo(() => {
