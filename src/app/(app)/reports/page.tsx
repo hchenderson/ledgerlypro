@@ -219,16 +219,27 @@ const safeEvaluateExpression = (expression: string, context: Record<string, numb
         return null;
       }
       
-      // A simple regex to check for allowed characters can prevent many basic injection attempts.
-      // This allows variable names (alphanumeric + underscore), numbers, and basic math operators.
+      let sanitizedExpression = expression;
+      const sanitizedContext: Record<string, number | string | boolean> = {};
+
+      for (const key in context) {
+        const sanitizedKey = sanitizeForVariableName(key);
+        sanitizedContext[sanitizedKey] = context[key];
+        // Important: Replace the original, potentially unsafe key in the expression
+        // with the sanitized version. Use a regex to avoid replacing parts of other words.
+        const regex = new RegExp(`\\b${key}\\b`, 'g');
+        sanitizedExpression = sanitizedExpression.replace(regex, sanitizedKey);
+      }
+
+      // The pattern should validate the sanitized expression
       const allowedPattern = /^[a-zA-Z0-9_+\-*/().\s]+$/;
-      if (!allowedPattern.test(expression)) {
-          throw new Error("Expression contains invalid characters.");
+      if (!allowedPattern.test(sanitizedExpression)) {
+          throw new Error("Expression contains invalid characters after sanitization.");
       }
 
       // Using Function constructor is safer than eval()
-      const formula = new Function(...Object.keys(context), `return ${expression};`);
-      const result = formula(...Object.values(context));
+      const formula = new Function(...Object.keys(sanitizedContext), `return ${sanitizedExpression};`);
+      const result = formula(...Object.values(sanitizedContext));
 
       return typeof result === 'number' && isFinite(result) ? result : null;
   } catch (error: any) {
@@ -616,18 +627,6 @@ function BasicReports() {
     });
   }, [allTransactions, dateRange]);
 
-  const overviewData = useMemo(() => {
-    const dataByMonth: { [key: string]: { name: string; income: number; expense: number } } = {};
-    dateFilteredTransactions.forEach(t => {
-      const month = format(new Date(t.date), 'MMM yy');
-      if (!dataByMonth[month]) {
-        dataByMonth[month] = { name: month, income: 0, expense: 0 };
-      }
-      dataByMonth[month][t.type] += t.amount;
-    });
-    return Object.values(dataByMonth).sort((a, b) => new Date(`1 ${a.name}`).getTime() - new Date(`1 ${b.name}`).getTime());
-  }, [dateFilteredTransactions]);
-
   const expenseByCategory = useMemo(() => {
     const findMainCategory = (subCategoryName: string, allCategories: Category[]): string => {
       for (const mainCat of allCategories) {
@@ -664,6 +663,18 @@ function BasicReports() {
       }))
       .sort((a, b) => b.amount - a.amount);
   }, [dateFilteredTransactions, categories, selectedCategories]);
+
+  const overviewData = useMemo(() => {
+    const dataByMonth: { [key: string]: { name: string; income: number; expense: number } } = {};
+    dateFilteredTransactions.forEach(t => {
+      const month = format(new Date(t.date), 'MMM yy');
+      if (!dataByMonth[month]) {
+        dataByMonth[month] = { name: month, income: 0, expense: 0 };
+      }
+      dataByMonth[month][t.type] += t.amount;
+    });
+    return Object.values(dataByMonth).sort((a, b) => new Date(`1 ${a.name}`).getTime() - new Date(`1 ${b.name}`).getTime());
+  }, [dateFilteredTransactions]);
 
   return (
     <div className="space-y-6">
@@ -1766,4 +1777,5 @@ export default function ReportsPage() {
         </Tabs>
     )
 }
+
 
