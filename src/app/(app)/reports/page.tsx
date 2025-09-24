@@ -979,16 +979,16 @@ function AdvancedReports() {
     const totalExpense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
 
     const categoryTotals = transactions.reduce((acc, t) => {
-      if (t.category) {
-        const sanitizedName = sanitizeForVariableName(t.category);
-        if (sanitizedName) {
-            if (!acc[sanitizedName]) {
-                acc[sanitizedName] = 0;
+        if (t.category) {
+            const sanitizedName = sanitizeForVariableName(t.category);
+            if (sanitizedName) {
+                if (!acc[sanitizedName]) {
+                    acc[sanitizedName] = 0;
+                }
+                acc[sanitizedName] += t.amount;
             }
-            acc[sanitizedName] += t.amount;
         }
-      }
-      return acc;
+        return acc;
     }, {} as Record<string, number>);
 
     const kpis = {
@@ -1006,20 +1006,20 @@ function AdvancedReports() {
     );
     
     if (widget.type === 'metric') {
-      const formula = formulas.find(f => f.id === widget.formulaId);
-      if (formula) {
-        try {
-          const value = safeEvaluateExpression(formula.expression, kpis);
-          return { kpis, data: [{ name: formula.name, value, formula: formula.expression }] };
-        } catch (error) {
-          console.error(`Error evaluating formula "${formula.name}":`, error);
-          return { kpis, data: [{ name: formula.name, value: null, formula: formula.expression }] };
+        const formula = formulas.find(f => f.id === widget.formulaId);
+        if (formula) {
+            try {
+                const value = safeEvaluateExpression(formula.expression, kpis);
+                return { kpis, data: [{ name: formula.name, value, formula: formula.expression }] };
+            } catch (error) {
+                console.error(`Error evaluating formula "${formula.name}":`, error);
+                return { kpis, data: [{ name: formula.name, value: null, formula: formula.expression }] };
+            }
+        } else if (widget.mainDataKey && kpis.hasOwnProperty(widget.mainDataKey)) {
+            const value = kpis[widget.mainDataKey as keyof typeof kpis];
+            return { kpis, data: [{ name: widget.title, value }] };
         }
-      } else if (widget.mainDataKey && kpis.hasOwnProperty(widget.mainDataKey)) {
-          const value = kpis[widget.mainDataKey as keyof typeof kpis];
-          return { kpis, data: [{ name: widget.title, value }] };
-      }
-      return { kpis, data: null };
+        return { kpis, data: null };
     }
     
     return { kpis, data: monthly, dataKeys };
@@ -1766,3 +1766,4 @@ export default function ReportsPage() {
         </Tabs>
     )
 }
+
