@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { LucideIcon, Wallet, TrendingUp, TrendingDown, DollarSign, CalendarClock, Activity } from "lucide-react";
+import { LucideIcon, Wallet, TrendingUp, TrendingDown, DollarSign, CalendarClock, Activity, PiggyBank } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const icons = {
@@ -13,6 +13,7 @@ const icons = {
   DollarSign,
   CalendarClock,
   Activity,
+  PiggyBank,
 };
 
 

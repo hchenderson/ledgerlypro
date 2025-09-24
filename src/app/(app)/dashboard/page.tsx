@@ -1,7 +1,7 @@
 
 "use client";
 
-import { DollarSign, TrendingUp, TrendingDown, Wallet, Target, CalendarClock, Star, Flag, Activity } from "lucide-react";
+import { DollarSign, TrendingUp, TrendingDown, Wallet, Target, CalendarClock, Star, Flag, Activity, PiggyBank } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { OverviewChart } from "@/components/dashboard/overview-chart";
@@ -125,7 +125,7 @@ export default function DashboardPage() {
             )}
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             <StatCard
               title="Total Income"
               value={analytics.totalIncome}
@@ -139,6 +139,13 @@ export default function DashboardPage() {
               icon="TrendingDown"
               trendValue="All-time expenses"
               variant="danger"
+            />
+             <StatCard
+              title="Total Savings"
+              value={analytics.totalIncome - analytics.totalExpenses}
+              icon="PiggyBank"
+              trendValue={analytics.totalIncome - analytics.totalExpenses >= 0 ? "You're in the green" : "You're in the red"}
+              variant={analytics.totalIncome - analytics.totalExpenses >= 0 ? 'success' : 'danger'}
             />
           </div>
 
