@@ -7,7 +7,6 @@ import { useUserData } from '@/hooks/use-user-data';
 import { useAuth } from '@/hooks/use-auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { Parser } from 'expr-eval';
 import { 
   Card, 
   CardContent, 
@@ -219,8 +218,18 @@ const safeEvaluateExpression = (expression: string, context: Record<string, numb
       if (!expression || typeof expression !== 'string' || expression.trim() === '') {
         return null;
       }
-      const parser = new Parser();
-      const result = parser.evaluate(expression, context);
+      
+      // A simple regex to check for allowed characters can prevent many basic injection attempts.
+      // This allows variable names (alphanumeric + underscore), numbers, and basic math operators.
+      const allowedPattern = /^[a-zA-Z0-9_+\-*/().\s]+$/;
+      if (!allowedPattern.test(expression)) {
+          throw new Error("Expression contains invalid characters.");
+      }
+
+      // Using Function constructor is safer than eval()
+      const formula = new Function(...Object.keys(context), `return ${expression};`);
+      const result = formula(...Object.values(context));
+
       return typeof result === 'number' && isFinite(result) ? result : null;
   } catch (error: any) {
       console.error("Formula evaluation error:", error);
@@ -620,10 +629,6 @@ function BasicReports() {
   }, [dateFilteredTransactions]);
 
   const expenseByCategory = useMemo(() => {
-    const transactionsForPieChart = dateFilteredTransactions.filter(t => {
-        return selectedCategories.length === 0 || selectedCategories.includes(t.category);
-    });
-
     const findMainCategory = (subCategoryName: string, allCategories: Category[]): string => {
       for (const mainCat of allCategories) {
         if (mainCat.name === subCategoryName) return mainCat.name;
@@ -644,8 +649,9 @@ function BasicReports() {
     };
   
     const data: { [key: string]: number } = {};
-    transactionsForPieChart
+    dateFilteredTransactions
       .filter(t => t.type === 'expense')
+      .filter(t => selectedCategories.length === 0 || selectedCategories.includes(findMainCategory(t.category, categories)))
       .forEach(t => {
         const mainCategory = findMainCategory(t.category, categories);
         data[mainCategory] = (data[mainCategory] || 0) + t.amount;
@@ -733,21 +739,6 @@ function BasicReports() {
                 onChange={setSelectedCategories}
                 placeholder="Filter categories..."
             />
-             {selectedCategories.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {selectedCategories.map(category => (
-                  <Badge key={category} variant="secondary" className="pr-1">
-                    {category}
-                    <button
-                      onClick={() => setSelectedCategories(prev => prev.filter(c => c !== category))}
-                      className="ml-1 rounded-full p-0.5 hover:bg-muted-foreground/20"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </Badge>
-                ))}
-              </div>
-            )}
             <CategoryPieChart data={expenseByCategory} />
           </CardContent>
         </Card>
