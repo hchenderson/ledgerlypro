@@ -783,13 +783,17 @@ function AdvancedReports() {
   const [selectedWidget, setSelectedWidget] = useState<any>(null);
   const [layout, setLayout] = useState('grid');
   
-  const [globalFilters, setGlobalFilters] = useState({
+  const [globalFilters, setGlobalFilters] = useState<{
+    dateRange: DateRange | undefined;
+    categories: string[];
+    tags: string[];
+  }>({
     dateRange: {
       from: subDays(new Date(), 29),
-      to: new Date()
-    } as DateRange | undefined,
-    categories: [] as string[],
-    tags: [] as string[]
+      to: new Date(),
+    },
+    categories: [],
+    tags: [],
   });
 
   const [kpiTargets, setKpiTargets] = useState<KPITargets>({
@@ -1008,7 +1012,8 @@ function AdvancedReports() {
           const value = safeEvaluateExpression(formula.expression, kpis);
           return { kpis, data: [{ name: formula.name, value, formula: formula.expression }] };
         } catch (error) {
-          return { kpis, data: null };
+          console.error(`Error evaluating formula "${formula.name}":`, error);
+          return { kpis, data: [{ name: formula.name, value: null, formula: formula.expression }] };
         }
       } else if (widget.mainDataKey && kpis.hasOwnProperty(widget.mainDataKey)) {
           const value = kpis[widget.mainDataKey as keyof typeof kpis];
