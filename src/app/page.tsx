@@ -59,7 +59,7 @@ export default function LandingPage() {
             </div>
             <div className="relative">
               <Image
-                src="https://picsum.photos/800/600"
+                src="https://placehold.co/800x600/a3bfb5/4f6f66.png?text=+"
                 alt="Ledgerly Pro Dashboard"
                 width={800}
                 height={600}
@@ -68,7 +68,7 @@ export default function LandingPage() {
               />
               <div className="absolute -bottom-4 -left-4 hidden md:block">
                  <Image
-                    src="https://picsum.photos/200/200"
+                    src="https://placehold.co/200x200/a3bfb5/4f6f66.png?text=+"
                     alt="Chart element"
                     width={200}
                     height={200}
