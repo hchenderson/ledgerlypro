@@ -174,15 +174,13 @@ export function ImportTransactionsDialog({
             
             const creditStr = (row[mapping.credit] || "0").replace(/[^0-9.-]+/g,"");
             const debitStr = (row[mapping.debit] || "0").replace(/[^0-9.-]+/g,"");
-            const creditAmount = parseFloat(creditStr);
-            const debitAmount = parseFloat(debitStr);
+            const creditAmount = parseFloat(creditStr) || 0;
+            const debitAmount = parseFloat(debitStr) || 0;
     
-            if (isNaN(creditAmount) && isNaN(debitAmount)) return null;
-
-            if (!isNaN(creditAmount) && creditAmount > 0) {
+            if (creditAmount > 0) {
                 type = 'income';
                 amountVal = creditAmount;
-            } else if (!isNaN(debitAmount) && debitAmount > 0) {
+            } else if (debitAmount > 0) {
                 type = 'expense';
                 amountVal = debitAmount;
             } else {
