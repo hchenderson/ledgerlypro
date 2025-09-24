@@ -1,14 +1,14 @@
 {
   "landingPage": {
     "dashboard": {
-      "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+      "src": "https://picsum.photos/seed/1/800/600",
       "alt": "A sleek dashboard for the Ledgerly Pro application, showing financial charts and data.",
       "width": 800,
       "height": 600,
       "data-ai-hint": "finance dashboard"
     },
     "chart": {
-      "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+      "src": "https://picsum.photos/seed/2/200/200",
       "alt": "A detailed chart element from the Ledgerly Pro dashboard.",
       "width": 200,
       "height": 200,
