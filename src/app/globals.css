@@ -20,7 +20,7 @@ body {
     --secondary-foreground: 158 38% 15%;
     --muted: 150 20% 92%;
     --muted-foreground: 158 20% 40%;
-    --accent: 158 38% 50%;
+    --accent: 222 47% 41%;
     --accent-foreground: 0 0% 100%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
@@ -28,7 +28,7 @@ body {
     --input: 150 20% 90%;
     --ring: 158 38% 40%;
     --chart-1: 158 38% 40%;
-    --chart-2: 158 30% 60%;
+    --chart-2: 222 47% 55%;
     --chart-3: 158 30% 55%;
     --chart-4: 222 30% 55%;
     --chart-5: 158 25% 75%;
@@ -56,7 +56,7 @@ body {
     --secondary-foreground: 0 0% 98%;
     --muted: 222 38% 15%;
     --muted-foreground: 222 20% 60%;
-    --accent: 158 38% 50%;
+    --accent: 222 47% 51%;
     --accent-foreground: 0 0% 100%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
@@ -64,7 +64,7 @@ body {
     --input: 222 38% 15%;
     --ring: 158 38% 65%;
     --chart-1: 158 38% 55%;
-    --chart-2: 158 30% 45%;
+    --chart-2: 222 47% 45%;
     --chart-3: 158 30% 45%;
     --chart-4: 222 30% 45%;
     --chart-5: 158 25% 65%;
