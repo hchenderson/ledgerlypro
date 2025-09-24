@@ -12,6 +12,7 @@ import {
   CommandInput
 } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
+import { Button } from "./button";
 
 type Option = Record<"value" | "label", string>;
 
@@ -71,14 +72,16 @@ export function MultiSelect({ options, selected, onChange, className, placeholde
 
   return (
     <Command onKeyDown={handleKeyDown} className={cn("overflow-visible bg-transparent", className)}>
-      <div 
-        className="group border border-input px-3 py-2 text-sm ring-offset-background rounded-md focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2"
+      <Button
+        type="button"
+        variant="outline"
+        className="group w-full h-auto min-h-10 px-3 py-2 text-sm ring-offset-background rounded-md focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2"
          onClick={() => {
             setOpen(true);
             inputRef.current?.focus();
         }}
       >
-        <div className="flex gap-1 flex-wrap">
+        <div className="flex gap-1 flex-wrap w-full justify-start">
           {selected.map((optionValue) => {
             const option = options.find(o => o.value === optionValue);
             return (
@@ -115,7 +118,7 @@ export function MultiSelect({ options, selected, onChange, className, placeholde
             className="ml-2 bg-transparent outline-none placeholder:text-muted-foreground flex-1 h-full p-0"
           />
         </div>
-      </div>
+      </Button>
       <div className="relative mt-2">
         {open && (options.length > 0) ? (
           <div className="absolute w-full z-10 top-0 rounded-md border bg-popover text-popover-foreground shadow-md outline-none animate-in max-h-64 overflow-y-auto">
