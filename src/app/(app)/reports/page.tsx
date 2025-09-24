@@ -788,7 +788,7 @@ function AdvancedReports() {
       from: subDays(new Date(), 29),
       to: new Date()
     } as DateRange | undefined,
-    category: 'all',
+    categories: [] as string[],
     tags: [] as string[]
   });
 
@@ -941,7 +941,7 @@ function AdvancedReports() {
       const inDateRange = globalFilters.dateRange?.from && globalFilters.dateRange?.to ?
         (transactionDate >= globalFilters.dateRange.from && transactionDate <= globalFilters.dateRange.to) : true;
       
-      const globalCategoryCheck = globalFilters.category === 'all' || globalFilters.category === t.category;
+      const globalCategoryCheck = globalFilters.categories.length === 0 || globalFilters.categories.includes(t.category);
       const widgetCategoryCheck = widget.customFilters?.categories?.length > 0 ? 
         widget.customFilters.categories.includes(t.category) : true;
       
@@ -1412,20 +1412,13 @@ function AdvancedReports() {
                 </Popover>
             </div>
             <div className="space-y-2">
-                <Label>Category</Label>
-                <Select value={globalFilters.category} onValueChange={(value) => setGlobalFilters(prev => ({...prev, category: value}))}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="All Categories" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Categories</SelectItem>
-                    {allCategoryOptions.map(opt => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label>Categories</Label>
+                <SearchableMultiSelect
+                    options={allCategoryOptions}
+                    selected={globalFilters.categories}
+                    onChange={(value) => setGlobalFilters(prev => ({...prev, categories: value}))}
+                    placeholder="All Categories"
+                />
             </div>
           </div>
         </CardContent>
