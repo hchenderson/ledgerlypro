@@ -1,18 +1,18 @@
 {
   "landingPage": {
     "dashboard": {
-      "src": "https://picsum.photos/seed/1/800/600",
+      "src": "https://firebasestorage.googleapis.com/v0/b/ledgerly-pro.firebasestorage.app/o/Screenshot%202025-09-24%20at%207.27.26%E2%80%AFAM.png?alt=media&token=d3f85f56-00c9-4d56-9bc1-c0cc0c2c752e",
       "alt": "A sleek dashboard for the Ledgerly Pro application, showing financial charts and data.",
       "width": 800,
       "height": 600,
       "data-ai-hint": "finance dashboard"
     },
     "chart": {
-      "src": "https://picsum.photos/seed/2/200/200",
+      "src": "https://firebasestorage.googleapis.com/v0/b/ledgerly-pro.firebasestorage.app/o/Screenshot%202025-09-24%20at%207.35.15%E2%80%AFAM.png?alt=media&token=093895f5-5b45-4d34-b819-3cd17a9bf088",
       "alt": "A detailed chart element from the Ledgerly Pro dashboard.",
       "width": 200,
       "height": 200,
-      "data-ai-hint": "chart graph"
+      "data-ai-hint": "report chart"
     }
   }
 }
