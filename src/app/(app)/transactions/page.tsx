@@ -309,15 +309,16 @@ export default function TransactionsPage() {
         <CardHeader>
           <CardTitle>Filters</CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+        <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           <Input 
             placeholder="Filter by description..."
             value={descriptionFilter}
             onChange={(e) => setDescriptionFilter(e.target.value)}
+            className="lg:col-span-1"
           />
           
           <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-            <SelectTrigger>
+            <SelectTrigger className="lg:col-span-1">
               <SelectValue placeholder="Filter by category" />
             </SelectTrigger>
             <SelectContent>
@@ -334,7 +335,7 @@ export default function TransactionsPage() {
                 id="date"
                 variant="outline"
                 className={cn(
-                  "justify-start text-left font-normal",
+                  "justify-start text-left font-normal lg:col-span-2",
                   !dateRange && "text-muted-foreground"
                 )}
               >
@@ -365,7 +366,7 @@ export default function TransactionsPage() {
             </PopoverContent>
           </Popover>
           
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 lg:col-span-2">
             <Input 
               type="number"
               placeholder="Min amount"
@@ -380,10 +381,12 @@ export default function TransactionsPage() {
             />
           </div>
           
-          <Button onClick={resetFilters} variant="ghost">
-            <X className="mr-2 h-4 w-4"/>
-            Reset
-          </Button>
+          <div className="lg:col-span-2 flex justify-end">
+            <Button onClick={resetFilters} variant="ghost">
+              <X className="mr-2 h-4 w-4"/>
+              Reset Filters
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
@@ -528,5 +531,3 @@ export default function TransactionsPage() {
     </div>
   );
 }
-
-    
