@@ -147,10 +147,13 @@ export default function TransactionsPage() {
         const mainCategory = findCategoryByName(filters.category, categories);
         const categoryNames = mainCategory ? getSubCategoryNames(mainCategory) : [filters.category];
 
-        if (categoryNames.length > 0) {
+        if (categoryNames.length > 10) {
+            console.warn(`Too many subcategories (${categoryNames.length}) for Firestore 'in' query. Filtering by main category only.`);
+            queryConstraints.push(where("category", "==", filters.category));
+        } else if (categoryNames.length > 1) {
             queryConstraints.push(where("category", "in", categoryNames));
-        } else {
-             queryConstraints.push(where("category", "==", filters.category));
+        } else if (categoryNames.length === 1) {
+            queryConstraints.push(where("category", "==", categoryNames[0]));
         }
     }
 
@@ -525,3 +528,5 @@ export default function TransactionsPage() {
     </div>
   );
 }
+
+    
