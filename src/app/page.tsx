@@ -5,6 +5,7 @@ import { BarChart, Briefcase, FileText, PieChart } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { LedgerlyLogo } from '@/components/icons';
+import imageData from '@/lib/placeholder-images.json';
 
 const features = [
   {
@@ -30,6 +31,8 @@ const features = [
 ];
 
 export default function LandingPage() {
+  const { landingPage } = imageData;
+
   return (
     <div className="flex min-h-screen flex-col">
       <header className="container mx-auto flex h-20 items-center justify-between px-4 md:px-6">
@@ -59,21 +62,22 @@ export default function LandingPage() {
             </div>
             <div className="relative">
               <Image
-                src="https://placehold.co/800x600/a3bfb5/4f6f66.png?text=+"
-                alt="Ledgerly Pro Dashboard"
-                width={800}
-                height={600}
+                src={landingPage.dashboard.src}
+                alt={landingPage.dashboard.alt}
+                width={landingPage.dashboard.width}
+                height={landingPage.dashboard.height}
                 className="rounded-xl object-cover shadow-2xl"
-                data-ai-hint="finance dashboard"
+                data-ai-hint={landingPage.dashboard['data-ai-hint']}
+                priority
               />
               <div className="absolute -bottom-4 -left-4 hidden md:block">
                  <Image
-                    src="https://placehold.co/200x200/a3bfb5/4f6f66.png?text=+"
-                    alt="Chart element"
-                    width={200}
-                    height={200}
+                    src={landingPage.chart.src}
+                    alt={landingPage.chart.alt}
+                    width={landingPage.chart.width}
+                    height={landingPage.chart.height}
                     className="rounded-lg object-cover shadow-lg"
-                    data-ai-hint="chart graph"
+                    data-ai-hint={landingPage.chart['data-ai-hint']}
                   />
               </div>
             </div>
