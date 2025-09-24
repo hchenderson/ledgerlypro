@@ -79,12 +79,47 @@ export function ExportTransactionsDialog({
   const filteredTransactions = useMemo(() => {
     if (exportType === "all") return transactions;
 
+    const getSubCategoryNames = (category: Category | SubCategory): string[] => {
+        let names = [category.name];
+        if (category.subCategories) {
+            category.subCategories.forEach(sub => {
+                names = [...names, ...getSubCategoryNames(sub)];
+            });
+        }
+        return names;
+    };
+
+    const findCategoryByName = (name: string, cats: (Category|SubCategory)[]): Category | SubCategory | undefined => {
+        for (const cat of cats) {
+            if (cat.name === name) return cat;
+            if (cat.subCategories) {
+                const found = findCategoryByName(name, cat.subCategories);
+                if (found) return found;
+            }
+        }
+        return undefined;
+    };
+
+    let finalCategoryFilter: string[] = [];
+    if (selectedCategories.length > 0) {
+      selectedCategories.forEach(catName => {
+        const mainCategory = findCategoryByName(catName, categories);
+        if(mainCategory) {
+          finalCategoryFilter.push(...getSubCategoryNames(mainCategory));
+        } else {
+          finalCategoryFilter.push(catName);
+        }
+      });
+      finalCategoryFilter = [...new Set(finalCategoryFilter)]; // Remove duplicates
+    }
+
+
     return transactions.filter(t => {
       const transactionDate = new Date(t.date);
       const inDateRange = dateRange?.from && dateRange?.to ? 
         (transactionDate >= dateRange.from && transactionDate <= dateRange.to) : true;
       
-      const inCategory = selectedCategories.length > 0 ? selectedCategories.includes(t.category) : true;
+      const inCategory = finalCategoryFilter.length > 0 ? finalCategoryFilter.includes(t.category) : true;
       
       const min = minAmount ? parseFloat(minAmount) : -Infinity;
       const max = maxAmount ? parseFloat(maxAmount) : Infinity;
@@ -92,7 +127,7 @@ export function ExportTransactionsDialog({
 
       return inDateRange && inCategory && inAmountRange;
     });
-  }, [transactions, exportType, dateRange, selectedCategories, minAmount, maxAmount]);
+  }, [transactions, exportType, dateRange, selectedCategories, minAmount, maxAmount, categories]);
 
   const handleExport = useCallback(() => {
     try {
