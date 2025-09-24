@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
@@ -1011,13 +1012,18 @@ function AdvancedReports() {
     
     if (widget.type === 'metric') {
       const formula = formulas.find(f => f.id === widget.formulaId);
-      if (!formula) return { kpis, data: null };
-      try {
-        const value = safeEvaluateExpression(formula.expression, kpis);
-        return { kpis, data: [{ name: formula.name, value, formula: formula.expression }] };
-      } catch (error) {
-        return { kpis, data: null };
+      if (formula) {
+        try {
+          const value = safeEvaluateExpression(formula.expression, kpis);
+          return { kpis, data: [{ name: formula.name, value, formula: formula.expression }] };
+        } catch (error) {
+          return { kpis, data: null };
+        }
+      } else if (widget.mainDataKey && kpis.hasOwnProperty(widget.mainDataKey)) {
+          const value = kpis[widget.mainDataKey as keyof typeof kpis];
+          return { kpis, data: [{ name: widget.title, value }] };
       }
+      return { kpis, data: null };
     }
     
     return { kpis, data: monthly, dataKeys };
@@ -1031,7 +1037,7 @@ function AdvancedReports() {
           const theme = COLOR_THEMES[widget.colorTheme] || COLOR_THEMES.default;
 
           if (widget.type === 'metric') {
-            if (!data || data[0]?.value === null) {
+            if (!data || data[0]?.value === null || data[0]?.value === undefined) {
               return (
                 <div className="flex h-full items-center justify-center text-muted-foreground p-4 text-center">
                   <div className="space-y-2">
@@ -1060,18 +1066,23 @@ function AdvancedReports() {
             }
             
             const metric = data[0];
+            const isPercentage = metric.name?.toLowerCase().includes('rate');
+            const formatOptions = isPercentage 
+              ? { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 }
+              : { style: 'currency', currency: 'USD' };
+            const displayValue = isPercentage ? metric.value / 100 : metric.value;
+
             return (
               <div className="p-6 text-center">
                 <p className="text-4xl font-bold font-mono text-primary">
-                  {new Intl.NumberFormat('en-US', { 
-                    style: 'currency', 
-                    currency: 'USD' 
-                  }).format(metric.value)}
+                  {new Intl.NumberFormat('en-US', formatOptions).format(displayValue)}
                 </p>
                 <p className="text-lg font-medium mt-2">{metric.name}</p>
-                <p className="text-sm text-muted-foreground mt-1 font-mono">
-                  {metric.formula}
-                </p>
+                {metric.formula && (
+                  <p className="text-sm text-muted-foreground mt-1 font-mono">
+                    {metric.formula}
+                  </p>
+                )}
               </div>
             );
           }
@@ -1759,3 +1770,5 @@ export default function ReportsPage() {
         </Tabs>
     )
 }
+
+    
