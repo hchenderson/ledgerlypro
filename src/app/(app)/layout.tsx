@@ -156,15 +156,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
   
   return (
-    <ThemeProvider
-      attribute="class"
-      defaultTheme="system"
-      enableSystem
-      disableTransitionOnChange
-    >
       <UserDataProvider>
         <AppLayoutContent>{children}</AppLayoutContent>
       </UserDataProvider>
-    </ThemeProvider>
   )
 }
