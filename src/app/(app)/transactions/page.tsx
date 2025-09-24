@@ -122,7 +122,38 @@ export default function TransactionsPage() {
     const queryConstraints: QueryConstraint[] = [];
     
     // Server-side filtering
-    if (filters.category) queryConstraints.push(where("category", "==", filters.category));
+    if (filters.category) {
+        const getSubCategoryNames = (category: Category | SubCategory): string[] => {
+            let names = [category.name];
+            if (category.subCategories) {
+                category.subCategories.forEach(sub => {
+                    names = [...names, ...getSubCategoryNames(sub)];
+                });
+            }
+            return names;
+        };
+
+        const findCategoryByName = (name: string, cats: (Category|SubCategory)[]): Category | SubCategory | undefined => {
+            for (const cat of cats) {
+                if (cat.name === name) return cat;
+                if (cat.subCategories) {
+                    const found = findCategoryByName(name, cat.subCategories);
+                    if (found) return found;
+                }
+            }
+            return undefined;
+        };
+        
+        const mainCategory = findCategoryByName(filters.category, categories);
+        const categoryNames = mainCategory ? getSubCategoryNames(mainCategory) : [filters.category];
+
+        if (categoryNames.length > 0) {
+            queryConstraints.push(where("category", "in", categoryNames));
+        } else {
+             queryConstraints.push(where("category", "==", filters.category));
+        }
+    }
+
     if (filters.dateRange?.from) queryConstraints.push(where("date", ">=", filters.dateRange.from.toISOString()));
     if (filters.dateRange?.to) {
         // Adjust to to be end of day
@@ -169,12 +200,12 @@ export default function TransactionsPage() {
     } finally {
       setLoading(false);
     }
-  }, [user, filters, lastVisible, toast]);
+  }, [user, filters, lastVisible, toast, categories]);
 
   useEffect(() => {
     fetchTransactions(true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters, user]);
+  }, [filters, user, categories]);
 
   useEffect(() => {
     if (!user) return;
