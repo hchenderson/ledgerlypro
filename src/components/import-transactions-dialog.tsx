@@ -177,16 +177,16 @@ export function ImportTransactionsDialog({
             const creditAmount = parseFloat(creditStr);
             const debitAmount = parseFloat(debitStr);
     
-            if (isNaN(creditAmount) || isNaN(debitAmount)) return null;
-    
-            if (creditAmount > 0 && debitAmount === 0) {
+            if (isNaN(creditAmount) && isNaN(debitAmount)) return null;
+
+            if (!isNaN(creditAmount) && creditAmount > 0) {
                 type = 'income';
                 amountVal = creditAmount;
-            } else if (debitAmount > 0 && creditAmount === 0) {
+            } else if (!isNaN(debitAmount) && debitAmount > 0) {
                 type = 'expense';
                 amountVal = debitAmount;
             } else {
-                return null; // Skip if both are > 0 or both are 0
+                return null;
             }
             
             if (type === null || amountVal === null) return null;
