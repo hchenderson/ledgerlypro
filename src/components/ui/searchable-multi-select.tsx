@@ -1,11 +1,11 @@
+
 "use client";
 
 import * as React from "react";
-import { Check, X, ChevronsUpDown, Search } from "lucide-react";
+import { Check, X, ChevronsUpDown } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Popover,
   PopoverContent,
@@ -38,19 +38,9 @@ function SearchableMultiSelect({
   className,
 }: SearchableMultiSelectProps) {
   const [open, setOpen] = React.useState(false);
-  const [searchValue, setSearchValue] = React.useState("");
-
-  // Filter options based on search
-  const filteredOptions = React.useMemo(() => {
-    if (!searchValue) return options;
-    return options.filter(option =>
-      option.label.toLowerCase().includes(searchValue.toLowerCase()) ||
-      option.value.toLowerCase().includes(searchValue.toLowerCase())
-    );
-  }, [options, searchValue]);
 
   const handleSelectAll = () => {
-    onChange(filteredOptions.map((option) => option.value));
+    onChange(options.map((option) => option.value));
   };
 
   const handleClearAll = () => {
@@ -112,17 +102,6 @@ function SearchableMultiSelect({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
-        {/* Search Input */}
-        <div className="flex items-center border-b px-3 py-2">
-          <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
-          <Input
-            placeholder={searchPlaceholder}
-            value={searchValue}
-            onChange={(e) => setSearchValue(e.target.value)}
-            className="border-0 p-0 h-6 focus-visible:ring-0 focus-visible:ring-offset-0"
-          />
-        </div>
-
         {/* Action Buttons */}
         <div className="flex items-center justify-between p-2 border-b bg-muted/50">
           <Button
@@ -131,7 +110,7 @@ function SearchableMultiSelect({
             onClick={handleSelectAll}
             className="text-xs h-7"
           >
-            Select All ({filteredOptions.length})
+            Select All ({options.length})
           </Button>
           {selected.length > 0 && (
             <Button
@@ -147,13 +126,13 @@ function SearchableMultiSelect({
 
         {/* Options List */}
         <div className="max-h-60 overflow-y-auto">
-          {filteredOptions.length === 0 ? (
+          {options.length === 0 ? (
             <div className="py-6 text-center text-sm text-muted-foreground">
-              {searchValue ? "No matching options found." : "No options available."}
+              No options available.
             </div>
           ) : (
             <div className="p-1">
-              {filteredOptions.map((option) => {
+              {options.map((option) => {
                 const isSelected = selected.includes(option.value);
                 return (
                   <div
