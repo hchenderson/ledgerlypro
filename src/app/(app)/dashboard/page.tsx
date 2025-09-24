@@ -17,7 +17,7 @@ import type { GetDashboardAnalyticsOutput } from "@/ai/flows/get-dashboard-analy
 import { GoalProgress } from "@/components/dashboard/goal-progress";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { format } from "date-fns";
+import { format, subMonths } from "date-fns";
 
 
 function DashboardSkeleton() {
@@ -91,6 +91,7 @@ export default function DashboardPage() {
 
   
   const currentMonthName = new Date().toLocaleString('default', { month: 'long' });
+  const previousMonthName = subMonths(new Date(), 1).toLocaleString('default', { month: 'long' });
 
   return (
     <div className="space-y-6">
@@ -164,6 +165,23 @@ export default function DashboardPage() {
               isPercentage
             />
           </div>
+
+           <div className="grid gap-4 md:grid-cols-2">
+              <StatCard
+                title={`${previousMonthName} Income`}
+                value={analytics.previousMonthIncome}
+                icon="CalendarClock"
+                trendValue="Income last month"
+                variant="success"
+              />
+              <StatCard
+                title={`${previousMonthName} Expenses`}
+                value={analytics.previousMonthExpenses}
+                icon="CalendarClock"
+                trendValue="Expenses last month"
+                variant="danger"
+              />
+            </div>
           
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
             <Card className="lg:col-span-3">

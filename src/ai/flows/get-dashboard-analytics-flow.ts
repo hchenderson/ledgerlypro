@@ -42,6 +42,8 @@ const GetDashboardAnalyticsOutputSchema = z.object({
   ),
   currentMonthIncome: z.number(),
   currentMonthExpenses: z.number(),
+  previousMonthIncome: z.number(),
+  previousMonthExpenses: z.number(),
   savingsRate: z.number(),
 });
 export type GetDashboardAnalyticsOutput = z.infer<
@@ -64,6 +66,8 @@ const getDashboardAnalyticsFlow = ai.defineFlow(
     const now = new Date();
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
+    const prevMonth = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
+    const prevMonthYear = prevMonth === 11 ? now.getFullYear() - 1 : now.getFullYear();
 
     const totalIncome = transactions
       .filter(t => t.type === 'income')
@@ -91,6 +95,28 @@ const getDashboardAnalyticsFlow = ai.defineFlow(
           t.type === 'expense' &&
           transactionDate.getMonth() === currentMonth &&
           transactionDate.getFullYear() === currentYear
+        );
+      })
+      .reduce((sum, t) => sum + t.amount, 0);
+      
+    const previousMonthIncome = transactions
+      .filter(t => {
+        const transactionDate = new Date(t.date);
+        return (
+          t.type === 'income' &&
+          transactionDate.getMonth() === prevMonth &&
+          transactionDate.getFullYear() === prevMonthYear
+        );
+      })
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    const previousMonthExpenses = transactions
+      .filter(t => {
+        const transactionDate = new Date(t.date);
+        return (
+          t.type === 'expense' &&
+          transactionDate.getMonth() === prevMonth &&
+          transactionDate.getFullYear() === prevMonthYear
         );
       })
       .reduce((sum, t) => sum + t.amount, 0);
@@ -128,6 +154,8 @@ const getDashboardAnalyticsFlow = ai.defineFlow(
       overviewData,
       currentMonthIncome,
       currentMonthExpenses,
+      previousMonthIncome,
+      previousMonthExpenses,
       savingsRate,
     };
   }
