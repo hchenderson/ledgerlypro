@@ -161,54 +161,91 @@ export function ImportTransactionsDialog({
         }
     
         const transactions = parsedData
-          .map((row) => {
+          .map((row, index) => {
             const dateStr = row[mapping.date];
             const descriptionStr = row[mapping.description];
-    
+
+            console.log(`Row ${index}:`, {
+              date: dateStr,
+              description: descriptionStr,
+              credit: row[mapping.credit],
+              debit: row[mapping.debit],
+            });
+
             if (!dateStr || !descriptionStr || descriptionStr.trim() === "") {
+              console.log(`Skipping row ${index}: missing date or description`);
               return null;
             }
             
             let amountVal: number | null = null;
             let type: 'income' | 'expense' | null = null;
             
-            const creditStr = (row[mapping.credit] || "0").replace(/[^0-9.-]+/g,"");
-            const debitStr = (row[mapping.debit] || "0").replace(/[^0-9.-]+/g,"");
-            const creditAmount = parseFloat(creditStr) || 0;
-            const debitAmount = parseFloat(debitStr) || 0;
-    
-            if (creditAmount > 0) {
-                type = 'income';
-                amountVal = creditAmount;
-            } else if (debitAmount > 0) {
-                type = 'expense';
-                amountVal = debitAmount;
+            // Clean the strings more thoroughly
+            const creditStr = (row[mapping.credit] || "").toString().trim();
+            const debitStr = (row[mapping.debit] || "").toString().trim();
+            
+            console.log(`Row ${index} cleaned strings:`, { creditStr, debitStr });
+            
+            // Remove currency symbols, commas, and other non-numeric characters except decimal points and minus signs
+            const creditCleaned = creditStr.replace(/[$,\s]/g, '').replace(/[^0-9.-]/g, '');
+            const debitCleaned = debitStr.replace(/[$,\s]/g, '').replace(/[^0-9.-]/g, '');
+            
+            const creditAmount = creditCleaned === '' ? 0 : parseFloat(creditCleaned);
+            const debitAmount = debitCleaned === '' ? 0 : parseFloat(debitCleaned);
+            
+            console.log(`Row ${index} parsed amounts:`, { creditAmount, debitAmount });
+
+            // Handle different scenarios
+            if (!isNaN(creditAmount) && creditAmount > 0) {
+              type = 'income';
+              amountVal = Math.abs(creditAmount); // Ensure positive
+            } else if (!isNaN(debitAmount) && debitAmount > 0) {
+              type = 'expense';
+              amountVal = Math.abs(debitAmount); // Ensure positive
+            } else if (!isNaN(debitAmount) && debitAmount < 0) {
+              // Handle negative values in debit column (some CSVs use negative for expenses)
+              type = 'expense';
+              amountVal = Math.abs(debitAmount);
+            } else if (!isNaN(creditAmount) && creditAmount < 0) {
+              // Handle negative values in credit column
+              type = 'expense';
+              amountVal = Math.abs(creditAmount);
             } else {
-                return null;
+              console.log(`Row ${index}: No valid amount found`);
+              return null;
             }
             
-            if (type === null || amountVal === null) return null;
-    
+            if (type === null || amountVal === null || amountVal === 0) {
+              console.log(`Row ${index}: Invalid type or amount`);
+              return null;
+            }
+
             const date = new Date(dateStr);
             if (isNaN(date.getTime())) {
+              console.log(`Row ${index}: Invalid date`);
               return null;
             }
             
             const importedCategory = row[mapping.category] || "";
             const finalCategory = allCategoryNames.has(importedCategory) ? importedCategory : "Uncategorized";
-    
+
+            const transaction = {
+              amount: amountVal,
+              date: date.toISOString(),
+              description: descriptionStr,
+              type: type,
+              category: finalCategory,
+            };
+
+            console.log(`Row ${index} final transaction:`, transaction);
+            
             return {
-              transaction: {
-                amount: amountVal,
-                date: date.toISOString(),
-                description: descriptionStr,
-                type: type,
-                category: finalCategory,
-              },
+              transaction,
             };
           })
           .filter(Boolean) as ProcessedTransaction[];
-    
+
+        console.log('Total processed transactions:', transactions.length);
         setProcessedTransactions(transactions);
     }
 
