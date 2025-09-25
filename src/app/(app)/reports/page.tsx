@@ -97,7 +97,7 @@ import { DateRange } from 'react-day-picker';
 import { subDays, format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { cn, safeEvaluateExpression, sanitizeForVariableName } from '@/lib/utils';
+import { cn, safeEvaluateExpression, sanitizeForVariableName, prettifyExpression } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { AdvancedWidgetCustomizer } from '@/components/reports/customization';
 import { OverviewChart } from '@/components/dashboard/overview-chart';
@@ -350,7 +350,7 @@ function FormulaManager({
                         <div className="flex-1 min-w-0">
                         <p className="font-semibold truncate">{formula.name}</p>
                         <p className="text-xs text-muted-foreground font-mono truncate">
-                            {formula.expression}
+                            {prettifyExpression(formula.expression, {})}
                         </p>
                         </div>
                         <Button 
@@ -733,24 +733,6 @@ function AdvancedReports() {
     toast({ title: 'Formula Deleted' });
   };
 
-  const formulaVariables = useMemo(() => {
-    const baseVars = [
-      'totalIncome', 'totalExpense', 'transactionCount',
-      'avgTransactionAmount', 'netIncome', 'savingsRate'
-    ];
-    
-    const categoryVars = new Set<string>();
-    const recurse = (cats: (Category | SubCategory)[]) => {
-      (cats || []).forEach(c => {
-        categoryVars.add(c.name);
-        if (c.subCategories) recurse(c.subCategories);
-      });
-    };
-    recurse(userCategories);
-
-    return [...baseVars, ...Array.from(categoryVars)];
-  }, [userCategories]);
-
   const getWidgetData = useCallback((widget: any) => {
     const transactions = allTransactions.filter(t => {
       const transactionDate = new Date(t.date);
@@ -791,9 +773,6 @@ function AdvancedReports() {
       return acc;
     }, {});
     
-    console.log('Sample monthlyData:', Object.values(monthlyData)[0]);
-
-
     const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
     const totalExpense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
 
@@ -811,10 +790,10 @@ function AdvancedReports() {
     const kpis: Record<string, number> = {
       [sanitizeForVariableName('totalIncome')]: totalIncome,
       [sanitizeForVariableName('totalExpense')]: totalExpense,
-      [sanitizeForVariableName('transactionCount')]: transactions.length,
-      [sanitizeForVariableName('avgTransactionAmount')]: transactions.reduce((sum, t) => sum + t.amount, 0) / (transactions.length || 1),
       [sanitizeForVariableName('netIncome')]: totalIncome - totalExpense,
       [sanitizeForVariableName('savingsRate')]: totalIncome > 0 ? ((totalIncome - totalExpense) / totalIncome) * 100 : 0,
+      [sanitizeForVariableName('transactionCount')]: transactions.length,
+      [sanitizeForVariableName('avgTransactionAmount')]: transactions.reduce((sum, t) => sum + t.amount, 0) / (transactions.length || 1),
       ...categoryTotals
     };
     
@@ -825,8 +804,10 @@ function AdvancedReports() {
     if (widget.type === 'metric') {
       const formula = formulas.find(f => f.id === widget.formulaId);
       if (formula && formula.expression) {
+        console.log('Formula being evaluated:', formula.expression);
+        console.log('Available KPI context:', kpis);
+        console.log('Sample monthlyData:', monthly);
         try {
-          console.log('Formula being evaluated:', formula.expression);
           const value = safeEvaluateExpression(formula.expression, kpis);
           return { kpis, data: [{ name: formula.name, value, formula: formula.expression }] };
         } catch (error: any) {
@@ -842,6 +823,25 @@ function AdvancedReports() {
     
     return { kpis, data: monthly, dataKeys: keyMapping.map(m => m.sanitized), originalDataKeys: keyMapping.map(m => m.original) };
   }, [allTransactions, globalFilters, formulas, userCategories]);
+
+  const formulaVariables = useMemo(() => {
+    const baseVars = [
+      'totalIncome', 'totalExpense', 'transactionCount',
+      'avgTransactionAmount', 'netIncome', 'savingsRate'
+    ];
+    
+    const categoryVars = new Set<string>();
+    const recurse = (cats: (Category | SubCategory)[]) => {
+      (cats || []).forEach(c => {
+        categoryVars.add(c.name);
+        if (c.subCategories) recurse(c.subCategories);
+      });
+    };
+    recurse(userCategories);
+
+    return [...baseVars, ...Array.from(categoryVars)];
+  }, [userCategories]);
+
 
   const renderAdvancedChart = (widget: any) => {
     return (
@@ -893,7 +893,7 @@ function AdvancedReports() {
                 <p className="text-lg font-medium mt-2">{metric?.name}</p>
                 {metric?.formula && (
                   <p className="text-sm text-muted-foreground mt-1 font-mono">
-                    {metric.formula}
+                    {prettifyExpression(metric.formula, {})}
                   </p>
                 )}
               </div>
@@ -1035,9 +1035,9 @@ function AdvancedReports() {
               );
               
             case 'pie':
-              const pieData = keyMapping.map((mapping) => ({
-                  name: mapping.original,
-                  value: data.reduce((acc: number, month: any) => acc + (month[mapping.sanitized] || 0), 0)
+              const pieData = (dataKeys || []).map((key: string, index: number) => ({
+                  name: originalDataKeys[index],
+                  value: (data || []).reduce((acc: number, month: any) => acc + (month[key] || 0), 0)
               })).filter(d => d.value > 0);
 
               return (

@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import React, { useMemo, useState, useEffect } from "react";
@@ -121,12 +122,12 @@ export default function FormulaBuilder({
         </div>
       
         <div className="space-y-2">
-            <Label>Insert Category</Label>
+            <Label>Insert Variable</Label>
             <Select
                 onValueChange={(value) => setExpression(prev => `${prev.trim()} ${value}`)}
             >
                 <SelectTrigger>
-                <SelectValue placeholder="Select a category to insert..." />
+                <SelectValue placeholder="Select a variable to insert..." />
                 </SelectTrigger>
                 <SelectContent>
                 {(availableVariables || []).sort((a,b) => a.localeCompare(b)).map(rawName => (
