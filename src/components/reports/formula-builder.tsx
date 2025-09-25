@@ -21,13 +21,13 @@ import { PlusCircle } from "lucide-react";
 // --- Component ---
 interface FormulaBuilderProps {
   onAddFormula: (name: string, safeExpression: string) => Promise<boolean>;
-  userCategories: { name: string }[];
+  availableVariables: string[];
   sampleContext: Record<string, number>;
   existingFormula?: string;
 }
 
 export default function FormulaBuilder({
-  userCategories,
+  availableVariables,
   sampleContext,
   onAddFormula,
   existingFormula
@@ -39,11 +39,11 @@ export default function FormulaBuilder({
 
   const aliasMap = useMemo(() => {
     const map: Record<string, string> = {};
-    (userCategories || []).forEach(cat => {
-      map[cat.name] = sanitizeForVariableName(cat.name);
+    (availableVariables || []).forEach(v => {
+      map[v] = sanitizeForVariableName(v);
     });
     return map;
-  }, [userCategories]);
+  }, [availableVariables]);
   
   useEffect(() => {
     if (existingFormula) {
