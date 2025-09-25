@@ -786,7 +786,7 @@ function AdvancedReports() {
       }
       return acc;
     }, {} as Record<string, number>);
-
+    
     console.log('Category totals:', categoryTotals);
 
     const kpis: Record<string, number> = {
@@ -806,9 +806,6 @@ function AdvancedReports() {
     if (widget.type === 'metric') {
       const formula = formulas.find(f => f.id === widget.formulaId);
       if (formula && formula.expression) {
-        console.log('Formula being evaluated:', formula.expression);
-        console.log('Available KPI context:', kpis);
-        console.log('Sample monthlyData:', monthly);
         try {
           const value = safeEvaluateExpression(formula.expression, kpis);
           return { kpis, data: [{ name: formula.name, value, formula: formula.expression }] };

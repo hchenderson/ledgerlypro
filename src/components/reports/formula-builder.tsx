@@ -122,7 +122,7 @@ export default function FormulaBuilder({
         </div>
       
         <div className="space-y-2">
-            <Label>Insert Category</Label>
+            <Label>Insert Variable</Label>
             <Select
                 onValueChange={(value) => {
                   if (value) {
