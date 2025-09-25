@@ -18,46 +18,30 @@ import { safeEvaluateExpression, sanitizeExpression, prettifyExpression, sanitiz
 
 // --- Component ---
 interface FormulaBuilderProps {
-  availableVariables: string[];
   onAddFormula: (name: string, safeExpression: string) => Promise<boolean>;
-  existingFormula?: { name: string, expression: string } | null; 
+  availableVariables: string[];
+  sampleContext: Record<string, number>;
 }
 
 export default function FormulaBuilder({
-  availableVariables,
   onAddFormula,
-  existingFormula,
+  availableVariables,
+  sampleContext,
 }: FormulaBuilderProps) {
-  const [name, setName] = useState(existingFormula?.name || "");
+  const [name, setName] = useState("");
   const [expression, setExpression] = useState("");
   const [testResult, setTestResult] = useState<number | null>(null);
   const [testError, setTestError] = useState("");
 
   const aliasMap = useMemo(() => {
     const map: Record<string, string> = {};
+    // Ensure availableVariables is an array before looping
     (availableVariables || []).forEach(v => {
       map[v] = sanitizeForVariableName(v);
     });
     return map;
   }, [availableVariables]);
   
-  const sampleContext = useMemo(() => {
-    const context: Record<string, number> = {};
-    Object.values(aliasMap).forEach(v => {
-      context[v] = Math.floor(Math.random() * 1000);
-    });
-    return context;
-  }, [aliasMap]);
-
-  useEffect(() => {
-    if (existingFormula?.expression) {
-      setExpression(prettifyExpression(existingFormula.expression, aliasMap));
-      setName(existingFormula.name);
-    } else {
-      setExpression("");
-      setName("");
-    }
-  }, [existingFormula, aliasMap]);
 
   const testFormula = () => {
     if (!expression.trim()) return;
