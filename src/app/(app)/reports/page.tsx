@@ -204,47 +204,46 @@ interface KPITargets {
 }
 
 
-const sanitizeForVariableName = (name: string): string => {
+function sanitizeForVariableName(name: string): string {
   if (!name) return '';
-  return name
-    .replace(/[^a-zA-Z0-9_]/g, '_') // Replace non-alphanumeric with underscore
-    .replace(/^[0-9]/, '_$&')      // Prefix with underscore if starts with number
-    .replace(/__+/g, '_')           // Replace multiple underscores with single
-    .replace(/^_|_$/g, '');         // Remove leading/trailing underscores
-};
+  return name.replace(/[^a-zA-Z0-9_]/g, '_');
+}
 
-const safeEvaluateExpression = (expression: string, context: Record<string, number | string | boolean>): number | null => {
+const safeEvaluateExpression = (
+  expression: string,
+  context: Record<string, number | string | boolean>
+): number | null => {
   try {
-      if (!expression || typeof expression !== 'string' || expression.trim() === '') {
-        return null;
-      }
-      
-      let sanitizedExpression = expression;
-      const sanitizedContext: Record<string, number | string | boolean> = {};
+    if (!expression || typeof expression !== 'string' || expression.trim() === '') {
+      return null;
+    }
 
-      for (const key in context) {
-        const sanitizedKey = sanitizeForVariableName(key);
-        sanitizedContext[sanitizedKey] = context[key];
-        // Important: Replace the original, potentially unsafe key in the expression
-        // with the sanitized version. Use a regex to avoid replacing parts of other words.
-        const regex = new RegExp(`\\b${key}\\b`, 'g');
-        sanitizedExpression = sanitizedExpression.replace(regex, sanitizedKey);
-      }
+    const sanitizedContext: Record<string, number | string | boolean> = {};
+    let sanitizedExpression = expression;
 
-      // The pattern should validate the sanitized expression
-      const allowedPattern = /^[a-zA-Z0-9_+\-*/().\s]+$/;
-      if (!allowedPattern.test(sanitizedExpression)) {
-          throw new Error("Expression contains invalid characters after sanitization.");
-      }
+    for (const key in context) {
+      const sanitizedKey = sanitizeForVariableName(key);
+      sanitizedContext[sanitizedKey] = context[key];
 
-      // Using Function constructor is safer than eval()
-      const formula = new Function(...Object.keys(sanitizedContext), `return ${sanitizedExpression};`);
-      const result = formula(...Object.values(sanitizedContext));
+      // Escape the raw key for regex use
+      const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-      return typeof result === 'number' && isFinite(result) ? result : null;
+      // Replace *all* instances in the expression
+      sanitizedExpression = sanitizedExpression.replace(new RegExp(escapedKey, 'g'), sanitizedKey);
+    }
+
+    const allowedPattern = /^[a-zA-Z0-9_+\-*/().\s]+$/;
+    if (!allowedPattern.test(sanitizedExpression)) {
+      throw new Error('Expression contains invalid characters after sanitization.');
+    }
+
+    const formula = new Function(...Object.keys(sanitizedContext), `return ${sanitizedExpression};`);
+    const result = formula(...Object.values(sanitizedContext));
+
+    return typeof result === 'number' && isFinite(result) ? result : null;
   } catch (error: any) {
-      console.error("Formula evaluation error:", error);
-      throw new Error(`Invalid formula: ${error.message}`);
+    console.error('Formula evaluation error:', error);
+    throw new Error(`Invalid formula: ${error.message}`);
   }
 };
 
@@ -990,16 +989,16 @@ function AdvancedReports() {
     const totalExpense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
 
     const categoryTotals = transactions.reduce((acc, t) => {
-        if (t.category) {
-            const sanitizedName = sanitizeForVariableName(t.category);
-            if (sanitizedName) {
-                if (!acc[sanitizedName]) {
-                    acc[sanitizedName] = 0;
-                }
-                acc[sanitizedName] += t.amount;
-            }
+      if (t.category) {
+        const sanitizedName = sanitizeForVariableName(t.category);
+        if (sanitizedName) {
+          if (!acc[sanitizedName]) {
+            acc[sanitizedName] = 0;
+          }
+          acc[sanitizedName] += t.amount;
         }
-        return acc;
+      }
+      return acc;
     }, {} as Record<string, number>);
 
     const kpis = {
@@ -1777,5 +1776,6 @@ export default function ReportsPage() {
         </Tabs>
     )
 }
+
 
 
