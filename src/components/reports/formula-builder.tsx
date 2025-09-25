@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { safeEvaluateExpression, sanitizeForVariableName, prettifyExpression, sanitizeExpression } from "@/lib/utils";
+import { PlusCircle } from "lucide-react";
 
 
 // --- Component ---
@@ -38,7 +39,6 @@ export default function FormulaBuilder({
 
   const aliasMap = useMemo(() => {
     const map: Record<string, string> = {};
-    // Ensure userCategories is an array before looping
     (userCategories || []).forEach(cat => {
       map[cat.name] = sanitizeForVariableName(cat.name);
     });

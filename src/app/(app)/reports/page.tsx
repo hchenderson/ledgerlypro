@@ -297,14 +297,14 @@ function FormulaManager({
   formulas: Formula[];
   onAddFormula: (name: string, expression: string) => Promise<boolean>;
   onDeleteFormula: (id: string) => void;
-  availableVariables: string[];
+  availableVariables: { name: string }[];
 }) {
   const [isBuilderOpen, setIsBuilderOpen] = useState(false);
 
   const sampleContext = useMemo(() => {
     const context: Record<string, number> = {};
     (availableVariables || []).forEach(v => {
-      context[v] = Math.floor(Math.random() * 1000);
+      context[sanitizeForVariableName(v.name)] = Math.floor(Math.random() * 1000);
     });
     return context;
   }, [availableVariables]);
@@ -332,7 +332,7 @@ function FormulaManager({
             </TabsList>
             <TabsContent value="create" className="pt-4">
                 <FormulaBuilder 
-                    userCategories={(availableVariables || []).map(name => ({ name }))}
+                    userCategories={availableVariables}
                     sampleContext={sampleContext}
                     onAddFormula={onAddFormula}
                 />
@@ -735,8 +735,8 @@ function AdvancedReports() {
 
   const formulaVariables = useMemo(() => {
     const baseVars = [
-      'totalIncome', 'totalExpense', 'transactionCount',
-      'avgTransactionAmount', 'netIncome', 'savingsRate'
+      { name: 'totalIncome' }, { name: 'totalExpense' }, { name: 'transactionCount' },
+      { name: 'avgTransactionAmount' }, { name: 'netIncome' }, { name: 'savingsRate' }
     ];
     
     const categoryVars = new Set<string>();
@@ -748,7 +748,7 @@ function AdvancedReports() {
     };
     recurse(userCategories);
 
-    return [...baseVars, ...Array.from(categoryVars)];
+    return [...baseVars, ...Array.from(categoryVars).map(name => ({name}))];
   }, [userCategories]);
 
   const getWidgetData = useCallback((widget: any) => {
@@ -807,12 +807,12 @@ function AdvancedReports() {
     }, {} as Record<string, number>);
 
     const kpis = {
-      totalIncome,
-      totalExpense,
-      transactionCount: transactions.length,
-      avgTransactionAmount: transactions.reduce((sum, t) => sum + t.amount, 0) / (transactions.length || 1),
-      netIncome: totalIncome - totalExpense,
-      savingsRate: totalIncome > 0 ? ((totalIncome - totalExpense) / totalIncome) * 100 : 0,
+      [sanitizeForVariableName('totalIncome')]: totalIncome,
+      [sanitizeForVariableName('totalExpense')]: totalExpense,
+      [sanitizeForVariableName('transactionCount')]: transactions.length,
+      [sanitizeForVariableName('avgTransactionAmount')]: transactions.reduce((sum, t) => sum + t.amount, 0) / (transactions.length || 1),
+      [sanitizeForVariableName('netIncome')]: totalIncome - totalExpense,
+      [sanitizeForVariableName('savingsRate')]: totalIncome > 0 ? ((totalIncome - totalExpense) / totalIncome) * 100 : 0,
       ...categoryTotals
     };
 
@@ -887,8 +887,8 @@ function AdvancedReports() {
             return (
               <div className="p-6 text-center">
                 <p className="text-4xl font-bold font-mono text-primary">
-                  {typeof displayValue === "number"
-                    ? new Intl.NumberFormat("en-US", formatOptions).format(isPercentage ? displayValue / 100 : displayValue)
+                   {typeof displayValue === "number"
+                    ? new Intl.NumberFormat("en-US", isPercentage ? {style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1} : {style: 'currency', currency: 'USD'}).format(isPercentage ? displayValue / 100 : displayValue)
                     : "--"}
                 </p>
                 <p className="text-lg font-medium mt-2">{metric?.name}</p>
