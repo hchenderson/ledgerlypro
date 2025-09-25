@@ -787,8 +787,6 @@ function AdvancedReports() {
       return acc;
     }, {} as Record<string, number>);
     
-    console.log('Category totals:', categoryTotals);
-
     const kpis: Record<string, number> = {
       [sanitizeForVariableName('totalIncome')]: totalIncome,
       [sanitizeForVariableName('totalExpense')]: totalExpense,
@@ -796,8 +794,26 @@ function AdvancedReports() {
       [sanitizeForVariableName('savingsRate')]: totalIncome > 0 ? ((totalIncome - totalExpense) / totalIncome) * 100 : 0,
       [sanitizeForVariableName('transactionCount')]: transactions.length,
       [sanitizeForVariableName('avgTransactionAmount')]: transactions.reduce((sum, t) => sum + t.amount, 0) / (transactions.length || 1),
-      ...categoryTotals
+      ...categoryTotals,
+      // Aliases for backwards compatibility
+      Income: totalIncome,
+      Expense: totalExpense,
     };
+    
+    // Add safety net for missing formula variables
+    if (widget.type === 'metric') {
+      const formula = formulas.find(f => f.id === widget.formulaId);
+      if (formula && formula.expression) {
+        const formulaVariables = formula.expression.match(/[a-zA-Z_][a-zA-Z0-9_]*/g) || [];
+        
+        formulaVariables.forEach(varName => {
+          if (!(varName in kpis)) {
+            console.warn(`Adding missing formula variable '${varName}' as 0`);
+            kpis[varName] = 0;
+          }
+        });
+      }
+    }
     
     const monthly = Object.values(monthlyData).sort((a: any, b: any) => 
       new Date(`1 ${a.month}`).getTime() - new Date(`1 ${b.month}`).getTime()
