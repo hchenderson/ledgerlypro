@@ -35,7 +35,7 @@ export default function FormulaBuilder({
 
   const aliasMap = useMemo(() => {
     const map: Record<string, string> = {};
-    availableVariables.forEach(v => {
+    (availableVariables || []).forEach(v => {
       map[v] = sanitizeForVariableName(v);
     });
     return map;
