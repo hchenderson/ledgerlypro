@@ -303,7 +303,7 @@ function FormulaManager({
 
   const sampleContext = useMemo(() => {
     const context: Record<string, number> = {};
-    availableVariables.forEach(v => {
+    (availableVariables || []).forEach(v => {
       context[v] = Math.floor(Math.random() * 1000);
     });
     return context;
@@ -332,7 +332,7 @@ function FormulaManager({
             </TabsList>
             <TabsContent value="create" className="pt-4">
                 <FormulaBuilder 
-                    userCategories={availableVariables.map(name => ({ name }))}
+                    userCategories={(availableVariables || []).map(name => ({ name }))}
                     sampleContext={sampleContext}
                     onAddFormula={onAddFormula}
                 />
@@ -764,22 +764,27 @@ function AdvancedReports() {
       return inDateRange && globalCategoryCheck && widgetCategoryCheck;
     });
     
-    const dataKeys = (widget.dataCategories || []).length > 0
+    const dataCategories = (widget.dataCategories || []).length > 0
         ? widget.dataCategories
         : [widget.mainDataKey, widget.comparisonKey].filter(Boolean);
+
+    const keyMapping = dataCategories.map(key => ({
+      original: key,
+      sanitized: sanitizeForVariableName(key)
+    }));
 
     const monthlyData: { [key: string]: any } = transactions.reduce((acc: { [key:string]: any }, transaction) => {
       const month = new Date(transaction.date).toLocaleDateString('en', { month: 'short', year: '2-digit' });
       if (!acc[month]) {
         acc[month] = { month };
-        dataKeys.forEach(key => (acc[month][key] = 0));
+        keyMapping.forEach(mapping => (acc[month][mapping.sanitized] = 0));
       }
 
-      dataKeys.forEach(key => {
-        if (key === transaction.type) {
-            acc[month][key] = (acc[month][key] || 0) + transaction.amount;
-        } else if (key === transaction.category) {
-            acc[month][key] = (acc[month][key] || 0) + transaction.amount;
+      keyMapping.forEach(mapping => {
+        if (mapping.original === transaction.type) {
+            acc[month][mapping.sanitized] = (acc[month][mapping.sanitized] || 0) + transaction.amount;
+        } else if (mapping.original === transaction.category) {
+            acc[month][mapping.sanitized] = (acc[month][mapping.sanitized] || 0) + transaction.amount;
         }
       });
   
@@ -832,14 +837,14 @@ function AdvancedReports() {
       return { kpis, data: null };
     }
     
-    return { kpis, data: monthly, dataKeys };
+    return { kpis, data: monthly, dataKeys: keyMapping.map(m => m.sanitized), originalDataKeys: keyMapping.map(m => m.original) };
   }, [allTransactions, globalFilters, formulas]);
 
   const renderAdvancedChart = (widget: any) => {
     return (
       <ChartErrorBoundary>
         {(() => {
-          const { data, kpis, dataKeys } = getWidgetData(widget);
+          const { data, kpis, dataKeys, originalDataKeys } = getWidgetData(widget);
           const theme = COLOR_THEMES[widget.colorTheme] || COLOR_THEMES.default;
 
           if (widget.type === 'metric') {
@@ -918,20 +923,23 @@ function AdvancedReports() {
             return (
               <div className="bg-background p-3 border rounded-lg shadow-lg">
                 <p className="font-medium">{label}</p>
-                {payload.map((entry: any, index: number) => (
-                  <div key={index} className="flex items-center gap-2">
-                    <div 
-                      className="w-3 h-3 rounded-full" 
-                      style={{ backgroundColor: entry.color }} 
-                    />
-                    <span className="text-sm capitalize">
-                      {entry.name}: {new Intl.NumberFormat('en-US', { 
-                        style: 'currency', 
-                        currency: 'USD' 
-                      }).format(entry.value)}
-                    </span>
-                  </div>
-                ))}
+                {payload.map((entry: any, index: number) => {
+                    const originalName = originalDataKeys[dataKeys.indexOf(entry.dataKey)] || entry.name;
+                    return (
+                        <div key={index} className="flex items-center gap-2">
+                            <div 
+                            className="w-3 h-3 rounded-full" 
+                            style={{ backgroundColor: entry.color }} 
+                            />
+                            <span className="text-sm capitalize">
+                            {originalName}: {new Intl.NumberFormat('en-US', { 
+                                style: 'currency', 
+                                currency: 'USD' 
+                            }).format(entry.value)}
+                            </span>
+                        </div>
+                    )
+                })}
               </div>
             );
           };
@@ -948,7 +956,7 @@ function AdvancedReports() {
                     <Tooltip content={<CustomTooltip />} />
                     {widget.showLegend && <Legend />}
                     {dataKeys?.map((key: string, index: number) => (
-                      <Bar key={key} yAxisId="left" dataKey={key} fill={theme[index % theme.length]} name={key} />
+                      <Bar key={key} yAxisId="left" dataKey={key} fill={theme[index % theme.length]} name={originalDataKeys[index]} />
                     ))}
                   </ComposedChart>
                 </ResponsiveContainer>
@@ -983,7 +991,7 @@ function AdvancedReports() {
                       </>
                     )}
                     {dataKeys?.map((key: string, index: number) => (
-                      <Bar key={key} dataKey={key} fill={theme[index % theme.length]} name={key} />
+                      <Bar key={key} dataKey={key} fill={theme[index % theme.length]} name={originalDataKeys[index]} />
                     ))}
                   </BarChart>
                 </ResponsiveContainer>
@@ -1005,7 +1013,7 @@ function AdvancedReports() {
                       </>
                     )}
                     {dataKeys?.map((key: string, index: number) => (
-                      <Line key={key} type="monotone" dataKey={key} stroke={theme[index % theme.length]} name={key} />
+                      <Line key={key} type="monotone" dataKey={key} stroke={theme[index % theme.length]} name={originalDataKeys[index]} />
                     ))}
                   </LineChart>
                 </ResponsiveContainer>
@@ -1021,16 +1029,16 @@ function AdvancedReports() {
                     <Tooltip content={<CustomTooltip />} />
                     {widget.showLegend && <Legend />}
                     {dataKeys?.map((key: string, index: number) => (
-                      <Area key={key} type="monotone" dataKey={key} stackId="1" stroke={theme[index % theme.length]} fill={theme[index % theme.length]} name={key} />
+                      <Area key={key} type="monotone" dataKey={key} stackId="1" stroke={theme[index % theme.length]} fill={theme[index % theme.length]} name={originalDataKeys[index]} />
                     ))}
                   </AreaChart>
                 </ResponsiveContainer>
               );
               
             case 'pie':
-              const pieData = dataKeys.map(key => ({
-                  name: key,
-                  value: data.reduce((acc: number, month: any) => acc + (month[key] || 0), 0)
+              const pieData = dataKeys.map((sanitizedKey: string, index: number) => ({
+                  name: originalDataKeys[index],
+                  value: data.reduce((acc: number, month: any) => acc + (month[sanitizedKey] || 0), 0)
               })).filter(d => d.value > 0);
 
               return (

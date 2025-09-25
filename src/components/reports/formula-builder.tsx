@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import React, { useMemo, useState, useEffect } from "react";
@@ -13,35 +14,42 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { safeEvaluateExpression, sanitizeExpression, prettifyExpression, sanitizeForVariableName } from "@/lib/utils";
+import { safeEvaluateExpression, sanitizeForVariableName, prettifyExpression, sanitizeExpression } from "@/lib/utils";
 
 
 // --- Component ---
 interface FormulaBuilderProps {
   onAddFormula: (name: string, safeExpression: string) => Promise<boolean>;
-  availableVariables: string[];
+  userCategories: { name: string }[];
   sampleContext: Record<string, number>;
+  existingFormula?: string;
 }
 
 export default function FormulaBuilder({
-  onAddFormula,
-  availableVariables,
+  userCategories,
   sampleContext,
+  onAddFormula,
+  existingFormula
 }: FormulaBuilderProps) {
   const [name, setName] = useState("");
-  const [expression, setExpression] = useState("");
+  const [expression, setExpression] = useState(existingFormula || "");
   const [testResult, setTestResult] = useState<number | null>(null);
   const [testError, setTestError] = useState("");
 
   const aliasMap = useMemo(() => {
     const map: Record<string, string> = {};
-    // Ensure availableVariables is an array before looping
-    (availableVariables || []).forEach(v => {
-      map[v] = sanitizeForVariableName(v);
+    // Ensure userCategories is an array before looping
+    (userCategories || []).forEach(cat => {
+      map[cat.name] = sanitizeForVariableName(cat.name);
     });
     return map;
-  }, [availableVariables]);
+  }, [userCategories]);
   
+  useEffect(() => {
+    if (existingFormula) {
+      setExpression(prettifyExpression(existingFormula, aliasMap));
+    }
+  }, [existingFormula, aliasMap]);
 
   const testFormula = () => {
     if (!expression.trim()) return;
@@ -123,7 +131,7 @@ export default function FormulaBuilder({
                 </SelectTrigger>
                 <SelectContent>
                 {Object.keys(aliasMap).sort((a,b) => a.localeCompare(b)).map(rawName => (
-                    <SelectItem key={rawName} value={`'${rawName}'`}>
+                    <SelectItem key={rawName} value={rawName}>
                       {rawName}
                     </SelectItem>
                 ))}
