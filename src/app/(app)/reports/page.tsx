@@ -790,6 +790,8 @@ function AdvancedReports() {
   
       return acc;
     }, {});
+    
+    console.log('Sample monthlyData:', Object.values(monthlyData)[0]);
 
 
     const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
@@ -815,6 +817,10 @@ function AdvancedReports() {
       [sanitizeForVariableName('savingsRate')]: totalIncome > 0 ? ((totalIncome - totalExpense) / totalIncome) * 100 : 0,
       ...categoryTotals
     };
+    
+    console.log('Formula to evaluate:', widget.type === 'metric' && formulas.find(f => f.id === widget.formulaId)?.expression);
+    console.log('Data keys available:', Object.keys(kpis));
+    console.log('Aggregated data sample:', kpis);
 
     const monthly = Object.values(monthlyData).sort((a: any, b: any) => 
       new Date(`1 ${a.month}`).getTime() - new Date(`1 ${b.month}`).getTime()
@@ -824,9 +830,6 @@ function AdvancedReports() {
       const formula = formulas.find(f => f.id === widget.formulaId);
       if (formula && formula.expression) {
         try {
-          console.log('--- DEBUG: Formula Evaluation ---');
-          console.log('Formula expression:', formula.expression);
-          console.log('KPI context keys:', Object.keys(kpis));
           const value = safeEvaluateExpression(formula.expression, kpis);
           return { kpis, data: [{ name: formula.name, value, formula: formula.expression }] };
         } catch (error: any) {
