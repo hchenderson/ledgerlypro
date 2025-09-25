@@ -13,78 +13,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { safeEvaluateExpression, sanitizeExpression, prettifyExpression, sanitizeForVariableName } from "@/lib/utils";
 
-// --- Utils ---
-function sanitizeForVariableName(name: string): string {
-  if (!name) return '';
-  return name
-    .replace(/[^a-zA-Z0-9_]/g, "_")
-    .replace(/^(\d)/, "_$1");
-}
-
-function sanitizeExpression(expression: string, aliasMap: Record<string,string>): string {
-  const sortedKeys = Object.keys(aliasMap).sort((a,b) => b.length - a.length);
-  const pattern = new RegExp(sortedKeys.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "g");
-  return expression.replace(pattern, match => aliasMap[match]);
-}
-
-function prettifyExpression(expression: string, aliasMap: Record<string,string>): string {
-  const reverseMap = Object.fromEntries(Object.entries(aliasMap).map(([raw, safe]) => [safe, raw]));
-  const sortedKeys = Object.keys(reverseMap).sort((a,b) => b.length - a.length);
-  const pattern = new RegExp(sortedKeys.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "g");
-  return expression.replace(pattern, match => reverseMap[match]);
-}
-
-// --- Real safe evaluator ---
-export const safeEvaluateExpression = (
-  expression: string,
-  context: Record<string, number | string | boolean>
-): number | null => {
-  try {
-    if (!expression || typeof expression !== "string" || expression.trim() === "") {
-      return null;
-    }
-
-    const sanitizedContext: Record<string, number | string | boolean> = {};
-    const nameMap: Record<string, string> = {};
-
-    for (const key in context) {
-      const sanitized = sanitizeForVariableName(key);
-      sanitizedContext[sanitized] = context[key];
-      nameMap[key] = sanitized;
-    }
-
-    let rebuilt = expression;
-    for (const [original, sanitized] of Object.entries(nameMap)) {
-      const escaped = original.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      rebuilt = rebuilt.replace(new RegExp(`("${escaped}"|'${escaped}'|\\b${escaped}\\b)`, "g"), sanitized);
-    }
-
-    if (!/^[a-zA-Z0-9_+\-*/().\s]+$/.test(rebuilt)) {
-      throw new Error("Expression contains invalid characters after sanitization.");
-    }
-
-    const formula = new Function(...Object.keys(sanitizedContext), `return ${rebuilt};`);
-    const result = formula(...Object.values(sanitizedContext));
-
-    return typeof result === "number" && isFinite(result) ? result : null;
-  } catch (err: any) {
-    console.error("Formula evaluation error:", err);
-    throw new Error(`Invalid formula: ${err.message}`);
-  }
-};
 
 // --- Component ---
 interface FormulaBuilderProps {
   availableVariables: string[];
-  sampleContext: Record<string, number>;
   onAddFormula: (name: string, safeExpression: string) => Promise<boolean>;
   existingFormula?: { name: string, expression: string } | null; 
 }
 
 export default function FormulaBuilder({
   availableVariables,
-  sampleContext,
   onAddFormula,
   existingFormula,
 }: FormulaBuilderProps) {
@@ -99,6 +39,15 @@ export default function FormulaBuilder({
       map[v] = sanitizeForVariableName(v);
     });
     return map;
+  }, [availableVariables]);
+  
+  const sampleContext = useMemo(() => {
+    const context: Record<string, number> = {};
+    availableVariables.forEach(v => {
+      // Use a sample value (e.g., index + 1) for testing.
+      context[v] = Math.floor(Math.random() * 1000);
+    });
+    return context;
   }, [availableVariables]);
 
   useEffect(() => {
@@ -129,11 +78,12 @@ export default function FormulaBuilder({
     if (!name.trim() || !expression.trim()) return;
     try {
       const safeExpr = sanitizeExpression(expression, aliasMap);
+      // Final validation before saving
       const valid = safeEvaluateExpression(safeExpr, sampleContext);
-      if (valid == null) throw new Error("Formula is invalid.");
+      if (valid == null) throw new Error("Formula is invalid and cannot be saved.");
       
       const success = await onAddFormula(name.trim(), safeExpr);
-      if (!success) throw new Error("Save failed.");
+      if (!success) throw new Error("Save failed. Please try again.");
 
       setName(""); 
       setExpression(""); 
@@ -177,8 +127,8 @@ export default function FormulaBuilder({
                 </SelectTrigger>
                 <SelectContent>
                 {Object.keys(aliasMap).sort((a,b) => a.localeCompare(b)).map(rawName => (
-                    <SelectItem key={rawName} value={rawName}>
-                    {rawName}
+                    <SelectItem key={rawName} value={`"${rawName}"`}>
+                      {rawName}
                     </SelectItem>
                 ))}
                 </SelectContent>
@@ -208,4 +158,3 @@ export default function FormulaBuilder({
     </div>
   );
 }
-

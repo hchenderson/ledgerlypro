@@ -97,7 +97,7 @@ import { DateRange } from 'react-day-picker';
 import { subDays, format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { cn } from '@/lib/utils';
+import { cn, safeEvaluateExpression, sanitizeForVariableName } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { AdvancedWidgetCustomizer } from '@/components/reports/customization';
 import { OverviewChart } from '@/components/dashboard/overview-chart';
@@ -203,58 +203,6 @@ interface KPITargets {
   monthlyExpense: number;
   savingsRate: number;
 }
-
-
-function sanitizeForVariableName(name: string): string {
-  if (!name) return '';
-  return name.replace(/[^a-zA-Z0-9_]/g, '_');
-}
-
-export const safeEvaluateExpression = (
-  expression: string,
-  context: Record<string, number | string | boolean>
-): number | null => {
-  try {
-    if (!expression || typeof expression !== 'string' || expression.trim() === '') {
-      return null;
-    }
-
-    const sanitizedContext: Record<string, number | string | boolean> = {};
-    const nameMap: Record<string, string> = {};
-
-    for (const key in context) {
-      const sanitized = sanitizeForVariableName(key);
-      sanitizedContext[sanitized] = context[key];
-      nameMap[key] = sanitized;
-    }
-
-    let rebuilt = expression;
-    // Sort by length descending to replace longer matches first (e.g., "Food & Dining" before "Food")
-    const sortedOriginalKeys = Object.keys(nameMap).sort((a, b) => b.length - a.length);
-
-    for (const original of sortedOriginalKeys) {
-      const sanitized = nameMap[original];
-      // Escape the raw key for safe use in a regular expression
-      const escaped = original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      // Use a global regex to replace all occurrences of the standalone "word" or quoted string
-      const regex = new RegExp(`("${escaped}"|'${escaped}'|\\b${escaped}\\b)`, 'g');
-      rebuilt = rebuilt.replace(regex, sanitized);
-    }
-    
-    // Final safety check to ensure only allowed characters remain
-    if (!/^[a-zA-Z0-9_+\-*/().\s]+$/.test(rebuilt)) {
-      throw new Error('Expression contains invalid characters after sanitization.');
-    }
-
-    const formula = new Function(...Object.keys(sanitizedContext), `return ${rebuilt};`);
-    const result = formula(...Object.values(sanitizedContext));
-
-    return typeof result === 'number' && isFinite(result) ? result : null;
-  } catch (err: any) {
-    console.error('Formula evaluation error:', err);
-    throw new Error(`Invalid formula: ${err.message}`);
-  }
-};
 
 
 function KpiTargetsDialog({ 
@@ -834,7 +782,7 @@ function AdvancedReports() {
 
     const categoryTotals = transactions.reduce((acc, t) => {
       if (t.category) {
-        const sanitizedCategory = t.category; // Now handled by safeEvaluateExpression
+        const sanitizedCategory = sanitizeForVariableName(t.category);
         if (!acc[sanitizedCategory]) {
           acc[sanitizedCategory] = 0;
         }
@@ -886,7 +834,7 @@ function AdvancedReports() {
 
           if (widget.type === 'metric') {
             const metric = data?.[0];
-            if (!metric || metric.value === null || metric.value === undefined) {
+            if (!metric || metric.value === null || typeof metric.value === 'undefined') {
               return (
                 <div className="flex h-full items-center justify-center text-muted-foreground p-4 text-center">
                   <div className="space-y-2">
@@ -918,7 +866,8 @@ function AdvancedReports() {
             const formatOptions: Intl.NumberFormatOptions = isPercentage
               ? { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 }
               : { style: 'currency', currency: 'USD' };
-            const displayValue = isPercentage ? metric.value / 100 : metric.value;
+
+            const displayValue = isPercentage && typeof metric.value === 'number' ? metric.value / 100 : metric.value;
 
             return (
               <div className="p-6 text-center">
@@ -1604,11 +1553,3 @@ export default function ReportsPage() {
         </Tabs>
     )
 }
-
-
-
-
-
-
-
-
