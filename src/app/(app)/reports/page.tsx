@@ -214,7 +214,7 @@ const safeEvaluateExpression = (
   context: Record<string, number | string | boolean>
 ): number | null => {
   try {
-    if (!expression || typeof expression !== 'string' || expression.trim() === '') {
+    if (!expression || typeof expression !== "string" || expression.trim() === "") {
       return null;
     }
 
@@ -227,34 +227,22 @@ const safeEvaluateExpression = (
       nameMap[key] = sanitized;
     }
 
-    // Tokenize: match variables (including spaces/&, etc.), numbers, or operators
-    const tokens = expression.match(/[a-zA-Z0-9_&\s]+|\d+(\.\d+)?|[()+\-*/]/g);
-    if (!tokens) {
-      throw new Error("Expression could not be tokenized.");
+    let rebuilt = expression;
+    for (const [original, sanitized] of Object.entries(nameMap)) {
+      const escaped = original.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      // replace whole words or quoted variants
+      rebuilt = rebuilt.replace(new RegExp(`("${escaped}"|'${escaped}'|\\b${escaped}\\b)`, "g"), sanitized);
     }
 
-    // Rebuild expression with sanitized variable names
-    const rebuilt = tokens
-      .map(token => {
-        const trimmed = token.trim();
-        if (trimmed in nameMap) {
-          return nameMap[trimmed]; // replace with sanitized name
-        }
-        return token; // keep numbers/operators
-      })
-      .join(" ");
-
-    // Validate allowed chars
-    const allowedPattern = /^[a-zA-Z0-9_+\-*/().\s]+$/;
-    if (!allowedPattern.test(rebuilt)) {
+    // Final safety check
+    if (!/^[a-zA-Z0-9_+\-*/().\s]+$/.test(rebuilt)) {
       throw new Error("Expression contains invalid characters after sanitization.");
     }
 
-    // Build and execute function
     const formula = new Function(...Object.keys(sanitizedContext), `return ${rebuilt};`);
     const result = formula(...Object.values(sanitizedContext));
 
-    return typeof result === 'number' && isFinite(result) ? result : null;
+    return typeof result === "number" && isFinite(result) ? result : null;
   } catch (err: any) {
     console.error("Formula evaluation error:", err);
     throw new Error(`Invalid formula: ${err.message}`);
@@ -663,7 +651,7 @@ function BasicReports() {
     const data: { [key: string]: number } = {};
     dateFilteredTransactions
       .filter(t => t.type === 'expense')
-      .filter(t => selectedCategories.length === 0 || selectedCategories.includes(findMainCategory(t.category, categories)))
+      .filter(t => selectedCategories.length === 0 || selectedCategories.map(sc => findMainCategory(sc, categories)).includes(findMainCategory(t.category, categories)))
       .forEach(t => {
         const mainCategory = findMainCategory(t.category, categories);
         data[mainCategory] = (data[mainCategory] || 0) + t.amount;
@@ -954,7 +942,7 @@ function AdvancedReports() {
     const categoryVars = new Set<string>();
     const recurse = (cats: (Category | SubCategory)[]) => {
       (cats || []).forEach(c => {
-        categoryVars.add(sanitizeForVariableName(c.name));
+        categoryVars.add(c.name);
         if (c.subCategories) recurse(c.subCategories);
       });
     };
@@ -1004,13 +992,10 @@ function AdvancedReports() {
 
     const categoryTotals = transactions.reduce((acc, t) => {
       if (t.category) {
-        const sanitizedName = sanitizeForVariableName(t.category);
-        if (sanitizedName) {
-          if (!acc[sanitizedName]) {
-            acc[sanitizedName] = 0;
-          }
-          acc[sanitizedName] += t.amount;
+        if (!acc[t.category]) {
+          acc[t.category] = 0;
         }
+        acc[t.category] += t.amount;
       }
       return acc;
     }, {} as Record<string, number>);
@@ -1790,6 +1775,7 @@ export default function ReportsPage() {
         </Tabs>
     )
 }
+
 
 
 
