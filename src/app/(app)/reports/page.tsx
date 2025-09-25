@@ -787,6 +787,8 @@ function AdvancedReports() {
       return acc;
     }, {} as Record<string, number>);
     
+    console.log('Category totals:', categoryTotals);
+
     const kpis: Record<string, number> = {
       [sanitizeForVariableName('totalIncome')]: totalIncome,
       [sanitizeForVariableName('totalExpense')]: totalExpense,
@@ -804,8 +806,10 @@ function AdvancedReports() {
     if (widget.type === 'metric') {
       const formula = formulas.find(f => f.id === widget.formulaId);
       if (formula && formula.expression) {
+        // Extract all variable names from the formula
         const formulaVariables = formula.expression.match(/[a-zA-Z_][a-zA-Z0-9_]*/g) || [];
         
+        // Add any missing variables as 0
         formulaVariables.forEach(varName => {
           if (!(varName in kpis)) {
             console.warn(`Adding missing formula variable '${varName}' as 0`);
@@ -822,7 +826,19 @@ function AdvancedReports() {
     if (widget.type === 'metric') {
       const formula = formulas.find(f => f.id === widget.formulaId);
       if (formula && formula.expression) {
+        console.log('Formula to evaluate:', formula.expression);
+        console.log('Available KPI context:', kpis);
+        console.log('Sample monthlyData:', monthly);
         try {
+          // Right before: const value = safeEvaluateExpression(formula.expression, kpis);
+          console.log('=== KPI DEBUG ===');
+          console.log('Formula:', formula.expression);
+          console.log('KPIs keys:', Object.keys(kpis));
+          console.log('Has Income?', 'Income' in kpis);
+          console.log('Has Jaaz_Payout?', 'Jaaz_Payout' in kpis);
+          console.log('Has _07_Jaaz_Payout?', '_07_Jaaz_Payout' in kpis);
+          console.log('KPIs object:', kpis);
+          console.log('=================');
           const value = safeEvaluateExpression(formula.expression, kpis);
           return { kpis, data: [{ name: formula.name, value, formula: formula.expression }] };
         } catch (error: any) {
