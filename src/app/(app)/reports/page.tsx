@@ -297,14 +297,14 @@ function FormulaManager({
   formulas: Formula[];
   onAddFormula: (name: string, expression: string) => Promise<boolean>;
   onDeleteFormula: (id: string) => void;
-  availableVariables: { name: string }[];
+  availableVariables: string[];
 }) {
   const [isBuilderOpen, setIsBuilderOpen] = useState(false);
 
   const sampleContext = useMemo(() => {
     const context: Record<string, number> = {};
     (availableVariables || []).forEach(v => {
-      context[sanitizeForVariableName(v.name)] = Math.floor(Math.random() * 1000);
+      context[sanitizeForVariableName(v)] = Math.floor(Math.random() * 1000);
     });
     return context;
   }, [availableVariables]);
@@ -735,8 +735,8 @@ function AdvancedReports() {
 
   const formulaVariables = useMemo(() => {
     const baseVars = [
-      { name: 'totalIncome' }, { name: 'totalExpense' }, { name: 'transactionCount' },
-      { name: 'avgTransactionAmount' }, { name: 'netIncome' }, { name: 'savingsRate' }
+      'totalIncome', 'totalExpense', 'transactionCount',
+      'avgTransactionAmount', 'netIncome', 'savingsRate'
     ];
     
     const categoryVars = new Set<string>();
@@ -748,7 +748,7 @@ function AdvancedReports() {
     };
     recurse(userCategories);
 
-    return [...baseVars, ...Array.from(categoryVars).map(name => ({name}))];
+    return [...baseVars, ...Array.from(categoryVars)];
   }, [userCategories]);
 
   const getWidgetData = useCallback((widget: any) => {
@@ -768,7 +768,7 @@ function AdvancedReports() {
         ? widget.dataCategories
         : [widget.mainDataKey, widget.comparisonKey].filter(Boolean);
 
-    const keyMapping = dataCategories.map(key => ({
+    const keyMapping = dataCategories.map((key: string) => ({
       original: key,
       sanitized: sanitizeForVariableName(key)
     }));
@@ -806,7 +806,7 @@ function AdvancedReports() {
       return acc;
     }, {} as Record<string, number>);
 
-    const kpis = {
+    const kpis: Record<string, number> = {
       [sanitizeForVariableName('totalIncome')]: totalIncome,
       [sanitizeForVariableName('totalExpense')]: totalExpense,
       [sanitizeForVariableName('transactionCount')]: transactions.length,
@@ -824,6 +824,11 @@ function AdvancedReports() {
       const formula = formulas.find(f => f.id === widget.formulaId);
       if (formula && formula.expression) {
         try {
+          console.log('=== DEBUGGING FORMULA EVALUATION ===');
+          console.log('Formula to evaluate:', formula.expression);
+          console.log('Available KPI keys:', Object.keys(kpis));
+          console.log('KPI values:', kpis);
+
           const value = safeEvaluateExpression(formula.expression, kpis);
           return { kpis, data: [{ name: formula.name, value, formula: formula.expression }] };
         } catch (error: any) {
@@ -838,7 +843,7 @@ function AdvancedReports() {
     }
     
     return { kpis, data: monthly, dataKeys: keyMapping.map(m => m.sanitized), originalDataKeys: keyMapping.map(m => m.original) };
-  }, [allTransactions, globalFilters, formulas]);
+  }, [allTransactions, globalFilters, formulas, userCategories]);
 
   const renderAdvancedChart = (widget: any) => {
     return (
@@ -878,10 +883,6 @@ function AdvancedReports() {
             }
             
             const isPercentage = metric.name?.toLowerCase().includes('rate');
-            const formatOptions: Intl.NumberFormatOptions = isPercentage
-              ? { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 }
-              : { style: 'currency', currency: 'USD' };
-
             const displayValue = metric.value;
 
             return (
@@ -1036,9 +1037,9 @@ function AdvancedReports() {
               );
               
             case 'pie':
-              const pieData = dataKeys.map((sanitizedKey: string, index: number) => ({
-                  name: originalDataKeys[index],
-                  value: data.reduce((acc: number, month: any) => acc + (month[sanitizedKey] || 0), 0)
+              const pieData = keyMapping.map((mapping) => ({
+                  name: mapping.original,
+                  value: data.reduce((acc: number, month: any) => acc + (month[mapping.sanitized] || 0), 0)
               })).filter(d => d.value > 0);
 
               return (
