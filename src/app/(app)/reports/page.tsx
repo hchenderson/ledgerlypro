@@ -787,6 +787,8 @@ function AdvancedReports() {
       return acc;
     }, {} as Record<string, number>);
 
+    console.log('Category totals:', categoryTotals);
+
     const kpis: Record<string, number> = {
       [sanitizeForVariableName('totalIncome')]: totalIncome,
       [sanitizeForVariableName('totalExpense')]: totalExpense,

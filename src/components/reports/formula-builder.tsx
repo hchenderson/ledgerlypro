@@ -122,9 +122,13 @@ export default function FormulaBuilder({
         </div>
       
         <div className="space-y-2">
-            <Label>Insert Variable</Label>
+            <Label>Insert Category</Label>
             <Select
-                onValueChange={(value) => setExpression(prev => `${prev.trim()} ${value}`)}
+                onValueChange={(value) => {
+                  if (value) {
+                    setExpression(prev => `${prev.trim()} ${value} `)
+                  }
+                }}
             >
                 <SelectTrigger>
                 <SelectValue placeholder="Select a variable to insert..." />
