@@ -43,12 +43,11 @@ export default function FormulaBuilder({
   
   const sampleContext = useMemo(() => {
     const context: Record<string, number> = {};
-    availableVariables.forEach(v => {
-      // Use a sample value (e.g., index + 1) for testing.
+    Object.values(aliasMap).forEach(v => {
       context[v] = Math.floor(Math.random() * 1000);
     });
     return context;
-  }, [availableVariables]);
+  }, [aliasMap]);
 
   useEffect(() => {
     if (existingFormula?.expression) {
@@ -79,8 +78,7 @@ export default function FormulaBuilder({
     try {
       const safeExpr = sanitizeExpression(expression, aliasMap);
       // Final validation before saving
-      const valid = safeEvaluateExpression(safeExpr, sampleContext);
-      if (valid == null) throw new Error("Formula is invalid and cannot be saved.");
+      safeEvaluateExpression(safeExpr, sampleContext);
       
       const success = await onAddFormula(name.trim(), safeExpr);
       if (!success) throw new Error("Save failed. Please try again.");
@@ -111,23 +109,37 @@ export default function FormulaBuilder({
             <Label htmlFor="formula-expression">Formula Expression</Label>
             <Input
                 id="formula-expression"
-                placeholder="e.g. (totalIncome - totalExpense) / totalIncome * 100"
+                placeholder="e.g. (totalIncome - totalExpense) / totalIncome"
                 value={expression}
                 onChange={e => setExpression(e.target.value)}
             />
+        </div>
+        
+        <div className="flex flex-wrap gap-2">
+            {['+', '-', '*', '/', '(', ')'].map(op => (
+                <Button
+                    key={op}
+                    type="button"
+                    variant="outline"
+                    className="h-8 w-10 font-mono"
+                    onClick={() => setExpression(prev => `${prev.trim()} ${op} `)}
+                >
+                    {op}
+                </Button>
+            ))}
         </div>
       
         <div className="space-y-2">
             <Label>Insert Variable</Label>
             <Select
-                onValueChange={(value) => setExpression(prev => `${prev} ${value}`.trim())}
+                onValueChange={(value) => setExpression(prev => `${prev.trim()} ${value}`)}
             >
                 <SelectTrigger>
                 <SelectValue placeholder="Select a variable to insert..." />
                 </SelectTrigger>
                 <SelectContent>
                 {Object.keys(aliasMap).sort((a,b) => a.localeCompare(b)).map(rawName => (
-                    <SelectItem key={rawName} value={`"${rawName}"`}>
+                    <SelectItem key={rawName} value={`'${rawName}'`}>
                       {rawName}
                     </SelectItem>
                 ))}
