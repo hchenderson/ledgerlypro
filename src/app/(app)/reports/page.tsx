@@ -332,7 +332,7 @@ function FormulaManager({
             </TabsList>
             <TabsContent value="create" className="pt-4">
                 <FormulaBuilder 
-                    userCategories={availableVariables}
+                    availableVariables={availableVariables}
                     sampleContext={sampleContext}
                     onAddFormula={onAddFormula}
                 />
@@ -824,11 +824,6 @@ function AdvancedReports() {
       const formula = formulas.find(f => f.id === widget.formulaId);
       if (formula && formula.expression) {
         try {
-          console.log('=== DEBUGGING FORMULA EVALUATION ===');
-          console.log('Formula to evaluate:', formula.expression);
-          console.log('Available KPI keys:', Object.keys(kpis));
-          console.log('KPI values:', kpis);
-
           const value = safeEvaluateExpression(formula.expression, kpis);
           return { kpis, data: [{ name: formula.name, value, formula: formula.expression }] };
         } catch (error: any) {
