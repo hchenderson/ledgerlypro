@@ -219,31 +219,45 @@ const safeEvaluateExpression = (
     }
 
     const sanitizedContext: Record<string, number | string | boolean> = {};
-    let sanitizedExpression = expression;
+    const nameMap: Record<string, string> = {};
 
     for (const key in context) {
-      const sanitizedKey = sanitizeForVariableName(key);
-      sanitizedContext[sanitizedKey] = context[key];
-
-      // Escape the raw key for regex use
-      const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-      // Replace *all* instances in the expression
-      sanitizedExpression = sanitizedExpression.replace(new RegExp(escapedKey, 'g'), sanitizedKey);
+      const sanitized = sanitizeForVariableName(key);
+      sanitizedContext[sanitized] = context[key];
+      nameMap[key] = sanitized;
     }
 
+    // Tokenize: match variables (including spaces/&, etc.), numbers, or operators
+    const tokens = expression.match(/[a-zA-Z0-9_&\s]+|\d+(\.\d+)?|[()+\-*/]/g);
+    if (!tokens) {
+      throw new Error("Expression could not be tokenized.");
+    }
+
+    // Rebuild expression with sanitized variable names
+    const rebuilt = tokens
+      .map(token => {
+        const trimmed = token.trim();
+        if (trimmed in nameMap) {
+          return nameMap[trimmed]; // replace with sanitized name
+        }
+        return token; // keep numbers/operators
+      })
+      .join(" ");
+
+    // Validate allowed chars
     const allowedPattern = /^[a-zA-Z0-9_+\-*/().\s]+$/;
-    if (!allowedPattern.test(sanitizedExpression)) {
-      throw new Error('Expression contains invalid characters after sanitization.');
+    if (!allowedPattern.test(rebuilt)) {
+      throw new Error("Expression contains invalid characters after sanitization.");
     }
 
-    const formula = new Function(...Object.keys(sanitizedContext), `return ${sanitizedExpression};`);
+    // Build and execute function
+    const formula = new Function(...Object.keys(sanitizedContext), `return ${rebuilt};`);
     const result = formula(...Object.values(sanitizedContext));
 
     return typeof result === 'number' && isFinite(result) ? result : null;
-  } catch (error: any) {
-    console.error('Formula evaluation error:', error);
-    throw new Error(`Invalid formula: ${error.message}`);
+  } catch (err: any) {
+    console.error("Formula evaluation error:", err);
+    throw new Error(`Invalid formula: ${err.message}`);
   }
 };
 
@@ -1776,6 +1790,7 @@ export default function ReportsPage() {
         </Tabs>
     )
 }
+
 
 
 
