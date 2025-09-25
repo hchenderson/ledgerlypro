@@ -301,6 +301,15 @@ function FormulaManager({
 }) {
   const [isBuilderOpen, setIsBuilderOpen] = useState(false);
 
+  const sampleContext = useMemo(() => {
+    const context: Record<string, number> = {};
+    availableVariables.forEach(v => {
+      context[v] = Math.floor(Math.random() * 1000);
+    });
+    return context;
+  }, [availableVariables]);
+
+
   return (
     <Dialog open={isBuilderOpen} onOpenChange={setIsBuilderOpen}>
       <DialogTrigger asChild>
@@ -323,7 +332,8 @@ function FormulaManager({
             </TabsList>
             <TabsContent value="create" className="pt-4">
                 <FormulaBuilder 
-                    availableVariables={availableVariables}
+                    userCategories={availableVariables.map(name => ({ name }))}
+                    sampleContext={sampleContext}
                     onAddFormula={onAddFormula}
                 />
             </TabsContent>
@@ -806,20 +816,20 @@ function AdvancedReports() {
     );
     
     if (widget.type === 'metric') {
-        const formula = formulas.find(f => f.id === widget.formulaId);
-        if (formula && formula.expression) {
-            try {
-                const value = safeEvaluateExpression(formula.expression, kpis);
-                return { kpis, data: [{ name: formula.name, value, formula: formula.expression }] };
-            } catch (error) {
-                console.error(`Error evaluating formula "${formula.name}":`, error);
-                return { kpis, data: [{ name: formula.name, value: null, formula: formula.expression }] };
-            }
-        } else if (widget.mainDataKey && kpis.hasOwnProperty(widget.mainDataKey)) {
-            const value = kpis[widget.mainDataKey as keyof typeof kpis];
-            return { kpis, data: [{ name: widget.title, value }] };
+      const formula = formulas.find(f => f.id === widget.formulaId);
+      if (formula && formula.expression) {
+        try {
+          const value = safeEvaluateExpression(formula.expression, kpis);
+          return { kpis, data: [{ name: formula.name, value, formula: formula.expression }] };
+        } catch (error: any) {
+          console.error(`Error evaluating formula "${formula.name}":`, error.message);
+          return { kpis, data: [{ name: formula.name, value: null, formula: formula.expression }] };
         }
-        return { kpis, data: null };
+      } else if (widget.mainDataKey && kpis.hasOwnProperty(widget.mainDataKey)) {
+        const value = kpis[widget.mainDataKey as keyof typeof kpis];
+        return { kpis, data: [{ name: widget.title, value }] };
+      }
+      return { kpis, data: null };
     }
     
     return { kpis, data: monthly, dataKeys };
@@ -867,13 +877,13 @@ function AdvancedReports() {
               ? { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 }
               : { style: 'currency', currency: 'USD' };
 
-            const displayValue = isPercentage && typeof metric.value === 'number' ? metric.value / 100 : metric.value;
+            const displayValue = metric.value;
 
             return (
               <div className="p-6 text-center">
                 <p className="text-4xl font-bold font-mono text-primary">
                   {typeof displayValue === "number"
-                    ? new Intl.NumberFormat("en-US", formatOptions).format(displayValue)
+                    ? new Intl.NumberFormat("en-US", formatOptions).format(isPercentage ? displayValue / 100 : displayValue)
                     : "--"}
                 </p>
                 <p className="text-lg font-medium mt-2">{metric?.name}</p>

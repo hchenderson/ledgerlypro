@@ -1,5 +1,7 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
+import { parse } from 'expr-eval';
+
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -7,12 +9,13 @@ export function cn(...inputs: ClassValue[]) {
 
 export function sanitizeForVariableName(name: string): string {
   if (!name) return '';
-  return name.replace(/[^a-zA-Z0-9_]/g, "_");
+  return name
+    .replace(/[^a-zA-Z0-9_]/g, "_")
+    .replace(/^(\d)/, "_$1");
 }
 
 export function sanitizeExpression(expression: string, aliasMap: Record<string,string>): string {
-  // Sort keys by length descending to replace longer matches first
-  const sortedKeys = Object.keys(aliasMap).sort((a, b) => b.length - a.length);
+  const sortedKeys = Object.keys(aliasMap).sort((a,b) => b.length - a.length);
 
   const pattern = new RegExp(
     sortedKeys.map(k => `"${k}"|'${k}'|\\b${k}\\b`).join("|"),
@@ -76,7 +79,7 @@ export const safeEvaluateExpression = (
     
     // Final safety check to ensure only allowed characters remain
     if (!/^[a-zA-Z0-9_+\-*/().\s]+$/.test(rebuilt)) {
-       console.error("Expression contains invalid characters after sanitization:", rebuilt);
+      console.error("Expression contains invalid characters after sanitization:", rebuilt);
       throw new Error('Expression contains invalid characters after sanitization.');
     }
 
@@ -85,7 +88,7 @@ export const safeEvaluateExpression = (
 
     return typeof result === 'number' && isFinite(result) ? result : null;
   } catch (err: any) {
-    console.error('Formula evaluation error:', err.message, 'Expression:', expression);
+    console.error('Formula evaluation error:', err);
     throw new Error(`Invalid formula: ${err.message}`);
   }
 };
