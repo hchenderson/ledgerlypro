@@ -349,6 +349,21 @@ const DraggableItem = ({ value }: { value: string }) => {
     );
 };
 
+function toSafeIdentifier(label: string) {
+    return label.replace(/[^a-zA-Z0-9]/g, "_");
+}
+
+function sanitizeExpression(expression: string, aliasMap: Record<string,string>): string {
+  const pattern = new RegExp(
+    Object.keys(aliasMap)
+      .map(k => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) // escape regex specials
+      .join("|"),
+    "g"
+  );
+
+  return expression.replace(pattern, match => aliasMap[match]);
+}
+
 function FormulaBuilderTabContent({ 
   formulas, 
   onAddFormula, 
@@ -368,6 +383,14 @@ function FormulaBuilderTabContent({
   const expressionRef = useRef<HTMLTextAreaElement>(null);
 
   const mathSymbols = ['+', '-', '*', '/', '(', ')'];
+
+  const aliasMap: Record<string, string> = useMemo(() => {
+    const map: Record<string, string> = {};
+    availableVariables.forEach(v => {
+      map[v] = toSafeIdentifier(v);
+    });
+    return map;
+  }, [availableVariables]);
 
   const sampleContext = useMemo(() => {
     const context: Record<string, number> = {
@@ -389,21 +412,21 @@ function FormulaBuilderTabContent({
   const handleAdd = async () => {
     if (name.trim() && expression.trim()) {
       try {
-        safeEvaluateExpression(expression, sampleContext);
+        const safeExpr = sanitizeExpression(expression, aliasMap);
+        safeEvaluateExpression(safeExpr, sampleContext); // Pre-flight check
+        const success = await onAddFormula(name.trim(), safeExpr);
+        if (success) {
+          setName("");
+          setExpression("");
+          setTestResult(null);
+          setTestError("");
+        }
       } catch (e: any) {
         toast({
           variant: 'destructive',
           title: 'Invalid Formula',
           description: e.message || "Please check your formula syntax and try again.",
         });
-        return;
-      }
-      const success = await onAddFormula(name.trim(), expression.trim());
-      if (success) {
-        setName("");
-        setExpression("");
-        setTestResult(null);
-        setTestError("");
       }
     }
   };
@@ -413,7 +436,8 @@ function FormulaBuilderTabContent({
       setTestError("");
       setTestResult(null);
       try {
-        const result = safeEvaluateExpression(expression, sampleContext);
+        const safeExpr = sanitizeExpression(expression, aliasMap);
+        const result = safeEvaluateExpression(safeExpr, sampleContext);
         if (result === null) {
           setTestError("Formula evaluated to a non-number.");
         } else {
@@ -651,7 +675,7 @@ function BasicReports() {
     const data: { [key: string]: number } = {};
     dateFilteredTransactions
       .filter(t => t.type === 'expense')
-      .filter(t => selectedCategories.length === 0 || selectedCategories.map(sc => findMainCategory(sc, categories)).includes(findMainCategory(t.category, categories)))
+      .filter(t => selectedCategories.length === 0 || selectedCategories.includes(findMainCategory(t.category, categories)))
       .forEach(t => {
         const mainCategory = findMainCategory(t.category, categories);
         data[mainCategory] = (data[mainCategory] || 0) + t.amount;
@@ -992,10 +1016,11 @@ function AdvancedReports() {
 
     const categoryTotals = transactions.reduce((acc, t) => {
       if (t.category) {
-        if (!acc[t.category]) {
-          acc[t.category] = 0;
+        const sanitizedCategory = sanitizeForVariableName(t.category);
+        if (!acc[sanitizedCategory]) {
+          acc[sanitizedCategory] = 0;
         }
-        acc[t.category] += t.amount;
+        acc[sanitizedCategory] += t.amount;
       }
       return acc;
     }, {} as Record<string, number>);
@@ -1018,6 +1043,7 @@ function AdvancedReports() {
         const formula = formulas.find(f => f.id === widget.formulaId);
         if (formula) {
             try {
+                console.log(`Evaluating formula "${formula.name}" with expression:`, formula.expression);
                 const value = safeEvaluateExpression(formula.expression, kpis);
                 return { kpis, data: [{ name: formula.name, value, formula: formula.expression }] };
             } catch (error) {
@@ -1775,6 +1801,7 @@ export default function ReportsPage() {
         </Tabs>
     )
 }
+
 
 
 
