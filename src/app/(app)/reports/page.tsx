@@ -104,6 +104,7 @@ import { OverviewChart } from '@/components/dashboard/overview-chart';
 import { CategoryPieChart } from '@/components/reports/category-pie-chart';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { SearchableMultiSelect } from '@/components/ui/searchable-multi-select';
+import FormulaBuilder from '@/components/reports/formula-builder';
 
 
 const PRESET_RANGES = [
@@ -209,12 +210,12 @@ function sanitizeForVariableName(name: string): string {
   return name.replace(/[^a-zA-Z0-9_]/g, '_');
 }
 
-const safeEvaluateExpression = (
+export const safeEvaluateExpression = (
   expression: string,
   context: Record<string, number | string | boolean>
 ): number | null => {
   try {
-    if (!expression || typeof expression !== "string" || expression.trim() === "") {
+    if (!expression || typeof expression !== 'string' || expression.trim() === '') {
       return null;
     }
 
@@ -229,22 +230,22 @@ const safeEvaluateExpression = (
 
     let rebuilt = expression;
     for (const [original, sanitized] of Object.entries(nameMap)) {
-      const escaped = original.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const escaped = original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       // replace whole words or quoted variants
-      rebuilt = rebuilt.replace(new RegExp(`("${escaped}"|'${escaped}'|\\b${escaped}\\b)`, "g"), sanitized);
+      rebuilt = rebuilt.replace(new RegExp(`("${escaped}"|'${escaped}'|\\b${escaped}\\b)`, 'g'), sanitized);
     }
 
     // Final safety check
     if (!/^[a-zA-Z0-9_+\-*/().\s]+$/.test(rebuilt)) {
-      throw new Error("Expression contains invalid characters after sanitization.");
+      throw new Error('Expression contains invalid characters after sanitization.');
     }
 
     const formula = new Function(...Object.keys(sanitizedContext), `return ${rebuilt};`);
     const result = formula(...Object.values(sanitizedContext));
 
-    return typeof result === "number" && isFinite(result) ? result : null;
+    return typeof result === 'number' && isFinite(result) ? result : null;
   } catch (err: any) {
-    console.error("Formula evaluation error:", err);
+    console.error('Formula evaluation error:', err);
     throw new Error(`Invalid formula: ${err.message}`);
   }
 };
@@ -333,38 +334,7 @@ function KpiTargetsDialog({
   );
 }
 
-const DraggableItem = ({ value }: { value: string }) => {
-    const handleDragStart = (e: React.DragEvent<HTMLDivElement>) => {
-      e.dataTransfer.setData('text/plain', value);
-    };
-
-    return (
-      <div
-        draggable
-        onDragStart={handleDragStart}
-        className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs truncate cursor-move"
-      >
-        {value}
-      </div>
-    );
-};
-
-function toSafeIdentifier(label: string) {
-    return label.replace(/[^a-zA-Z0-9]/g, "_");
-}
-
-function sanitizeExpression(expression: string, aliasMap: Record<string,string>): string {
-  const pattern = new RegExp(
-    Object.keys(aliasMap)
-      .map(k => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) // escape regex specials
-      .join("|"),
-    "g"
-  );
-
-  return expression.replace(pattern, match => aliasMap[match]);
-}
-
-function FormulaBuilderTabContent({ 
+function FormulaManager({ 
   formulas, 
   onAddFormula, 
   onDeleteFormula,
@@ -375,29 +345,14 @@ function FormulaBuilderTabContent({
   onDeleteFormula: (id: string) => void;
   availableVariables: string[];
 }) {
-  const { toast } = useToast();
-  const [name, setName] = useState("");
-  const [expression, setExpression] = useState("");
-  const [testResult, setTestResult] = useState<number | null>(null);
-  const [testError, setTestError] = useState<string>("");
-  const expressionRef = useRef<HTMLTextAreaElement>(null);
-
-  const mathSymbols = ['+', '-', '*', '/', '(', ')'];
-
-  const aliasMap: Record<string, string> = useMemo(() => {
-    const map: Record<string, string> = {};
-    availableVariables.forEach(v => {
-      map[v] = toSafeIdentifier(v);
-    });
-    return map;
-  }, [availableVariables]);
+  const [isBuilderOpen, setIsBuilderOpen] = useState(false);
 
   const sampleContext = useMemo(() => {
     const context: Record<string, number> = {
       totalIncome: 5000,
       totalExpense: 3000,
       transactionCount: 25,
-      avgTransactionAmount: 320,
+      avgTransactionAmount: 120,
       netIncome: 2000,
       savingsRate: 40
     };
@@ -409,187 +364,69 @@ function FormulaBuilderTabContent({
     return context;
   }, [availableVariables]);
 
-  const handleAdd = async () => {
-    if (name.trim() && expression.trim()) {
-      try {
-        const safeExpr = sanitizeExpression(expression, aliasMap);
-        safeEvaluateExpression(safeExpr, sampleContext); // Pre-flight check
-        const success = await onAddFormula(name.trim(), safeExpr);
-        if (success) {
-          setName("");
-          setExpression("");
-          setTestResult(null);
-          setTestError("");
-        }
-      } catch (e: any) {
-        toast({
-          variant: 'destructive',
-          title: 'Invalid Formula',
-          description: e.message || "Please check your formula syntax and try again.",
-        });
-      }
-    }
-  };
-
-  const testFormula = () => {
-    if (expression.trim()) {
-      setTestError("");
-      setTestResult(null);
-      try {
-        const safeExpr = sanitizeExpression(expression, aliasMap);
-        const result = safeEvaluateExpression(safeExpr, sampleContext);
-        if (result === null) {
-          setTestError("Formula evaluated to a non-number.");
-        } else {
-          setTestResult(result);
-        }
-      } catch (error: any) {
-        setTestError(error.message || "Formula evaluation failed. Check console for details.");
-      }
-    }
-  };
-
-    const handleDrop = (e: React.DragEvent<HTMLTextAreaElement>) => {
-        e.preventDefault();
-        const data = e.dataTransfer.getData('text/plain');
-        const textarea = expressionRef.current;
-        if (textarea) {
-            const start = textarea.selectionStart;
-            const end = textarea.selectionEnd;
-            const newExpression = expression.substring(0, start) + data + expression.substring(end);
-            setExpression(newExpression);
-            
-            // Move cursor to after the inserted text
-            setTimeout(() => {
-                textarea.selectionStart = textarea.selectionEnd = start + data.length;
-                textarea.focus();
-            }, 0);
-        }
-    };
-
-    const handleDragOver = (e: React.DragEvent<HTMLTextAreaElement>) => {
-        e.preventDefault();
-    };
-
   return (
-    <ScrollArea className="h-[60vh]">
-      <div className="space-y-6 p-1">
+    <Dialog open={isBuilderOpen} onOpenChange={setIsBuilderOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm">
+          <Calculator className="h-4 w-4 mr-2" />
+          Formula Builder
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Formula Builder</DialogTitle>
+          <DialogDescription>
+            Create custom calculations for your metric cards.
+          </DialogDescription>
+        </DialogHeader>
         <Tabs defaultValue="create">
             <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="create">Create</TabsTrigger>
-                <TabsTrigger value="existing">Existing</TabsTrigger>
+                <TabsTrigger value="create">Create Formula</TabsTrigger>
+                <TabsTrigger value="existing">Manage Formulas ({formulas.length})</TabsTrigger>
             </TabsList>
-            <TabsContent value="create" className="pt-4 space-y-4">
-                <div className="space-y-2">
-                    <Label htmlFor="formula-name">Formula Name</Label>
-                    <Input 
-                    id="formula-name" 
-                    placeholder="e.g., Net Income" 
-                    value={name} 
-                    onChange={e => setName(e.target.value)} 
-                    />
-                </div>
-                
-                <div className="space-y-2">
-                    <Label htmlFor="formula-expression">Formula Expression</Label>
-                    <Textarea
-                    id="formula-expression"
-                    ref={expressionRef}
-                    placeholder="e.g., totalIncome - totalExpense"
-                    rows={3}
-                    value={expression}
-                    onChange={e => setExpression(e.target.value)}
-                    onDrop={handleDrop}
-                    onDragOver={handleDragOver}
-                    />
-                </div>
-
-                <div className="flex gap-2">
-                    <Button size="sm" variant="outline" onClick={testFormula}>
-                    Test Formula
-                    </Button>
-                    <Button size="sm" onClick={handleAdd} disabled={!name.trim() || !expression.trim()}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Formula
-                    </Button>
-                </div>
-
-                 {testResult !== null && (
-                    <div className="p-3 bg-muted rounded-md">
-                        <p className="text-sm font-medium">Test Result:</p>
-                        <p className="text-lg font-mono">
-                        {new Intl.NumberFormat('en-US', { 
-                            style: 'currency', 
-                            currency: 'USD' 
-                        }).format(testResult)}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                        Using sample data.
-                        </p>
-                    </div>
-                )}
-                {testError && (
-                    <div className="p-3 bg-red-50 border border-red-200 rounded-md">
-                        <p className="text-sm font-medium text-red-900">Error:</p>
-                        <p className="text-sm text-red-700">{testError}</p>
-                    </div>
-                )}
-
+            <TabsContent value="create" className="pt-4">
+                <FormulaBuilder 
+                    availableVariables={availableVariables}
+                    sampleContext={sampleContext}
+                    onAddFormula={onAddFormula}
+                />
             </TabsContent>
-            <TabsContent value="existing" className="pt-4 space-y-4">
-                 {formulas.length === 0 ? (
-                    <div className="text-sm text-muted-foreground p-4 border rounded-md text-center">
-                        No formulas created yet.
-                    </div>
-                    ) : (
-                    <div className="border rounded-md max-h-60 overflow-y-auto">
-                        {formulas.map(formula => (
-                        <div key={formula.id} className="flex items-center justify-between p-3 border-b last:border-b-0">
-                            <div className="flex-1 min-w-0">
-                            <p className="font-semibold truncate">{formula.name}</p>
-                            <p className="text-xs text-muted-foreground font-mono truncate">
-                                {formula.expression}
-                            </p>
-                            </div>
-                            <Button 
-                            variant="ghost" 
-                            size="icon"
-                            onClick={() => onDeleteFormula(formula.id)}
-                            className="flex-shrink-0 ml-2"
-                            >
-                            <Trash2 className="h-4 w-4 text-red-500" />
-                            </Button>
+            <TabsContent value="existing" className="pt-4">
+                {formulas.length === 0 ? (
+                <div className="text-sm text-muted-foreground p-4 border rounded-md text-center">
+                    No formulas created yet.
+                </div>
+                ) : (
+                <ScrollArea className="h-72">
+                  <div className="space-y-2">
+                    {formulas.map(formula => (
+                    <div key={formula.id} className="flex items-center justify-between p-3 border rounded-md">
+                        <div className="flex-1 min-w-0">
+                        <p className="font-semibold truncate">{formula.name}</p>
+                        <p className="text-xs text-muted-foreground font-mono truncate">
+                            {formula.expression}
+                        </p>
                         </div>
-                        ))}
+                        <Button 
+                        variant="ghost" 
+                        size="icon"
+                        onClick={() => onDeleteFormula(formula.id)}
+                        className="flex-shrink-0 ml-2"
+                        >
+                        <Trash2 className="h-4 w-4 text-red-500" />
+                        </Button>
                     </div>
+                    ))}
+                  </div>
+                </ScrollArea>
                 )}
             </TabsContent>
         </Tabs>
-        
-        <div className="space-y-2">
-            <h4 className="font-medium">Operators</h4>
-            <div className="flex flex-wrap gap-2">
-              {mathSymbols.map(symbol => (
-                <DraggableItem key={symbol} value={symbol} />
-              ))}
-            </div>
-          </div>
-
-        <div className="space-y-2">
-          <h4 className="font-medium">Available Variables</h4>
-          <p className="text-xs text-muted-foreground">
-            The "Test Formula" button uses these sample values. Actual reports use your live data.
-          </p>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-32 overflow-y-auto border p-2 rounded-md">
-            {availableVariables.map(variable => (
-              <DraggableItem key={variable} value={variable} />
-            ))}
-          </div>
-        </div>
-      </div>
-    </ScrollArea>
+      </DialogContent>
+    </Dialog>
   );
 }
+
 
 function BasicReports() {
   const { allTransactions, categories } = useUserData();
@@ -839,7 +676,6 @@ function AdvancedReports() {
   });
 
   const [formulas, setFormulas] = useState<Formula[]>([]);
-  const [isFormulaBuilderOpen, setIsFormulaBuilderOpen] = useState(false);
   
   // Load settings from Firebase
   useEffect(() => {
@@ -1041,10 +877,11 @@ function AdvancedReports() {
     
     if (widget.type === 'metric') {
         const formula = formulas.find(f => f.id === widget.formulaId);
-        if (formula) {
+        if (formula && formula.expression) {
             try {
                 console.log(`Evaluating formula "${formula.name}" with expression:`, formula.expression);
                 const value = safeEvaluateExpression(formula.expression, kpis);
+                console.log("Formula value: ", value);
                 return { kpis, data: [{ name: formula.name, value, formula: formula.expression }] };
             } catch (error) {
                 console.error(`Error evaluating formula "${formula.name}":`, error);
@@ -1371,28 +1208,12 @@ function AdvancedReports() {
               KPI Targets
             </Button>
           </KpiTargetsDialog>
-          <Dialog open={isFormulaBuilderOpen} onOpenChange={setIsFormulaBuilderOpen}>
-            <DialogTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Calculator className="h-4 w-4 mr-2" />
-                Formula Builder
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-3xl">
-              <DialogHeader>
-                <DialogTitle>Formula Builder</DialogTitle>
-                <DialogDescription>
-                  Create custom calculations for your metric cards.
-                </DialogDescription>
-              </DialogHeader>
-              <FormulaBuilderTabContent
-                formulas={formulas}
-                onAddFormula={handleAddFormula}
-                onDeleteFormula={handleDeleteFormula}
-                availableVariables={formulaVariables}
-              />
-            </DialogContent>
-          </Dialog>
+          <FormulaManager
+            formulas={formulas}
+            onAddFormula={handleAddFormula}
+            onDeleteFormula={handleDeleteFormula}
+            availableVariables={formulaVariables}
+          />
           <Button
             variant={isCustomizing ? "default" : "outline"}
             onClick={() => setIsCustomizing(!isCustomizing)}
@@ -1801,6 +1622,7 @@ export default function ReportsPage() {
         </Tabs>
     )
 }
+
 
 
 
