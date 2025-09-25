@@ -229,13 +229,19 @@ export const safeEvaluateExpression = (
     }
 
     let rebuilt = expression;
-    for (const [original, sanitized] of Object.entries(nameMap)) {
-      const escaped = original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      // replace whole words or quoted variants
-      rebuilt = rebuilt.replace(new RegExp(`("${escaped}"|'${escaped}'|\\b${escaped}\\b)`, 'g'), sanitized);
-    }
+    // Sort by length descending to replace longer matches first (e.g., "Food & Dining" before "Food")
+    const sortedOriginalKeys = Object.keys(nameMap).sort((a, b) => b.length - a.length);
 
-    // Final safety check
+    for (const original of sortedOriginalKeys) {
+      const sanitized = nameMap[original];
+      // Escape the raw key for safe use in a regular expression
+      const escaped = original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      // Use a global regex to replace all occurrences of the standalone "word" or quoted string
+      const regex = new RegExp(`("${escaped}"|'${escaped}'|\\b${escaped}\\b)`, 'g');
+      rebuilt = rebuilt.replace(regex, sanitized);
+    }
+    
+    // Final safety check to ensure only allowed characters remain
     if (!/^[a-zA-Z0-9_+\-*/().\s]+$/.test(rebuilt)) {
       throw new Error('Expression contains invalid characters after sanitization.');
     }
@@ -347,23 +353,6 @@ function FormulaManager({
 }) {
   const [isBuilderOpen, setIsBuilderOpen] = useState(false);
 
-  const sampleContext = useMemo(() => {
-    const context: Record<string, number> = {
-      totalIncome: 5000,
-      totalExpense: 3000,
-      transactionCount: 25,
-      avgTransactionAmount: 120,
-      netIncome: 2000,
-      savingsRate: 40
-    };
-    availableVariables.forEach(v => {
-      if (!context[v]) {
-        context[v] = Math.floor(Math.random() * 1000);
-      }
-    });
-    return context;
-  }, [availableVariables]);
-
   return (
     <Dialog open={isBuilderOpen} onOpenChange={setIsBuilderOpen}>
       <DialogTrigger asChild>
@@ -387,7 +376,6 @@ function FormulaManager({
             <TabsContent value="create" className="pt-4">
                 <FormulaBuilder 
                     availableVariables={availableVariables}
-                    sampleContext={sampleContext}
                     onAddFormula={onAddFormula}
                 />
             </TabsContent>
@@ -766,14 +754,8 @@ function AdvancedReports() {
       const updatedFormulas = [...formulas, newFormula];
       setFormulas(updatedFormulas);
       await saveSettingsToFirestore({ formulas: updatedFormulas });
-      toast({ title: 'Formula Added', description: `"${name}" has been created.` });
       return true;
     }
-    toast({ 
-      variant: 'destructive', 
-      title: 'Invalid Formula', 
-      description: 'Name and expression cannot be empty.' 
-    });
     return false;
   };
 
@@ -852,7 +834,7 @@ function AdvancedReports() {
 
     const categoryTotals = transactions.reduce((acc, t) => {
       if (t.category) {
-        const sanitizedCategory = sanitizeForVariableName(t.category);
+        const sanitizedCategory = t.category; // Now handled by safeEvaluateExpression
         if (!acc[sanitizedCategory]) {
           acc[sanitizedCategory] = 0;
         }
@@ -879,9 +861,7 @@ function AdvancedReports() {
         const formula = formulas.find(f => f.id === widget.formulaId);
         if (formula && formula.expression) {
             try {
-                console.log(`Evaluating formula "${formula.name}" with expression:`, formula.expression);
                 const value = safeEvaluateExpression(formula.expression, kpis);
-                console.log("Formula value: ", value);
                 return { kpis, data: [{ name: formula.name, value, formula: formula.expression }] };
             } catch (error) {
                 console.error(`Error evaluating formula "${formula.name}":`, error);
@@ -905,7 +885,8 @@ function AdvancedReports() {
           const theme = COLOR_THEMES[widget.colorTheme] || COLOR_THEMES.default;
 
           if (widget.type === 'metric') {
-            if (!data || data[0]?.value === null || data[0]?.value === undefined) {
+            const metric = data?.[0];
+            if (!metric || metric.value === null || metric.value === undefined) {
               return (
                 <div className="flex h-full items-center justify-center text-muted-foreground p-4 text-center">
                   <div className="space-y-2">
@@ -933,9 +914,8 @@ function AdvancedReports() {
               );
             }
             
-            const metric = data[0];
             const isPercentage = metric.name?.toLowerCase().includes('rate');
-            const formatOptions = isPercentage 
+            const formatOptions: Intl.NumberFormatOptions = isPercentage
               ? { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 }
               : { style: 'currency', currency: 'USD' };
             const displayValue = isPercentage ? metric.value / 100 : metric.value;
@@ -943,10 +923,12 @@ function AdvancedReports() {
             return (
               <div className="p-6 text-center">
                 <p className="text-4xl font-bold font-mono text-primary">
-                  {new Intl.NumberFormat('en-US', formatOptions).format(displayValue)}
+                  {typeof displayValue === "number"
+                    ? new Intl.NumberFormat("en-US", formatOptions).format(displayValue)
+                    : "--"}
                 </p>
-                <p className="text-lg font-medium mt-2">{metric.name}</p>
-                {metric.formula && (
+                <p className="text-lg font-medium mt-2">{metric?.name}</p>
+                {metric?.formula && (
                   <p className="text-sm text-muted-foreground mt-1 font-mono">
                     {metric.formula}
                   </p>
@@ -1622,6 +1604,7 @@ export default function ReportsPage() {
         </Tabs>
     )
 }
+
 
 
 
