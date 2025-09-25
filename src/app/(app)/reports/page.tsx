@@ -824,6 +824,9 @@ function AdvancedReports() {
       const formula = formulas.find(f => f.id === widget.formulaId);
       if (formula && formula.expression) {
         try {
+          console.log('--- DEBUG: Formula Evaluation ---');
+          console.log('Formula expression:', formula.expression);
+          console.log('KPI context keys:', Object.keys(kpis));
           const value = safeEvaluateExpression(formula.expression, kpis);
           return { kpis, data: [{ name: formula.name, value, formula: formula.expression }] };
         } catch (error: any) {
@@ -1004,7 +1007,7 @@ function AdvancedReports() {
                     {widget.showLegend && <Legend />}
                     {widget.showTargetLines && (
                       <>
-                        <ReferenceLine y={kpiTargets.monthlyIncome} label={{ value: "Income Target", position: 'insideTopLeft' }} stroke="green" strokeDasharray="3 3" />
+                        <ReferenceLine y={kpiTargets.monthlyIncome} label={{ value: "Income Target", position: 'insideTopLeft' }} stroke="green" strokeDasharray="3.3" />
                         <ReferenceLine y={kpiTargets.monthlyExpense} label={{ value: "Expense Target", position: 'insideTopLeft' }} stroke="red" strokeDasharray="3 3" />
                       </>
                     )}
