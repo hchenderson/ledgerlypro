@@ -632,7 +632,7 @@ function MetricDebugDialog({ kpis, formula }: { kpis: Record<string, number>; fo
 
 
 function AdvancedReports() {
-  const { allTransactions, categories: userCategories } = useUserData();
+  const { allTransactions, categories: userCategories, getBudgetDetails } = useUserData();
   const { user } = useAuth();
   const [startingBalance, setStartingBalance] = useState(0);
   const { toast } = useToast();
@@ -850,6 +850,16 @@ function AdvancedReports() {
       }
       return acc;
     }, {} as Record<string, number>);
+
+    const dateForBudgets = globalFilters.dateRange?.to || new Date();
+    const budgetDetails = getBudgetDetails(dateForBudgets);
+    const budgetTotals = budgetDetails.reduce((acc, budget) => {
+        const sanitizedName = sanitizeForVariableName(budget.categoryName);
+        acc[`budget_${sanitizedName}_amount`] = budget.amount;
+        acc[`budget_${sanitizedName}_spent`] = budget.spent;
+        acc[`budget_${sanitizedName}_remaining`] = budget.remaining;
+        return acc;
+    }, {} as Record<string, number>);
     
     const kpis: Record<string, number> = {
       [sanitizeForVariableName('totalIncome')]: totalIncome,
@@ -859,6 +869,7 @@ function AdvancedReports() {
       [sanitizeForVariableName('transactionCount')]: transactions.length,
       [sanitizeForVariableName('avgTransactionAmount')]: transactions.reduce((sum, t) => sum + t.amount, 0) / (transactions.length || 1),
       ...categoryTotals,
+      ...budgetTotals,
       // Aliases for backwards compatibility
       Income: totalIncome,
       Expense: totalExpense,
@@ -903,7 +914,7 @@ function AdvancedReports() {
     }
     
     return { kpis, data: monthly, dataKeys: keyMapping.map(m => m.sanitized), originalDataKeys: keyMapping.map(m => m.original) };
-  }, [allTransactions, globalFilters, formulas, userCategories]);
+  }, [allTransactions, globalFilters, formulas, userCategories, getBudgetDetails]);
 
   const formulaVariables = useMemo(() => {
     const baseVars = [
@@ -920,8 +931,17 @@ function AdvancedReports() {
     };
     recurse(userCategories);
 
-    return [...baseVars, ...Array.from(categoryVars)];
-  }, [userCategories]);
+    const budgetDetails = getBudgetDetails();
+    const budgetVars = new Set<string>();
+    budgetDetails.forEach(budget => {
+        const sanitizedName = sanitizeForVariableName(budget.categoryName);
+        budgetVars.add(`budget_${sanitizedName}_amount`);
+        budgetVars.add(`budget_${sanitizedName}_spent`);
+        budgetVars.add(`budget_${sanitizedName}_remaining`);
+    });
+
+    return [...baseVars, ...Array.from(categoryVars), ...Array.from(budgetVars)];
+  }, [userCategories, getBudgetDetails]);
 
 
   const renderAdvancedChart = (widget: any) => {
