@@ -99,7 +99,7 @@ import { DateRange } from 'react-day-picker';
 import { subDays, format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { cn, safeEvaluateExpression, sanitizeForVariableName, prettifyExpression } from '@/lib/utils';
+import { cn, safeEvaluateExpression, sanitizeForVariableName } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { AdvancedWidgetCustomizer } from '@/components/reports/customization';
 import { OverviewChart } from '@/components/dashboard/overview-chart';
@@ -108,6 +108,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { SearchableMultiSelect } from '@/components/ui/searchable-multi-select';
 import FormulaBuilder from '@/components/reports/formula-builder';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Parser } from 'expr-eval';
 
 
 const PRESET_RANGES = [
@@ -853,6 +854,8 @@ function AdvancedReports() {
       }
       return acc;
     }, {} as Record<string, number>);
+    
+    console.log('Category totals:', categoryTotals);
 
     const dateForBudgets = globalFilters.dateRange?.to || new Date();
     const budgetDetails = getBudgetDetails(dateForBudgets);
@@ -865,16 +868,38 @@ function AdvancedReports() {
     }, {} as Record<string, number>);
     
     const kpis: Record<string, number> = {
-      totalIncome,
-      totalExpense,
-      netIncome: totalIncome - totalExpense,
-      savingsRate: totalIncome > 0 ? (totalIncome - totalExpense) / totalIncome : 0,
-      transactionCount: transactions.length,
-      avgTransactionAmount: transactions.reduce((sum, t) => sum + t.amount, 0) / (transactions.length || 1),
+      [sanitizeForVariableName('totalIncome')]: totalIncome,
+      [sanitizeForVariableName('totalExpense')]: totalExpense,
+      [sanitizeForVariableName('netIncome')]: totalIncome - totalExpense,
+      [sanitizeForVariableName('savingsRate')]: totalIncome > 0 ? (totalIncome - totalExpense) / totalIncome : 0,
+      [sanitizeForVariableName('transactionCount')]: transactions.length,
+      [sanitizeForVariableName('avgTransactionAmount')]: transactions.reduce((sum, t) => sum + t.amount, 0) / (transactions.length || 1),
       ...categoryTotals,
       ...budgetTotals,
     };
     
+    // Add safety net for missing formula variables
+    if (widget.type === 'metric') {
+      const formula = formulas.find(f => f.id === widget.formulaId);
+      if (formula && formula.expression) {
+        const parser = new Parser();
+        try {
+            const ast = parser.parse(formula.expression);
+            const formulaVariables = ast.variables();
+            
+            // Add any missing variables as 0
+            formulaVariables.forEach(varName => {
+            if (!(varName in kpis)) {
+                console.warn(`Adding missing formula variable '${varName}' as 0`);
+                kpis[varName] = 0;
+            }
+            });
+        } catch (e) {
+            console.error("Error parsing formula to find variables:", e);
+        }
+      }
+    }
+
     const monthly = Object.values(monthlyData)
       .sort((a: any, b: any) => a.monthKey.localeCompare(b.monthKey))
       .map((m: any) => ({ month: m.monthLabel, ...m }));
@@ -903,12 +928,12 @@ function AdvancedReports() {
     const baseVars = [
       'totalIncome', 'totalExpense', 'transactionCount',
       'avgTransactionAmount', 'netIncome', 'savingsRate'
-    ];
+    ].map(v => sanitizeForVariableName(v));
     
     const categoryVars = new Set<string>();
     const recurse = (cats: (Category | SubCategory)[]) => {
       (cats || []).forEach(c => {
-        categoryVars.add(c.name);
+        categoryVars.add(sanitizeForVariableName(c.name));
         if (c.subCategories) recurse(c.subCategories);
       });
     };
@@ -931,10 +956,6 @@ function AdvancedReports() {
     const fields = [
       { value: 'income', label: 'Income' },
       { value: 'expense', label: 'Expense' },
-      { value: 'netIncome', label: 'Net Income' },
-      { value: 'savingsRate', label: 'Savings Rate (%)' },
-      { value: 'transactionCount', label: 'Transaction Count' },
-      { value: 'avgTransactionAmount', label: 'Avg. Transaction Amount' },
     ];
     
     const categoryFields: { value: string, label: string }[] = [];
