@@ -79,6 +79,10 @@ export interface Widget {
   height: number;
   customFilters: { categories: string[] };
   formulaId: string | null;
+  responsive: boolean;
+  animateChart: boolean;
+  legendPosition: 'top' | 'bottom' | 'left' | 'right';
+  customColors?: string[];
 }
 
 export interface Formula {

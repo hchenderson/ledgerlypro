@@ -2,12 +2,12 @@
 
 "use client";
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { AreaChart, Area, BarChart, Bar, LineChart, Line, PieChart as RechartsPieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ScatterChart, Scatter, ComposedChart, ReferenceLine } from 'recharts';
-import { AlertTriangle, BarChart2, BarChart3, Calculator, Copy, Grid, Info, List, Move, Palette, PieChart as PieChartIcon, Plus, Save, Settings, Trash2, TrendingUp, UploadCloud, X, Zap } from 'lucide-react';
+import { AlertTriangle, BarChart2, BarChart3, Calculator, Copy, Grid, Info, List, Move, Palette, PieChart as PieChartIcon, Plus, Save, Settings, Trash2, TrendingUp, UploadCloud, X, Zap, Download, Upload } from 'lucide-react';
 import { Checkbox } from '../ui/checkbox';
 import { Input } from '../ui/input';
 import { Button } from '../ui/button';
@@ -19,6 +19,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { ScrollArea } from '../ui/scroll-area';
 import type { Widget, Formula } from '@/types';
 import type { SavedReport } from '@/hooks/use-report-settings';
+import { useToast } from '@/hooks/use-toast';
 
 
 export const CHART_TYPES = {
@@ -43,7 +44,18 @@ export const COLOR_THEMES: Record<string, string[]> = {
 
 function MetricDebugDialog({ kpis, formula }: { kpis: Record<string, number>; formula: string; }) {
     const [isOpen, React.useState(false);
-    const formulaVariables = formula.match(/[a-zA-Z_][a-zA-Z0-9_]*/g) || [];
+    
+    let formulaVariables: string[] = [];
+    if (formula) {
+        try {
+            const parser = new (require('expr-eval').Parser)();
+            const ast = parser.parse(formula);
+            formulaVariables = ast.variables();
+        } catch (e) {
+            console.warn("Could not parse formula for debug:", formula);
+        }
+    }
+
 
     return (
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -434,10 +446,48 @@ WidgetCard.Configuration = function WidgetConfiguration({
     setIsSaveDialogOpen,
     setNewReportName,
 }: WidgetConfigurationProps) {
-    const availableDataFields = useMemo(() => [
-        { value: 'income', label: 'Income' },
-        { value: 'expense', label: 'Expense' },
-    ], []);
+    const { toast } = useToast();
+    const importInputRef = useRef<HTMLInputElement>(null);
+
+    const handleExport = () => {
+        const dataStr = JSON.stringify({ widgets, layout }, null, 2);
+        const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+        
+        const exportFileDefaultName = 'report.json';
+        
+        const linkElement = document.createElement('a');
+        linkElement.setAttribute('href', dataUri);
+        linkElement.setAttribute('download', exportFileDefaultName);
+        linkElement.click();
+    }
+
+    const handleImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const text = e.target?.result;
+                if (typeof text !== 'string') throw new Error("Invalid file content");
+                
+                const importedData = JSON.parse(text);
+                if (Array.isArray(importedData.widgets) && typeof importedData.layout === 'string') {
+                    onUpdateWidget('all', importedData.widgets); // Special action to replace all widgets
+                    onSetLayout(importedData.layout);
+                    toast({ title: "Import Successful", description: "Report layout has been loaded." });
+                } else {
+                    throw new Error("JSON is missing 'widgets' array or 'layout' string.");
+                }
+            } catch (err: any) {
+                toast({ variant: 'destructive', title: "Import Failed", description: err.message });
+            }
+        };
+        reader.readAsText(file);
+
+        // Reset file input
+        if(event.target) event.target.value = '';
+    };
 
     return (
         <Tabs defaultValue="widgets" className="w-full">
@@ -562,7 +612,28 @@ WidgetCard.Configuration = function WidgetConfiguration({
                     </div>
                 </div>
             </TabsContent>
+            
+            <TabsContent value="export" className="space-y-4 pt-4">
+                 <h3 className="text-lg font-medium">Import / Export Report</h3>
+                 <p className="text-sm text-muted-foreground">Save your current report configuration to a file or load one from your disk.</p>
+                 <div className="flex gap-4">
+                    <Button onClick={handleExport} variant="outline">
+                        <Download className="mr-2 h-4 w-4" />
+                        Export Report
+                    </Button>
+                     <Button onClick={() => importInputRef.current?.click()} variant="outline">
+                        <Upload className="mr-2 h-4 w-4" />
+                        Import Report
+                    </Button>
+                    <input 
+                        type="file" 
+                        ref={importInputRef} 
+                        className="hidden" 
+                        accept=".json"
+                        onChange={handleImport}
+                    />
+                 </div>
+            </TabsContent>
         </Tabs>
     );
 };
-

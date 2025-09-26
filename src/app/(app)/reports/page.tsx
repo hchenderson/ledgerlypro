@@ -41,6 +41,7 @@ import { WidgetCard } from '@/components/reports/widget-card';
 import { Button } from '@/components/ui/button';
 import { sanitizeForVariableName } from '@/lib/utils';
 import { Parser } from 'expr-eval';
+import { useWidgetData } from '@/hooks/use-widget-data';
 
 
 const PRESET_RANGES = [
@@ -225,6 +226,7 @@ function AdvancedReports() {
   const [isCustomizing, setIsCustomizing] = useState(false);
   const [selectedWidget, setSelectedWidget] = useState<Widget | null>(null);
   const [layout, setLayout] = useState('grid');
+  const [draggedWidgetId, setDraggedWidgetId] = useState<string | null>(null);
   
   const [globalFilters, setGlobalFilters] = useState<{
     dateRange: DateRange | undefined;
@@ -281,15 +283,25 @@ function AdvancedReports() {
       height: 300,
       customFilters: { categories: [] },
       formulaId: null,
+      responsive: true,
+      animateChart: true,
+      legendPosition: 'bottom'
     };
     const updatedWidgets = [...widgets, newWidget];
     saveSettings({ widgets: updatedWidgets });
   }, [widgets, saveSettings]);
 
-  const updateWidget = useCallback((widgetId: string, updates: Partial<Widget>) => {
+  const updateWidget = useCallback((widgetId: string, updates: Partial<Widget> | Widget[]) => {
+    if (widgetId === 'all' && Array.isArray(updates)) {
+      setWidgets(updates);
+      saveSettings({ widgets: updates });
+      return;
+    }
+
     const updatedWidgets = widgets.map(w => w.id === widgetId ? { ...w, ...updates } : w);
+    setWidgets(updatedWidgets);
     saveSettings({ widgets: updatedWidgets });
-  }, [widgets, saveSettings]);
+  }, [widgets, saveSettings, setWidgets]);
   
   const removeWidget = useCallback((widgetId: string) => {
     const updatedWidgets = widgets.filter(w => w.id !== widgetId);
@@ -307,6 +319,34 @@ function AdvancedReports() {
     saveSettings({ widgets: updatedWidgets });
   }, [widgets, saveSettings]);
 
+  const handleDragStart = (e: React.DragEvent<HTMLDivElement>, widgetId: string) => {
+    setDraggedWidgetId(widgetId);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>, dropWidgetId: string) => {
+    e.preventDefault();
+    if (draggedWidgetId && draggedWidgetId !== dropWidgetId) {
+      const draggedIndex = widgets.findIndex(w => w.id === draggedWidgetId);
+      const dropIndex = widgets.findIndex(w => w.id === dropWidgetId);
+
+      const newWidgets = [...widgets];
+      const [draggedItem] = newWidgets.splice(draggedIndex, 1);
+      newWidgets.splice(dropIndex, 0, draggedItem);
+      
+      const reorderedWidgets = newWidgets.map((w, i) => ({ ...w, position: i }));
+      
+      setWidgets(reorderedWidgets);
+      saveSettings({ widgets: reorderedWidgets });
+    }
+    setDraggedWidgetId(null);
+  };
+  
   const enabledWidgets = widgets.filter(w => w.enabled).sort((a, b) => a.position - b.position);
 
   const allCategoryOptions = useMemo(() => {
@@ -410,14 +450,31 @@ function AdvancedReports() {
             </CardContent>
           </Card>
         ) : (
-          <div className={cn("grid gap-6", layout === 'grid' ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1')}>
+          <div 
+            className={cn(
+              "grid gap-6", 
+              layout === 'grid' ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'
+            )}
+            onDragOver={handleDragOver}
+          >
             {enabledWidgets.map((widget) => (
-              <WidgetCard
+               <div
                 key={widget.id}
-                widget={widget}
-                getWidgetData={getWidgetData}
-                layout={layout}
-              />
+                draggable={isCustomizing}
+                onDragStart={(e) => handleDragStart(e, widget.id)}
+                onDrop={(e) => handleDrop(e, widget.id)}
+                className={cn(
+                  'transition-opacity',
+                  isCustomizing && 'cursor-move',
+                  draggedWidgetId === widget.id && 'opacity-30'
+                )}
+               >
+                  <WidgetCard
+                    widget={widget}
+                    getWidgetData={getWidgetData}
+                    layout={layout}
+                  />
+              </div>
             ))}
           </div>
         )}
