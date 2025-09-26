@@ -820,17 +820,20 @@ function AdvancedReports() {
     }));
 
     const monthlyData: { [key: string]: any } = transactions.reduce((acc: { [key:string]: any }, transaction) => {
-      const month = new Date(transaction.date).toLocaleDateString('en', { month: 'short', year: '2-digit' });
-      if (!acc[month]) {
-        acc[month] = { month };
-        keyMapping.forEach(mapping => (acc[month][mapping.sanitized] = 0));
+      const tDate = new Date(transaction.date);
+      const monthKey = `${tDate.getFullYear()}-${String(tDate.getMonth() + 1).padStart(2, '0')}`; // "2025-09"
+      const monthLabel = `${tDate.toLocaleString('en', { month: 'short' })} ${tDate.getFullYear()}`; // "Sep 2025"
+
+      if (!acc[monthKey]) {
+        acc[monthKey] = { monthKey, monthLabel };
+        keyMapping.forEach(mapping => (acc[monthKey][mapping.sanitized] = 0));
       }
 
       keyMapping.forEach(mapping => {
         if (mapping.original === transaction.type) {
-            acc[month][mapping.sanitized] = (acc[month][mapping.sanitized] || 0) + transaction.amount;
+            acc[monthKey][mapping.sanitized] = (acc[monthKey][mapping.sanitized] || 0) + transaction.amount;
         } else if (mapping.original === transaction.category) {
-            acc[month][mapping.sanitized] = (acc[month][mapping.sanitized] || 0) + transaction.amount;
+            acc[monthKey][mapping.sanitized] = (acc[monthKey][mapping.sanitized] || 0) + transaction.amount;
         }
       });
   
@@ -850,6 +853,8 @@ function AdvancedReports() {
       }
       return acc;
     }, {} as Record<string, number>);
+
+    console.log('Category totals:', categoryTotals);
 
     const dateForBudgets = globalFilters.dateRange?.to || new Date();
     const budgetDetails = getBudgetDetails(dateForBudgets);
@@ -892,13 +897,23 @@ function AdvancedReports() {
       }
     }
     
-    const monthly = Object.values(monthlyData).sort((a: any, b: any) => 
-      new Date(`1 ${a.month}`).getTime() - new Date(`1 ${b.month}`).getTime()
-    );
+    const monthly = Object.values(monthlyData)
+      .sort((a: any, b: any) => a.monthKey.localeCompare(b.monthKey))
+      .map((m: any) => ({ month: m.monthLabel, ...m }));
     
     if (widget.type === 'metric') {
       const formula = formulas.find(f => f.id === widget.formulaId);
       if (formula && formula.expression) {
+        // Add debug logs here
+        console.log('=== KPI DEBUG ===');
+        console.log('Formula:', formula.expression);
+        console.log('KPIs keys:', Object.keys(kpis));
+        console.log('Has Income?', 'Income' in kpis);
+        // This will check against sanitized category name from the formula
+        const formulaCategory = (formula.expression.split('-')[1] || '').trim();
+        console.log(`Has ${formulaCategory}?`, formulaCategory in kpis);
+        console.log('=================');
+
         try {
           const value = safeEvaluateExpression(formula.expression, kpis);
           return { kpis, data: [{ name: formula.name, value, formula: formula.expression }] };
