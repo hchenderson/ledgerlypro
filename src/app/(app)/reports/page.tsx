@@ -865,7 +865,7 @@ function AdvancedReports() {
       [sanitizeForVariableName('totalIncome')]: totalIncome,
       [sanitizeForVariableName('totalExpense')]: totalExpense,
       [sanitizeForVariableName('netIncome')]: totalIncome - totalExpense,
-      [sanitizeForVariableName('savingsRate')]: totalIncome > 0 ? ((totalIncome - totalExpense) / totalIncome) * 100 : 0,
+      [sanitizeForVariableName('savingsRate')]: totalIncome > 0 ? ((totalIncome - totalExpense) / totalIncome) : 0,
       [sanitizeForVariableName('transactionCount')]: transactions.length,
       [sanitizeForVariableName('avgTransactionAmount')]: transactions.reduce((sum, t) => sum + t.amount, 0) / (transactions.length || 1),
       ...categoryTotals,
@@ -989,7 +989,7 @@ function AdvancedReports() {
                 <MetricDebugDialog kpis={kpis} formula={metric.formula} />
                 <p className="text-4xl font-bold font-mono text-primary">
                    {typeof displayValue === "number"
-                    ? new Intl.NumberFormat("en-US", isPercentage ? {style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1} : {style: 'currency', currency: 'USD'}).format(isPercentage ? displayValue / 100 : displayValue)
+                    ? new Intl.NumberFormat("en-US", isPercentage ? {style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1} : {style: 'currency', currency: 'USD'}).format(displayValue)
                     : "--"}
                 </p>
                 <p className="text-lg font-medium mt-2">{metric?.name}</p>
