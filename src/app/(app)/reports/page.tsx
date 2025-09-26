@@ -11,6 +11,7 @@ import {
   Card, 
   CardContent, 
   CardDescription, 
+  CardFooter, 
   CardHeader, 
   CardTitle 
 } from '@/components/ui/card';
@@ -69,7 +70,8 @@ import {
   BarChart2,
   Trash2,
   UploadCloud,
-  AlertTriangle
+  AlertTriangle,
+  Info
 } from 'lucide-react';
 import { 
   AreaChart, 
@@ -105,6 +107,7 @@ import { CategoryPieChart } from '@/components/reports/category-pie-chart';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { SearchableMultiSelect } from '@/components/ui/searchable-multi-select';
 import FormulaBuilder from '@/components/reports/formula-builder';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 
 const PRESET_RANGES = [
@@ -566,6 +569,67 @@ function BasicReports() {
   );
 }
 
+function MetricDebugDialog({ kpis, formula }: { kpis: Record<string, number>; formula: string; }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const formulaVariables = formula.match(/[a-zA-Z_][a-zA-Z0-9_]*/g) || [];
+
+  return (
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="icon" className="absolute top-2 right-2 h-6 w-6">
+          <Info className="h-4 w-4" />
+          <span className="sr-only">Debug Info</span>
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Formula Debug Information</DialogTitle>
+          <DialogDescription>
+            These are the underlying numbers used to calculate this metric.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+            <div>
+                <h4 className="font-medium mb-2">Formula</h4>
+                <p className="text-sm font-mono p-2 bg-muted rounded-md">{prettifyExpression(formula, {})}</p>
+            </div>
+            <div>
+                 <h4 className="font-medium mb-2">Available Data (KPIs)</h4>
+                 <ScrollArea className="h-72">
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Variable</TableHead>
+                                <TableHead className="text-right">Value</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {Object.entries(kpis).sort((a,b) => a[0].localeCompare(b[0])).map(([key, value]) => (
+                                <TableRow key={key} className={cn(formulaVariables.includes(key) && "bg-primary/10")}>
+                                    <TableCell className="font-mono text-xs">{key}</TableCell>
+                                    <TableCell className="text-right font-mono text-xs">
+                                        {new Intl.NumberFormat('en-US', {
+                                            style: 'decimal',
+                                            maximumFractionDigits: 2,
+                                        }).format(value)}
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                 </ScrollArea>
+            </div>
+        </div>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button>Close</Button>
+          </DialogClose>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 
 function AdvancedReports() {
   const { allTransactions, categories: userCategories } = useUserData();
@@ -787,8 +851,6 @@ function AdvancedReports() {
       return acc;
     }, {} as Record<string, number>);
     
-    console.log('Category totals:', categoryTotals);
-
     const kpis: Record<string, number> = {
       [sanitizeForVariableName('totalIncome')]: totalIncome,
       [sanitizeForVariableName('totalExpense')]: totalExpense,
@@ -826,19 +888,7 @@ function AdvancedReports() {
     if (widget.type === 'metric') {
       const formula = formulas.find(f => f.id === widget.formulaId);
       if (formula && formula.expression) {
-        console.log('Formula to evaluate:', formula.expression);
-        console.log('Available KPI context:', kpis);
-        console.log('Sample monthlyData:', monthly);
         try {
-          // Right before: const value = safeEvaluateExpression(formula.expression, kpis);
-          console.log('=== KPI DEBUG ===');
-          console.log('Formula:', formula.expression);
-          console.log('KPIs keys:', Object.keys(kpis));
-          console.log('Has Income?', 'Income' in kpis);
-          console.log('Has Jaaz_Payout?', 'Jaaz_Payout' in kpis);
-          console.log('Has _07_Jaaz_Payout?', '_07_Jaaz_Payout' in kpis);
-          console.log('KPIs object:', kpis);
-          console.log('=================');
           const value = safeEvaluateExpression(formula.expression, kpis);
           return { kpis, data: [{ name: formula.name, value, formula: formula.expression }] };
         } catch (error: any) {
@@ -915,7 +965,8 @@ function AdvancedReports() {
             const displayValue = metric.value;
 
             return (
-              <div className="p-6 text-center">
+              <div className="p-6 text-center relative w-full">
+                <MetricDebugDialog kpis={kpis} formula={metric.formula} />
                 <p className="text-4xl font-bold font-mono text-primary">
                    {typeof displayValue === "number"
                     ? new Intl.NumberFormat("en-US", isPercentage ? {style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1} : {style: 'currency', currency: 'USD'}).format(isPercentage ? displayValue / 100 : displayValue)
