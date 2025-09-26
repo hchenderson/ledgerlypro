@@ -22,7 +22,7 @@ import {
   TrendingUp,
   Settings,
 } from 'lucide-react';
-import type { Category, SubCategory } from '@/types';
+import type { Category, SubCategory, Widget } from '@/types';
 import { DateRange } from 'react-day-picker';
 import { subMonths, startOfMonth, endOfMonth } from 'date-fns';
 
@@ -33,13 +33,14 @@ import { OverviewChart } from '@/components/dashboard/overview-chart';
 import { CategoryPieChart } from '@/components/reports/category-pie-chart';
 import { SearchableMultiSelect } from '@/components/ui/searchable-multi-select';
 import { useAuth } from '@/hooks/use-auth';
-import { useReportSettings } from '@/hooks/use-report-settings';
+import { useReportSettings, SavedReport } from '@/hooks/use-report-settings';
 import { useFormulaVariables } from '@/hooks/use-formula-variables';
 import { ReportToolbar } from '@/components/reports/report-toolbar';
 import { GlobalFilters } from '@/components/reports/global-filters';
 import { WidgetCard } from '@/components/reports/widget-card';
-import { useWidgetData } from '@/hooks/use-widget-data';
 import { Button } from '@/components/ui/button';
+import { sanitizeForVariableName } from '@/lib/utils';
+import { Parser } from 'expr-eval';
 
 
 const PRESET_RANGES = [
@@ -152,13 +153,15 @@ function BasicReports() {
   const overviewData = useMemo(() => {
     const dataByMonth: { [key: string]: { name: string; income: number; expense: number } } = {};
     dateFilteredTransactions.forEach(t => {
-      const month = new Date(t.date).toLocaleString('en', { month: 'short', year: '2-digit' });
-      if (!dataByMonth[month]) {
-        dataByMonth[month] = { name: month, income: 0, expense: 0 };
+      const tDate = new Date(t.date);
+      if (isNaN(tDate.getTime())) return;
+      const monthKey = `${tDate.getFullYear()}-${String(tDate.getMonth() + 1).padStart(2, '0')}`;
+      if (!dataByMonth[monthKey]) {
+        dataByMonth[monthKey] = { name: tDate.toLocaleString('en', { month: 'short', year: 'numeric' }), income: 0, expense: 0 };
       }
-      dataByMonth[month][t.type] += t.amount;
+      dataByMonth[monthKey][t.type] += t.amount;
     });
-    return Object.values(dataByMonth);
+    return Object.values(dataByMonth).sort((a, b) => a.name.localeCompare(b.name));
   }, [dateFilteredTransactions]);
 
   return (
@@ -220,7 +223,7 @@ function AdvancedReports() {
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
   
   const [isCustomizing, setIsCustomizing] = useState(false);
-  const [selectedWidget, setSelectedWidget] = useState<any>(null);
+  const [selectedWidget, setSelectedWidget] = useState<Widget | null>(null);
   const [layout, setLayout] = useState('grid');
   
   const [globalFilters, setGlobalFilters] = useState<{
@@ -255,13 +258,13 @@ function AdvancedReports() {
     setNewReportName("");
   };
 
-  const handleLoadReport = (report: any) => {
+  const handleLoadReport = (report: SavedReport) => {
     setWidgets(report.widgets);
     toast({ title: "Report Loaded", description: `Switched to "${report.name}" report.` });
   };
 
   const addWidget = useCallback(() => {
-    const newWidget: any = {
+    const newWidget: Widget = {
       id: `widget-${Date.now()}`,
       title: 'New Widget',
       type: 'bar',
@@ -283,7 +286,7 @@ function AdvancedReports() {
     saveSettings({ widgets: updatedWidgets });
   }, [widgets, saveSettings]);
 
-  const updateWidget = useCallback((widgetId: string, updates: any) => {
+  const updateWidget = useCallback((widgetId: string, updates: Partial<Widget>) => {
     const updatedWidgets = widgets.map(w => w.id === widgetId ? { ...w, ...updates } : w);
     saveSettings({ widgets: updatedWidgets });
   }, [widgets, saveSettings]);
@@ -293,7 +296,7 @@ function AdvancedReports() {
     saveSettings({ widgets: updatedWidgets });
   }, [widgets, saveSettings]);
 
-  const duplicateWidget = useCallback((widget: any) => {
+  const duplicateWidget = useCallback((widget: Widget) => {
     const newWidget = {
       ...widget,
       id: `widget-${Date.now()}`,
@@ -317,6 +320,12 @@ function AdvancedReports() {
     recurse(userCategories);
     return options;
   }, [userCategories]);
+
+  const availableDataFields = useMemo(() => [
+    { value: 'income', label: 'Income' },
+    { value: 'expense', label: 'Expense' },
+    ...userCategories.map(c => ({ value: sanitizeForVariableName(c.name), label: `Category: ${c.name}`}))
+  ], [userCategories]);
   
   return (
     <div className="space-y-6">
@@ -419,11 +428,7 @@ function AdvancedReports() {
         onUpdate={updateWidget}
         onClose={() => setSelectedWidget(null)}
         allCategoryOptions={allCategoryOptions}
-        availableDataFields={useMemo(() => [
-            { value: 'income', label: 'Income' },
-            { value: 'expense', label: 'Expense' },
-            ...userCategories.map(c => ({ value: c.name, label: `Category: ${c.name}`}))
-        ], [userCategories])}
+        availableDataFields={availableDataFields}
       />
     </div>
   );

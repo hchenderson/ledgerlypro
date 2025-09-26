@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import React, { useMemo } from 'react';
@@ -16,6 +17,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger, DialogClose } from '../ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
 import { ScrollArea } from '../ui/scroll-area';
+import type { Widget, Formula } from '@/types';
+import type { SavedReport } from '@/hooks/use-report-settings';
+
 
 export const CHART_TYPES = {
   bar: { name: 'Bar Chart', icon: BarChart3, allowsComparison: true },
@@ -354,7 +358,7 @@ function renderAdvancedChart({ widget, data, kpis, dataKeys, originalDataKeys, f
     )
 };
 
-export function WidgetCard({ widget, getWidgetData, layout }: { widget: any, getWidgetData: any, layout: string }) {
+export function WidgetCard({ widget, getWidgetData, layout }: { widget: Widget, getWidgetData: any, layout: string }) {
     const { data, kpis, dataKeys, originalDataKeys, formulas, kpiTargets } = getWidgetData(widget);
     const sizeClasses = {
         small: layout === 'grid' ? 'md:col-span-1' : '',
@@ -385,6 +389,27 @@ export function WidgetCard({ widget, getWidgetData, layout }: { widget: any, get
     );
 }
 
+interface WidgetConfigurationProps {
+  widgets: Widget[];
+  savedReports: SavedReport[];
+  formulas: Formula[];
+  layout: string;
+  isSaveDialogOpen: boolean;
+  newReportName: string;
+  onAddWidget: () => void;
+  onUpdateWidget: (id: string, updates: Partial<Widget>) => void;
+  onRemoveWidget: (id: string) => void;
+  onDuplicateWidget: (widget: Widget) => void;
+  onSetSelectedWidget: (widget: Widget | null) => void;
+  onSaveReport: () => void;
+  onLoadReport: (report: SavedReport) => void;
+  onDeleteReport: (id: string) => void;
+  onSetLayout: (layout: string) => void;
+  setIsSaveDialogOpen: (isOpen: boolean) => void;
+  setNewReportName: (name: string) => void;
+}
+
+
 WidgetCard.Configuration = function WidgetConfiguration({
     widgets,
     savedReports,
@@ -403,7 +428,7 @@ WidgetCard.Configuration = function WidgetConfiguration({
     onSetLayout,
     setIsSaveDialogOpen,
     setNewReportName,
-}: any) {
+}: WidgetConfigurationProps) {
     const availableDataFields = useMemo(() => [
         { value: 'income', label: 'Income' },
         { value: 'expense', label: 'Expense' },
@@ -449,7 +474,7 @@ WidgetCard.Configuration = function WidgetConfiguration({
                 </div>
 
                 <div className="grid gap-4">
-                    {widgets.map((widget: any) => (
+                    {widgets.map((widget) => (
                         <Card key={widget.id} className="p-4">
                             <div className="flex items-center justify-between mb-4">
                                 <div className="flex items-center space-x-2">
@@ -475,7 +500,7 @@ WidgetCard.Configuration = function WidgetConfiguration({
                                         <Label>Formula</Label>
                                         <Select value={widget.formulaId || ""} onValueChange={(value) => onUpdateWidget(widget.id, { formulaId: value })} disabled={formulas.length === 0}>
                                             <SelectTrigger><SelectValue placeholder="Select a formula" /></SelectTrigger>
-                                            <SelectContent>{formulas.map((f: any) => (<SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>))}</SelectContent>
+                                            <SelectContent>{formulas.map((f) => (<SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>))}</SelectContent>
                                         </Select>
                                     </div>
                                 ) : (
@@ -505,7 +530,7 @@ WidgetCard.Configuration = function WidgetConfiguration({
                 <h3 className="text-lg font-medium">Saved Reports</h3>
                 {savedReports.length === 0 ? (<p className="text-sm text-muted-foreground">You have no saved reports.</p>) : (
                     <div className="space-y-2">
-                        {savedReports.map((report: any) => (
+                        {savedReports.map((report) => (
                             <div key={report.id} className="flex items-center justify-between p-2 border rounded-md">
                                 <span className="font-medium">{report.name}</span>
                                 <div className="flex gap-2">

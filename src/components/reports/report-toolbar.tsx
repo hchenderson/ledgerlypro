@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { Button } from '@/components/ui/button';
@@ -8,7 +9,8 @@ import { Label } from '@/components/ui/label';
 import { Calculator, Settings, Target } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import FormulaManager from './formula-manager';
-import type { Formula, KPITargets } from '@/hooks/use-report-settings';
+import type { Formula } from '@/types';
+import type { KPITargets } from '@/hooks/use-report-settings';
 
 interface ReportToolbarProps {
     kpiTargets: KPITargets;
@@ -27,7 +29,7 @@ function KpiTargetsDialog({
   children 
 }: {
   targets: KPITargets;
-  onSave: (newTargets: any) => void;
+  onSave: (newTargets: KPITargets) => void;
   children: React.ReactNode;
 }) {
   const [isOpen, setIsOpen] = useState(false);

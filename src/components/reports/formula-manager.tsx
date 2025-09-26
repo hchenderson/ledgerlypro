@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import React, { useMemo, useState } from "react";
@@ -9,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Trash2, Calculator } from "lucide-react";
-import type { Formula } from '@/hooks/use-report-settings';
+import type { Formula } from '@/types';
 
 interface FormulaManagerProps {
     formulas: Formula[];

@@ -1,36 +1,17 @@
 
+
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useToast } from './use-toast';
+import type { Widget, Formula } from '@/types';
 
-export interface Widget {
-  id: string;
-  title: string;
-  type: 'bar' | 'line' | 'area' | 'pie' | 'scatter' | 'composed' | 'metric';
-  size: 'small' | 'medium' | 'large';
-  mainDataKey?: string;
-  comparisonKey?: string;
-  dataCategories: string[];
-  enabled: boolean;
-  position: number;
-  colorTheme: string;
-  showLegend: boolean;
-  showGrid: boolean;
-  showTargetLines: boolean;
-  height: number;
-  customFilters: {
-    categories: string[];
-  };
-  formulaId: string | null;
-}
-
-export interface Formula {
+export interface SavedReport {
   id: string;
   name: string;
-  expression: string;
+  widgets: Widget[];
 }
 
 export interface KPITargets {
@@ -65,7 +46,7 @@ export function useReportSettings(userId?: string) {
     const [widgets, setWidgets] = useState<Widget[]>(defaultWidgets);
     const [kpiTargets, setKpiTargets] = useState<KPITargets>({ monthlyIncome: 5000, monthlyExpense: 3000, savingsRate: 40 });
     const [formulas, setFormulas] = useState<Formula[]>([]);
-    const [savedReports, setSavedReports] = useState<any[]>([]);
+    const [savedReports, setSavedReports] = useState<SavedReport[]>([]);
     
     useEffect(() => {
         if (userId) {
@@ -85,7 +66,12 @@ export function useReportSettings(userId?: string) {
         }
     }, [userId, toast]);
     
-    const saveSettings = useCallback(async (updates: any) => {
+    const saveSettings = useCallback(async (updates: Partial<{
+        widgets: Widget[];
+        kpiTargets: KPITargets;
+        formulas: Formula[];
+        savedReports: SavedReport[];
+    }>) => {
         if (userId) {
             try {
                 const settingsDocRef = doc(db, 'users', userId, 'settings', 'reports');
@@ -93,6 +79,7 @@ export function useReportSettings(userId?: string) {
                 if (updates.widgets) setWidgets(updates.widgets);
                 if (updates.kpiTargets) setKpiTargets(updates.kpiTargets);
                 if (updates.formulas) setFormulas(updates.formulas);
+                if (updates.savedReports) setSavedReports(updates.savedReports);
             } catch (error) {
                 console.error("Error saving settings:", error);
                 toast({ variant: 'destructive', title: "Save Error", description: "Failed to save settings." });
@@ -101,7 +88,7 @@ export function useReportSettings(userId?: string) {
     }, [userId, toast]);
 
     const addReport = useCallback(async (name: string, reportWidgets: Widget[]) => {
-        const newReport = {
+        const newReport: SavedReport = {
             id: `report-${Date.now()}`,
             name,
             widgets: JSON.parse(JSON.stringify(reportWidgets))

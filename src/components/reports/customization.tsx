@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import React, { useState, useEffect } from 'react';
@@ -39,39 +40,10 @@ import {
   Plus,
   Grid,
 } from 'lucide-react';
-import { HexColorPicker } from 'react-colorful';
 import { Separator } from '../ui/separator';
 import { SearchableMultiSelect } from '../ui/searchable-multi-select';
+import type { Widget } from '@/types';
 
-interface Widget {
-  id: string;
-  title: string;
-  type: 'bar' | 'line' | 'area' | 'pie' | 'scatter' | 'composed' | 'metric';
-  size: 'small' | 'medium' | 'large';
-  mainDataKey?: string;
-  comparisonKey?: string;
-  dataCategories: string[];
-  enabled: boolean;
-  position: number;
-  colorTheme: string;
-  customColors?: string[];
-  showLegend: boolean;
-  showGrid: boolean;
-  showTargetLines: boolean;
-  height: number;
-  customFilters: {
-    categories: string[];
-  };
-  formulaId: string | null;
-  titleFontSize?: number;
-  axisFontSize?: number;
-  titleFontWeight?: string;
-  showDataLabels?: boolean;
-  animateChart?: boolean;
-  padding?: { top: number; right: number; bottom: number; left: number };
-  legendPosition?: 'top' | 'bottom' | 'left' | 'right';
-  responsive?: boolean;
-}
 
 interface AdvancedWidgetCustomizerProps {
     widget: Widget | null;
@@ -170,7 +142,7 @@ export function AdvancedWidgetCustomizer({
                   <div>
                     <Label>Primary Data Field</Label>
                     <Select
-                      value={localWidget.mainDataKey}
+                      value={localWidget.mainDataKey || undefined}
                       onValueChange={(value) => handleLocalUpdate({ mainDataKey: value })}
                     >
                       <SelectTrigger>
@@ -193,7 +165,7 @@ export function AdvancedWidgetCustomizer({
                     <Select
                       value={localWidget.comparisonKey || 'none'}
                       onValueChange={(value) => handleLocalUpdate({ 
-                        comparisonKey: value === 'none' ? undefined : value 
+                        comparisonKey: value === 'none' ? null : value 
                       })}
                     >
                       <SelectTrigger>
