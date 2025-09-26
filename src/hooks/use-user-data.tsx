@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
@@ -69,47 +70,52 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!transactionsCollRef || !recurringCollRef) return;
   
     for (const rt of recurringTransactions) {
-      const startDate = startOfDay(parseISO(rt.startDate));
-      let lastAdded = rt.lastAddedDate ? startOfDay(parseISO(rt.lastAddedDate)) : null;
+      try {
+        const startDate = startOfDay(parseISO(rt.startDate));
+        let lastAdded = rt.lastAddedDate ? startOfDay(parseISO(rt.lastAddedDate)) : null;
 
-      let nextDate = lastAdded;
+        let nextDate = lastAdded;
 
-      if (!nextDate) {
-        nextDate = startDate;
-      } else {
-        switch(rt.frequency) {
-          case 'daily': nextDate = addDays(nextDate, 1); break;
-          case 'weekly': nextDate = addWeeks(nextDate, 1); break;
-          case 'monthly': nextDate = addMonths(nextDate, 1); break;
-          case 'yearly': nextDate = addYears(nextDate, 1); break;
+        if (!nextDate) {
+          nextDate = startDate;
+        } else {
+          switch(rt.frequency) {
+            case 'daily': nextDate = addDays(nextDate, 1); break;
+            case 'weekly': nextDate = addWeeks(nextDate, 1); break;
+            case 'monthly': nextDate = addMonths(nextDate, 1); break;
+            case 'yearly': nextDate = addYears(nextDate, 1); break;
+          }
         }
-      }
-  
-      while (isBefore(nextDate, today) || isToday(nextDate)) {
-        const newTransactionDoc = doc(transactionsCollRef);
-        batch.set(newTransactionDoc, {
-          id: newTransactionDoc.id,
-          date: nextDate.toISOString(),
-          description: `(Recurring) ${rt.description}`,
-          amount: rt.amount,
-          type: rt.type,
-          category: rt.category
-        });
-        transactionsAdded = true;
-  
-        lastAdded = nextDate;
-  
-        switch(rt.frequency) {
-          case 'daily': nextDate = addDays(nextDate, 1); break;
-          case 'weekly': nextDate = addWeeks(nextDate, 1); break;
-          case 'monthly': nextDate = addMonths(nextDate, 1); break;
-          case 'yearly': nextDate = addYears(nextDate, 1); break;
+    
+        while (isBefore(nextDate, today) || isToday(nextDate)) {
+          const newTransactionDoc = doc(transactionsCollRef);
+          batch.set(newTransactionDoc, {
+            id: newTransactionDoc.id,
+            date: nextDate.toISOString(),
+            description: `(Recurring) ${rt.description}`,
+            amount: rt.amount,
+            type: rt.type,
+            category: rt.category
+          });
+          transactionsAdded = true;
+    
+          lastAdded = nextDate;
+    
+          switch(rt.frequency) {
+            case 'daily': nextDate = addDays(nextDate, 1); break;
+            case 'weekly': nextDate = addWeeks(nextDate, 1); break;
+            case 'monthly': nextDate = addMonths(nextDate, 1); break;
+            case 'yearly': nextDate = addYears(nextDate, 1); break;
+          }
         }
-      }
 
-      if (lastAdded && (!rt.lastAddedDate || lastAdded.getTime() !== parseISO(rt.lastAddedDate).getTime())) {
-          const recurringDocToUpdate = doc(recurringCollRef, rt.id);
-          batch.update(recurringDocToUpdate, { lastAddedDate: lastAdded.toISOString() });
+        if (lastAdded && (!rt.lastAddedDate || lastAdded.getTime() !== parseISO(rt.lastAddedDate).getTime())) {
+            const recurringDocToUpdate = doc(recurringCollRef, rt.id);
+            batch.update(recurringDocToUpdate, { lastAddedDate: lastAdded.toISOString() });
+        }
+      } catch (e) {
+        console.error(`Error processing recurring transaction ID ${rt.id} with date ${rt.startDate}:`, e);
+        // Continue to the next transaction
       }
     }
   
