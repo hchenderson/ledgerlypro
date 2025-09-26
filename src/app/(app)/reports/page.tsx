@@ -715,7 +715,7 @@ function AdvancedReports() {
   }, [user]);
 
   // Save settings to Firebase
-  const saveSettingsToFirestore = async (updates: any) => {
+  const saveSettingsToFirestore = useCallback(async (updates: any) => {
     if (user) {
       try {
         const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'reports');
@@ -729,7 +729,7 @@ function AdvancedReports() {
         });
       }
     }
-  };
+  }, [user, toast]);
 
   const handleSaveReport = async () => {
     if (!newReportName.trim()) {
@@ -855,8 +855,6 @@ function AdvancedReports() {
       return acc;
     }, {} as Record<string, number>);
     
-    console.log('Category totals:', categoryTotals);
-
     const dateForBudgets = globalFilters.dateRange?.to || new Date();
     const budgetDetails = getBudgetDetails(dateForBudgets);
     const budgetTotals = budgetDetails.reduce((acc, budget) => {
