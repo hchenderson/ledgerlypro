@@ -361,11 +361,37 @@ function AdvancedReports() {
     return options;
   }, [userCategories]);
 
-  const availableDataFields = useMemo(() => [
-    { value: 'income', label: 'Income' },
-    { value: 'expense', label: 'Expense' },
-    ...userCategories.map(c => ({ value: sanitizeForVariableName(c.name), label: `Category: ${c.name}`}))
-  ], [userCategories]);
+  const availableDataFields = useMemo(() => {
+    const fields = [
+      { value: 'income', label: 'Income' },
+      { value: 'expense', label: 'Expense' },
+    ];
+  
+    userCategories.forEach(c => {
+      fields.push({ 
+        value: sanitizeForVariableName(c.name), 
+        label: `Category: ${c.name}`
+      });
+    });
+  
+    const budgets = getBudgetDetails();
+    budgets.forEach(b => {
+      fields.push({
+        value: sanitizeForVariableName(`budget_${b.categoryName}_amount`),
+        label: `Budget: ${b.categoryName} Amount`,
+      });
+       fields.push({
+        value: sanitizeForVariableName(`budget_${b.categoryName}_spent`),
+        label: `Budget: ${b.categoryName} Spent`,
+      });
+       fields.push({
+        value: sanitizeForVariableName(`budget_${b.categoryName}_remaining`),
+        label: `Budget: ${b.categoryName} Remaining`,
+      });
+    });
+  
+    return fields;
+  }, [userCategories, getBudgetDetails]);
   
   return (
     <div className="space-y-6">
@@ -515,3 +541,5 @@ export default function ReportsPage() {
         </Tabs>
     )
 }
+
+    
