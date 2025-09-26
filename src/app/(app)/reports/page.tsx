@@ -904,16 +904,8 @@ function AdvancedReports() {
     if (widget.type === 'metric') {
       const formula = formulas.find(f => f.id === widget.formulaId);
       if (formula && formula.expression) {
-        // Add debug logs here
-        console.log('=== KPI DEBUG ===');
-        console.log('Formula:', formula.expression);
-        console.log('KPIs keys:', Object.keys(kpis));
-        console.log('Has Income?', 'Income' in kpis);
-        // This will check against sanitized category name from the formula
-        const formulaCategory = (formula.expression.split('-')[1] || '').trim();
-        console.log(`Has ${formulaCategory}?`, formulaCategory in kpis);
-        console.log('=================');
-
+        console.log('Formula being evaluated:', formula.expression);
+        console.log('Available KPI context:', kpis);
         try {
           const value = safeEvaluateExpression(formula.expression, kpis);
           return { kpis, data: [{ name: formula.name, value, formula: formula.expression }] };
@@ -940,7 +932,7 @@ function AdvancedReports() {
     const categoryVars = new Set<string>();
     const recurse = (cats: (Category | SubCategory)[]) => {
       (cats || []).forEach(c => {
-        categoryVars.add(c.name);
+        categoryVars.add(sanitizeForVariableName(c.name));
         if (c.subCategories) recurse(c.subCategories);
       });
     };
@@ -959,6 +951,31 @@ function AdvancedReports() {
   }, [userCategories, getBudgetDetails]);
 
 
+  const availableDataFields = useMemo(() => {
+    const fields = [
+      { value: 'income', label: 'Income' },
+      { value: 'expense', label: 'Expense' },
+      { value: 'netIncome', label: 'Net Income' },
+      { value: 'savingsRate', label: 'Savings Rate (%)' },
+      { value: 'transactionCount', label: 'Transaction Count' },
+      { value: 'avgTransactionAmount', label: 'Avg. Transaction Amount' },
+    ];
+    
+    const categoryFields: { value: string, label: string }[] = [];
+    const recurse = (cats: (Category | SubCategory)[], prefix: string = '') => {
+      (cats || []).forEach(cat => {
+        categoryFields.push({
+          value: sanitizeForVariableName(cat.name),
+          label: `${prefix}Category: ${cat.name}`
+        });
+        if(cat.subCategories) recurse(cat.subCategories, `${prefix}  - `);
+      });
+    };
+    recurse(userCategories);
+
+    return [...fields, ...categoryFields];
+  }, [userCategories]);
+  
   const renderAdvancedChart = (widget: any) => {
     return (
       <ChartErrorBoundary>
@@ -1240,24 +1257,6 @@ function AdvancedReports() {
     recurse(userCategories);
     return options;
   }, [userCategories]);
-
-  const availableDataFields = useMemo(() => {
-    const fields = [
-      { value: 'income', label: 'Income' },
-      { value: 'expense', label: 'Expense' },
-      { value: 'netIncome', label: 'Net Income' },
-      { value: 'savingsRate', label: 'Savings Rate (%)' },
-      { value: 'transactionCount', label: 'Transaction Count' },
-      { value: 'avgTransactionAmount', label: 'Avg. Transaction Amount' },
-    ];
-    userCategories.forEach(cat => {
-      fields.push({ value: cat.name, label: `Category: ${cat.name}` });
-      (cat.subCategories || []).forEach(sub => {
-        fields.push({ value: sub.name, label: `  - ${sub.name}` });
-      });
-    });
-    return fields;
-  }, [userCategories]);
   
   return (
     <div className="space-y-6">
@@ -1478,7 +1477,7 @@ function AdvancedReports() {
                             <div className="col-span-2 lg:col-span-3">
                               <Label>Categories to Display</Label>
                               <SearchableMultiSelect
-                                options={allCategoryOptions}
+                                options={availableDataFields}
                                 selected={widget.dataCategories || []}
                                 onChange={(value: string[]) => updateWidget(widget.id, { dataCategories: value })}
                                 placeholder="Select categories..."
