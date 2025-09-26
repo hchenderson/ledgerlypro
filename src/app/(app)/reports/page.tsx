@@ -307,7 +307,7 @@ function FormulaManager({
   const sampleContext = useMemo(() => {
     const context: Record<string, number> = {};
     (availableVariables || []).forEach(v => {
-      context[sanitizeForVariableName(v)] = Math.floor(Math.random() * 1000);
+      context[v] = Math.floor(Math.random() * 1000);
     });
     return context;
   }, [availableVariables]);
@@ -353,7 +353,7 @@ function FormulaManager({
                         <div className="flex-1 min-w-0">
                         <p className="font-semibold truncate">{formula.name}</p>
                         <p className="text-xs text-muted-foreground font-mono truncate">
-                            {prettifyExpression(formula.expression, {})}
+                            {formula.expression}
                         </p>
                         </div>
                         <Button 
@@ -591,7 +591,7 @@ function MetricDebugDialog({ kpis, formula }: { kpis: Record<string, number>; fo
         <div className="space-y-4">
             <div>
                 <h4 className="font-medium mb-2">Formula</h4>
-                <p className="text-sm font-mono p-2 bg-muted rounded-md">{prettifyExpression(formula, {})}</p>
+                <p className="text-sm font-mono p-2 bg-muted rounded-md">{formula}</p>
             </div>
             <div>
                  <h4 className="font-medium mb-2">Available Data (KPIs)</h4>
@@ -854,8 +854,6 @@ function AdvancedReports() {
       return acc;
     }, {} as Record<string, number>);
 
-    console.log('Category totals:', categoryTotals);
-
     const dateForBudgets = globalFilters.dateRange?.to || new Date();
     const budgetDetails = getBudgetDetails(dateForBudgets);
     const budgetTotals = budgetDetails.reduce((acc, budget) => {
@@ -867,35 +865,15 @@ function AdvancedReports() {
     }, {} as Record<string, number>);
     
     const kpis: Record<string, number> = {
-      [sanitizeForVariableName('totalIncome')]: totalIncome,
-      [sanitizeForVariableName('totalExpense')]: totalExpense,
-      [sanitizeForVariableName('netIncome')]: totalIncome - totalExpense,
-      [sanitizeForVariableName('savingsRate')]: totalIncome > 0 ? ((totalIncome - totalExpense) / totalIncome) : 0,
-      [sanitizeForVariableName('transactionCount')]: transactions.length,
-      [sanitizeForVariableName('avgTransactionAmount')]: transactions.reduce((sum, t) => sum + t.amount, 0) / (transactions.length || 1),
+      totalIncome,
+      totalExpense,
+      netIncome: totalIncome - totalExpense,
+      savingsRate: totalIncome > 0 ? (totalIncome - totalExpense) / totalIncome : 0,
+      transactionCount: transactions.length,
+      avgTransactionAmount: transactions.reduce((sum, t) => sum + t.amount, 0) / (transactions.length || 1),
       ...categoryTotals,
       ...budgetTotals,
-      // Aliases for backwards compatibility
-      Income: totalIncome,
-      Expense: totalExpense,
     };
-    
-    // Add safety net for missing formula variables
-    if (widget.type === 'metric') {
-      const formula = formulas.find(f => f.id === widget.formulaId);
-      if (formula && formula.expression) {
-        // Extract all variable names from the formula
-        const formulaVariables = formula.expression.match(/[a-zA-Z_][a-zA-Z0-9_]*/g) || [];
-        
-        // Add any missing variables as 0
-        formulaVariables.forEach(varName => {
-          if (!(varName in kpis)) {
-            console.warn(`Adding missing formula variable '${varName}' as 0`);
-            kpis[varName] = 0;
-          }
-        });
-      }
-    }
     
     const monthly = Object.values(monthlyData)
       .sort((a: any, b: any) => a.monthKey.localeCompare(b.monthKey))
@@ -904,8 +882,6 @@ function AdvancedReports() {
     if (widget.type === 'metric') {
       const formula = formulas.find(f => f.id === widget.formulaId);
       if (formula && formula.expression) {
-        console.log('Formula being evaluated:', formula.expression);
-        console.log('Available KPI context:', kpis);
         try {
           const value = safeEvaluateExpression(formula.expression, kpis);
           return { kpis, data: [{ name: formula.name, value, formula: formula.expression }] };
@@ -932,7 +908,7 @@ function AdvancedReports() {
     const categoryVars = new Set<string>();
     const recurse = (cats: (Category | SubCategory)[]) => {
       (cats || []).forEach(c => {
-        categoryVars.add(sanitizeForVariableName(c.name));
+        categoryVars.add(c.name);
         if (c.subCategories) recurse(c.subCategories);
       });
     };
@@ -1027,7 +1003,7 @@ function AdvancedReports() {
                 <p className="text-lg font-medium mt-2">{metric?.name}</p>
                 {metric?.formula && (
                   <p className="text-sm text-muted-foreground mt-1 font-mono">
-                    {prettifyExpression(metric.formula, {})}
+                    {metric.formula}
                   </p>
                 )}
               </div>

@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
-import { parse } from 'expr-eval';
+import { Parser } from 'expr-eval';
 
 
 export function cn(...inputs: ClassValue[]) {
@@ -9,22 +9,14 @@ export function cn(...inputs: ClassValue[]) {
 
 export function sanitizeForVariableName(name: string): string {
   if (!name) return '';
-  return name
-    .replace(/[^a-zA-Z0-9_]/g, "_")
-    .replace(/^(\d)/, "_$1");
+  // Replace all non-alphanumeric characters with underscores
+  let sanitized = name.replace(/[^a-zA-Z0-9_]/g, "_");
+  // If the first character is a number, prepend an underscore
+  if (/^\d/.test(sanitized)) {
+    sanitized = "_" + sanitized;
+  }
+  return sanitized;
 }
-
-export function sanitizeExpression(expression: string, aliasMap: Record<string,string>): string {
-  const sortedKeys = Object.keys(aliasMap).sort((a,b) => b.length - a.length);
-
-  const pattern = new RegExp(
-    sortedKeys.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"),
-    "g"
-  );
-
-  return expression.replace(pattern, match => aliasMap[match]);
-}
-
 
 export function prettifyExpression(expression: string, aliasMap: Record<string,string>): string {
   const reverseMap = Object.fromEntries(Object.entries(aliasMap).map(([raw, safe]) => [safe, raw]));
@@ -38,27 +30,26 @@ export function prettifyExpression(expression: string, aliasMap: Record<string,s
   });
 }
 
-
 export const safeEvaluateExpression = (
   expression: string,
-  context: Record<string, number | string | boolean>
+  context: Record<string, any>
 ): number | null => {
+  if (!expression || typeof expression !== 'string' || expression.trim() === '') {
+    return null;
+  }
   try {
-    if (!expression || typeof expression !== "string" || expression.trim() === "") {
+    const parser = new Parser();
+    const expr = parser.parse(expression);
+    const result = expr.evaluate(context);
+    
+    if (typeof result !== 'number' || !isFinite(result)) {
+      console.warn(`Formula "${expression}" produced a non-finite or non-numeric result:`, result);
       return null;
     }
     
-    // Validate the formula contains only allowed characters
-    if (!/^[a-zA-Z0-9_+\-*/().\s]+$/.test(expression)) {
-      throw new Error('Formula contains invalid characters');
-    }
-
-    const formula = new Function(...Object.keys(context), `return ${expression};`);
-    const result = formula(...Object.values(context));
-
-    return typeof result === 'number' && isFinite(result) ? result : null;
+    return result;
   } catch (err: any) {
-    console.error('Formula evaluation error:', err);
+    console.error(`Error evaluating formula "${expression}":`, err.message);
     throw new Error(`Invalid formula: ${err.message}`);
   }
 };

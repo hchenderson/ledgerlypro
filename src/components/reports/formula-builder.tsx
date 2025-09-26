@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { safeEvaluateExpression, sanitizeForVariableName, prettifyExpression, sanitizeExpression } from "@/lib/utils";
+import { safeEvaluateExpression } from "@/lib/utils";
 import { PlusCircle } from "lucide-react";
 
 
@@ -36,28 +36,19 @@ export default function FormulaBuilder({
   const [expression, setExpression] = useState(existingFormula || "");
   const [testResult, setTestResult] = useState<number | null>(null);
   const [testError, setTestError] = useState("");
-
-  const aliasMap = useMemo(() => {
-    const map: Record<string, string> = {};
-    (availableVariables || []).forEach(v => {
-      map[v] = sanitizeForVariableName(v);
-    });
-    return map;
-  }, [availableVariables]);
   
   useEffect(() => {
     if (existingFormula) {
-      setExpression(prettifyExpression(existingFormula, aliasMap));
+      setExpression(existingFormula);
     }
-  }, [existingFormula, aliasMap]);
+  }, [existingFormula]);
 
   const testFormula = () => {
     if (!expression.trim()) return;
     setTestError(""); 
     setTestResult(null);
     try {
-      const safeExpr = sanitizeExpression(expression, aliasMap);
-      const result = safeEvaluateExpression(safeExpr, sampleContext);
+      const result = safeEvaluateExpression(expression, sampleContext);
       if (result == null) throw new Error("Formula did not return a number.");
       setTestResult(result);
     } catch (e: any) {
@@ -68,11 +59,10 @@ export default function FormulaBuilder({
   const handleAdd = async () => {
     if (!name.trim() || !expression.trim()) return;
     try {
-      const safeExpr = sanitizeExpression(expression, aliasMap);
       // Final validation before saving
-      safeEvaluateExpression(safeExpr, sampleContext);
+      safeEvaluateExpression(expression, sampleContext);
       
-      const success = await onAddFormula(name.trim(), safeExpr);
+      const success = await onAddFormula(name.trim(), expression);
       if (!success) throw new Error("Save failed. Please try again.");
 
       setName(""); 
