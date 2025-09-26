@@ -11,17 +11,19 @@ export function LedgerlyLogo(props: SVGProps<SVGSVGElement>) {
       {...props}
     >
         <g>
-            <path 
-                d="M25,10 C16.716,10 10,16.716 10,25 L10,85 C10,93.284 16.716,100 25,100 L85,100 C93.284,100 100,93.284 100,85 L100,25 C100,16.716 93.284,10 85,10 L25,10 Z"
+            <rect 
+                width="120"
+                height="120"
+                rx="20"
                 className="fill-primary"
             />
-            <path d="M30 30h50v8H30z" className="fill-primary-foreground" />
-            <path d="M30 42h50v8H30z" className="fill-primary-foreground" />
+            <path d="M30 30h60v12H30z" className="fill-primary-foreground" />
+            <path d="M30 50h60v12H30z" className="fill-primary-foreground" />
             <text 
-                x="55" 
-                y="82" 
+                x="60" 
+                y="95" 
                 textAnchor="middle" 
-                className="font-bold text-4xl fill-primary-foreground"
+                className="font-bold text-5xl fill-primary-foreground"
             >
                 $
             </text>
