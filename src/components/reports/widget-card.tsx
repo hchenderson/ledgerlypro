@@ -67,6 +67,11 @@ function MetricDebugDialog({ kpis, formula }: { kpis: Record<string, number>; fo
                 </div>
                 <div>
                     <h4 className="font-medium mb-2">Available Data (KPIs)</h4>
+                    {Object.keys(kpis).length === 0 && (
+                        <p className="text-xs text-yellow-600 dark:text-yellow-400 p-4 border border-dashed border-yellow-500/50 rounded-md">
+                            ⚠️ No variables available for this formula in the current context. The formula will evaluate with all variables as 0.
+                        </p>
+                    )}
                     <ScrollArea className="h-72">
                         <Table>
                             <TableHeader>
@@ -560,3 +565,4 @@ WidgetCard.Configuration = function WidgetConfiguration({
         </Tabs>
     );
 };
+
