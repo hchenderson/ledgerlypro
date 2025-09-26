@@ -72,18 +72,20 @@ export function useReportSettings(userId?: string) {
         formulas: Formula[];
         savedReports: SavedReport[];
     }>) => {
-        if (userId) {
-            try {
-                const settingsDocRef = doc(db, 'users', userId, 'settings', 'reports');
-                await setDoc(settingsDocRef, updates, { merge: true });
-                if (updates.widgets) setWidgets(updates.widgets);
-                if (updates.kpiTargets) setKpiTargets(updates.kpiTargets);
-                if (updates.formulas) setFormulas(updates.formulas);
-                if (updates.savedReports) setSavedReports(updates.savedReports);
-            } catch (error) {
-                console.error("Error saving settings:", error);
-                toast({ variant: 'destructive', title: "Save Error", description: "Failed to save settings." });
-            }
+        if (!userId) return;
+        try {
+            const settingsDocRef = doc(db, 'users', userId, 'settings', 'reports');
+            await setDoc(settingsDocRef, updates, { merge: true });
+
+            // Optimistically update local state
+            if (updates.widgets) setWidgets(updates.widgets);
+            if (updates.kpiTargets) setKpiTargets(updates.kpiTargets);
+            if (updates.formulas) setFormulas(updates.formulas);
+            if (updates.savedReports) setSavedReports(updates.savedReports);
+
+        } catch (error) {
+            console.error("Error saving settings:", error);
+            toast({ variant: 'destructive', title: "Save Error", description: "Failed to save settings." });
         }
     }, [userId, toast]);
 
@@ -94,20 +96,18 @@ export function useReportSettings(userId?: string) {
             widgets: JSON.parse(JSON.stringify(reportWidgets))
         };
         const updatedReports = [...savedReports, newReport];
-        setSavedReports(updatedReports);
         await saveSettings({ savedReports: updatedReports });
     }, [savedReports, saveSettings]);
 
     const deleteReport = useCallback(async (reportId: string) => {
         const updatedReports = savedReports.filter(r => r.id !== reportId);
-        setSavedReports(updatedReports);
         await saveSettings({ savedReports: updatedReports });
         toast({ title: "Report Deleted" });
     }, [savedReports, saveSettings, toast]);
 
     return {
         widgets,
-        setWidgets,
+        setWidgets, // Keep for direct manipulation within the component before saving
         kpiTargets,
         formulas,
         savedReports,
