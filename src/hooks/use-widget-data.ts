@@ -101,7 +101,7 @@ const calculateKpis = (
         [sanitizeForVariableName('totalIncome')]: totalIncome,
         [sanitizeForVariableName('totalExpense')]: totalExpense,
         [sanitizeForVariableName('netIncome')]: totalIncome - totalExpense,
-        [sanitizeForVariableName('savingsRate')]: totalIncome > 0 ? (totalIncome - totalExpense) / totalIncome : 0,
+        [sanitizeForVariableName('savingsRate')]: totalIncome > 0 ? ((totalIncome - totalExpense) / totalIncome) : 0,
         [sanitizeForVariableName('transactionCount')]: transactions.length,
         [sanitizeForVariableName('avgTransactionAmount')]: transactions.reduce((sum, t) => sum + t.amount, 0) / (transactions.length || 1),
         ...categoryTotals,
