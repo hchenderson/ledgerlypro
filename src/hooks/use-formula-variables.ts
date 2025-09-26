@@ -21,8 +21,8 @@ export function useFormulaVariables(categories: Category[], getBudgetDetails: ()
         };
         recurse(categories);
 
-        const budgetDetails = getBudgetDetails();
         const budgetVars = new Set<string>();
+        const budgetDetails = getBudgetDetails();
         budgetDetails.forEach(budget => {
             const sanitizedName = sanitizeForVariableName(budget.categoryName);
             budgetVars.add(`budget_${sanitizedName}_amount`);
