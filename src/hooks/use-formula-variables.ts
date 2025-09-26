@@ -10,7 +10,7 @@ export function useFormulaVariables(categories: Category[], getBudgetDetails: ()
         const baseVars = [
             'totalIncome', 'totalExpense', 'transactionCount',
             'avgTransactionAmount', 'netIncome', 'savingsRate'
-        ].map(v => sanitizeForVariableName(v));
+        ];
 
         const categoryVars = new Set<string>();
         const recurse = (cats: (Category | SubCategory)[]) => {
