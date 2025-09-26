@@ -20,6 +20,7 @@ import { ScrollArea } from '../ui/scroll-area';
 import type { Widget, Formula } from '@/types';
 import type { SavedReport } from '@/hooks/use-report-settings';
 import { useToast } from '@/hooks/use-toast';
+import { Parser } from 'expr-eval';
 
 
 export const CHART_TYPES = {
@@ -43,7 +44,7 @@ export const COLOR_THEMES: Record<string, string[]> = {
 
 
 function MetricDebugDialog({ kpis, formula }: { kpis: Record<string, number>; formula: string; }) {
-    const [isOpen, React.useState(false);
+    const [isOpen, setIsOpen] = React.useState(false);
     
     let formulaVariables: string[] = [];
     if (formula) {
@@ -200,7 +201,7 @@ function renderAdvancedChart({ widget, data, kpis, dataKeys, originalDataKeys, f
                 <MetricDebugDialog kpis={kpis} formula={formula?.expression || ""} />
                 <p className="text-4xl font-bold font-mono text-primary">
                    {typeof displayValue === "number"
-                    ? new Intl.NumberFormat("en-US", isPercentage ? {style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1} : {style: 'currency', currency: 'USD'}).format(displayValue)
+                    ? new Intl.NumberFormat("en-US", isPercentage ? {style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1} : {style: 'currency', currency: 'USD'}).format(isPercentage ? displayValue : displayValue)
                     : "--"}
                 </p>
                 <p className="text-lg font-medium mt-2">{metric?.name}</p>
@@ -414,7 +415,7 @@ interface WidgetConfigurationProps {
   isSaveDialogOpen: boolean;
   newReportName: string;
   onAddWidget: () => void;
-  onUpdateWidget: (id: string, updates: Partial<Widget>) => void;
+  onUpdateWidget: (id: string, updates: Partial<Widget> | Widget[]) => void;
   onRemoveWidget: (id: string) => void;
   onDuplicateWidget: (widget: Widget) => void;
   onSetSelectedWidget: (widget: Widget | null) => void;
@@ -637,3 +638,7 @@ WidgetCard.Configuration = function WidgetConfiguration({
         </Tabs>
     );
 };
+
+
+
+    
