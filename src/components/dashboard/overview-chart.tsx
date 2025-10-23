@@ -57,13 +57,13 @@ export function OverviewChart({ data }: OverviewChartProps) {
             content={<ChartTooltipContent hideIndicator />}
           />
           <Legend content={<ChartLegendContent />} />
-          <Bar dataKey="income" fill="hsl(var(--chart-1))" radius={[4, 4, 0, 0]} />
-          <Bar dataKey="expense" fill="hsl(var(--chart-2))" radius={[4, 4, 0, 0]} />
+          <Bar dataKey="income" fill="var(--color-income)" radius={[4, 4, 0, 0]} />
+          <Bar dataKey="expense" fill="var(--color-expense)" radius={[4, 4, 0, 0]} />
           {data[0]?.incomeTrend !== undefined && (
-            <Line type="monotone" dataKey="incomeTrend" stroke="hsl(var(--chart-1))" strokeWidth={2} dot={false} strokeDasharray="5 5" />
+            <Line type="monotone" dataKey="incomeTrend" stroke="var(--color-income)" strokeWidth={2} dot={false} strokeDasharray="5 5" />
           )}
           {data[0]?.expenseTrend !== undefined && (
-             <Line type="monotone" dataKey="expenseTrend" stroke="hsl(var(--chart-2))" strokeWidth={2} dot={false} strokeDasharray="5 5"/>
+             <Line type="monotone" dataKey="expenseTrend" stroke="var(--color-expense)" strokeWidth={2} dot={false} strokeDasharray="5 5"/>
           )}
         </BarChart>
       </ResponsiveContainer>
