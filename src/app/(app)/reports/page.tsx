@@ -56,7 +56,8 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  DialogClose
+  DialogClose,
+  DialogFooter,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -479,7 +480,7 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
 function GenerateReportDialog({
   onGenerate,
 }: {
-  onGenerate: (referenceDate: Date) => void;
+  onGenerate: (referenceDate: Date, notes?: string) => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const currentYear = getYear(new Date());
@@ -487,18 +488,19 @@ function GenerateReportDialog({
 
   const [year, setYear] = useState(currentYear.toString());
   const [quarter, setQuarter] = useState(currentQuarter.toString());
+  const [notes, setNotes] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
 
   const handleGenerate = async () => {
     setIsGenerating(true);
-    // Create a date from the selected year and quarter to pass to the server action
     const quarterMonth = (parseInt(quarter) - 1) * 3;
     const referenceDate = new Date(parseInt(year), quarterMonth, 1);
     
-    await onGenerate(referenceDate);
+    await onGenerate(referenceDate, notes);
 
     setIsGenerating(false);
     setIsOpen(false);
+    setNotes("");
   };
 
   const years = Array.from({ length: 5 }, (_, i) => (currentYear - i).toString());
@@ -512,35 +514,47 @@ function GenerateReportDialog({
         <DialogHeader>
           <DialogTitle>Generate Quarterly Report</DialogTitle>
           <DialogDescription>
-            Select the period for the report. It will be saved for future reference.
+            Select the period and add any notes for the report. It will be saved for future reference.
           </DialogDescription>
         </DialogHeader>
-        <div className="grid grid-cols-2 gap-4 py-4">
-          <div className="space-y-2">
-            <Label htmlFor="year">Year</Label>
-            <Select value={year} onValueChange={setYear}>
-              <SelectTrigger id="year">
-                <SelectValue placeholder="Select year" />
-              </SelectTrigger>
-              <SelectContent>
-                {years.map(y => <SelectItem key={y} value={y}>{y}</SelectItem>)}
-              </SelectContent>
-            </Select>
+        <div className="space-y-4 py-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="year">Year</Label>
+              <Select value={year} onValueChange={setYear}>
+                <SelectTrigger id="year">
+                  <SelectValue placeholder="Select year" />
+                </SelectTrigger>
+                <SelectContent>
+                  {years.map(y => <SelectItem key={y} value={y}>{y}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="quarter">Quarter</Label>
+              <Select value={quarter} onValueChange={setQuarter}>
+                <SelectTrigger id="quarter">
+                  <SelectValue placeholder="Select quarter" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">Q1</SelectItem>
+                  <SelectItem value="2">Q2</SelectItem>
+                  <SelectItem value="3">Q3</SelectItem>
+                  <SelectItem value="4">Q4</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="quarter">Quarter</Label>
-            <Select value={quarter} onValueChange={setQuarter}>
-              <SelectTrigger id="quarter">
-                <SelectValue placeholder="Select quarter" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="1">Q1</SelectItem>
-                <SelectItem value="2">Q2</SelectItem>
-                <SelectItem value="3">Q3</SelectItem>
-                <SelectItem value="4">Q4</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+           <div className="space-y-2">
+              <Label htmlFor="notes">Notes (Optional)</Label>
+              <Textarea
+                id="notes"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Add any commentary or summary notes for this report..."
+                rows={4}
+              />
+            </div>
         </div>
         <DialogFooter>
           <DialogClose asChild>
@@ -580,13 +594,14 @@ function QuarterlyReportView() {
     return () => unsubscribe();
   }, [user, selectedReport]);
 
-  const handleGenerateReport = async (referenceDate: Date) => {
+  const handleGenerateReport = async (referenceDate: Date, notes?: string) => {
     if (!user) return;
     
     try {
       const result = await generateAndSaveQuarterlyReport({ 
         userId: user.uid, 
         referenceDate: referenceDate.toISOString(),
+        notes: notes,
       });
       if (result.success) {
         toast({
@@ -767,6 +782,16 @@ function QuarterlyReportView() {
                 </TableBody>
                </Table>
           </div>
+
+          {/* Notes */}
+          {selectedReport.notes && (
+             <div>
+                <h3 className="text-lg font-semibold mb-2 border-b pb-2">Notes</h3>
+                <div className="prose prose-sm dark:prose-invert max-w-none whitespace-pre-wrap rounded-md bg-muted/50 p-4 border">
+                  {selectedReport.notes}
+                </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     );
