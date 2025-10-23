@@ -1,6 +1,6 @@
 
-
 import type { LucideIcon } from "lucide-react";
+import { Timestamp } from "firebase/firestore";
 
 export type Transaction = {
   id: string;
@@ -90,4 +90,18 @@ export interface Formula {
   name: string;
   expression: string;
 }
-    
+
+export interface QuarterlyReport {
+  period: string;
+  startDate: string;
+  endDate: string;
+  createdAt: Timestamp;
+  incomeSummary: Record<string, number>;
+  expenseSummary: Record<string, number>;
+  netIncome: number;
+  kpis: {
+    profitMargin: number;
+    expenseToIncomeRatio: number;
+  };
+  notes?: string;
+}

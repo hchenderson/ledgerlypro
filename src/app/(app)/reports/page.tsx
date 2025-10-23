@@ -1,8 +1,7 @@
 
-
 'use client';
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useUserData } from '@/hooks/use-user-data';
 import { 
   Card, 
@@ -23,16 +22,32 @@ import {
   TrendingUp,
   ArrowUp,
   ArrowDown,
+  BookMarked,
+  Loader2,
 } from 'lucide-react';
-import type { Category, SubCategory } from '@/types';
+import type { Category, SubCategory, QuarterlyReport } from '@/types';
 import { DateRange } from 'react-day-picker';
-import { subMonths, startOfMonth, endOfMonth, startOfYear, endOfYear, getYear } from 'date-fns';
+import { subMonths, startOfMonth, endOfMonth, startOfYear, endOfYear, getYear, format, startOfQuarter, endOfQuarter, subQuarters } from 'date-fns';
 
 import { OverviewChart } from '@/components/dashboard/overview-chart';
 import { CategoryPieChart } from '@/components/reports/category-pie-chart';
 import { GlobalFilters } from '@/components/reports/global-filters';
 import { cn } from '@/lib/utils';
 import { ExportReportDialog } from '@/components/reports/export-report-dialog';
+import { generateAndSaveQuarterlyReport } from '@/lib/actions';
+import { useAuth } from '@/hooks/use-auth';
+import { Button } from '@/components/ui/button';
+import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { useToast } from '@/hooks/use-toast';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 
 const PRESET_RANGES = [
   { label: 'This Month', value: 'this-month' },
@@ -169,7 +184,7 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
           const isMain = t.category === mainCatName;
           const subCategory = mainCat?.subCategories?.find(sc => sc.name === t.category);
           
-          if (isMain && !mainCat?.subCategories?.length) { // Main cat with no subs
+          if (isMain && (!mainCat?.subCategories || mainCat.subCategories.length === 0)) { // Main cat with no subs
               data[t.category] = (data[t.category] || 0) + t.amount;
           } else if (subCategory) { // Is a direct subcategory
               data[t.category] = (data[t.category] || 0) + t.amount;
@@ -216,7 +231,7 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
           const isMain = t.category === mainCatName;
           const subCategory = mainCat?.subCategories?.find(sc => sc.name === t.category);
 
-          if (isMain && !mainCat?.subCategories?.length) {
+          if (isMain && (!mainCat?.subCategories || mainCat.subCategories.length === 0)) {
               data[t.category] = (data[t.category] || 0) + t.amount;
           } else if (subCategory) {
               data[t.category] = (data[t.category] || 0) + t.amount;
@@ -448,6 +463,199 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
   );
 }
 
+function QuarterlyReportView() {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [reports, setReports] = useState<QuarterlyReport[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [selectedReport, setSelectedReport] = useState<QuarterlyReport | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    setLoading(true);
+    const reportsRef = collection(db, 'users', user.uid, 'reports');
+    const q = query(reportsRef, orderBy('period', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const fetchedReports = snapshot.docs.map(doc => doc.data() as QuarterlyReport);
+      setReports(fetchedReports);
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, [user]);
+
+  const handleGenerateReport = async () => {
+    if (!user) return;
+    setGenerating(true);
+    try {
+      const result = await generateAndSaveQuarterlyReport({ referenceDate: new Date().toISOString() });
+      if (result.success) {
+        toast({
+          title: "Report Generated",
+          description: `Successfully generated report for ${result.report?.period}.`
+        });
+      } else {
+        throw new Error(result.error || "Unknown error occurred.");
+      }
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Generation Failed",
+        description: error.message,
+      });
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const formatCurrency = (value: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
+
+  const renderReportDetail = () => {
+    if (!selectedReport) {
+      return (
+        <div className="flex flex-col items-center justify-center text-center h-full py-16">
+          <BookMarked className="w-12 h-12 text-muted-foreground mb-4" />
+          <h3 className="text-xl font-semibold">Select a report to view</h3>
+          <p className="text-muted-foreground">Choose a generated report from the list to see its details.</p>
+        </div>
+      );
+    }
+
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Financial Report - {selectedReport.period}</CardTitle>
+          <CardDescription>Generated on {format(new Date(selectedReport.createdAt.seconds * 1000), 'PPP')}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-8">
+           {/* Executive Summary */}
+           <div>
+              <h3 className="text-lg font-semibold mb-2 border-b pb-2">Executive Summary</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Card>
+                      <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Net Income</CardTitle></CardHeader>
+                      <CardContent>
+                          <p className={cn("text-2xl font-bold", selectedReport.netIncome >= 0 ? "text-emerald-600" : "text-destructive")}>
+                              {formatCurrency(selectedReport.netIncome)}
+                          </p>
+                      </CardContent>
+                  </Card>
+                   <Card>
+                      <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Profit Margin</CardTitle></CardHeader>
+                      <CardContent>
+                          <p className="text-2xl font-bold">{selectedReport.kpis.profitMargin.toFixed(1)}%</p>
+                      </CardContent>
+                  </Card>
+              </div>
+          </div>
+          
+           {/* Income Statement */}
+          <div>
+            <h3 className="text-lg font-semibold mb-2 border-b pb-2">Income Statement</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div>
+                  <h4 className="font-medium mb-2">Income</h4>
+                  <Table>
+                    <TableBody>
+                        {Object.entries(selectedReport.incomeSummary).map(([cat, amt]) => (
+                            <TableRow key={cat}><TableCell>{cat}</TableCell><TableCell className="text-right">{formatCurrency(amt as number)}</TableCell></TableRow>
+                        ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                 <div>
+                  <h4 className="font-medium mb-2">Expenses</h4>
+                  <Table>
+                    <TableBody>
+                        {Object.entries(selectedReport.expenseSummary).map(([cat, amt]) => (
+                            <TableRow key={cat}><TableCell>{cat}</TableCell><TableCell className="text-right">{formatCurrency(amt as number)}</TableCell></TableRow>
+                        ))}
+                    </TableBody>
+                  </Table>
+                </div>
+            </div>
+             <div className="mt-4 border-t pt-4 flex justify-between font-bold text-lg">
+                <span>Net Income</span>
+                <span className={cn(selectedReport.netIncome >= 0 ? "text-emerald-600" : "text-destructive")}>{formatCurrency(selectedReport.netIncome)}</span>
+            </div>
+          </div>
+
+          {/* KPIs */}
+          <div>
+              <h3 className="text-lg font-semibold mb-2 border-b pb-2">Key Performance Indicators (KPIs)</h3>
+               <Table>
+                <TableHeader>
+                    <TableRow>
+                        <TableHead>KPI</TableHead>
+                        <TableHead className="text-right">Value</TableHead>
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    <TableRow>
+                        <TableCell>Profit Margin</TableCell>
+                        <TableCell className="text-right">{selectedReport.kpis.profitMargin.toFixed(1)}%</TableCell>
+                    </TableRow>
+                    <TableRow>
+                        <TableCell>Expense-to-Income Ratio</TableCell>
+                        <TableCell className="text-right">{selectedReport.kpis.expenseToIncomeRatio.toFixed(1)}%</TableCell>
+                    </TableRow>
+                </TableBody>
+               </Table>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Generate Report</CardTitle>
+            <CardDescription>Create a financial snapshot for the current quarter.</CardDescription>
+          </div>
+          <Button onClick={handleGenerateReport} disabled={generating}>
+            {generating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {generating ? 'Generating...' : 'Generate Report for Current Quarter'}
+          </Button>
+        </CardHeader>
+      </Card>
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-start">
+        <Card className="md:col-span-1">
+          <CardHeader>
+            <CardTitle>Generated Reports</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="text-center text-muted-foreground">Loading reports...</div>
+            ) : reports.length === 0 ? (
+              <div className="text-center text-muted-foreground">No reports generated yet.</div>
+            ) : (
+              <div className="space-y-2">
+                {reports.map(report => (
+                  <Button
+                    key={report.period}
+                    variant={selectedReport?.period === report.period ? "secondary" : "ghost"}
+                    className="w-full justify-start"
+                    onClick={() => setSelectedReport(report)}
+                  >
+                    {report.period}
+                  </Button>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+        <div className="md:col-span-3">
+          {renderReportDetail()}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function ReportsPage() {
     return (
         <Tabs defaultValue="monthly" className="w-full">
@@ -461,6 +669,7 @@ export default function ReportsPage() {
                 <TabsList>
                     <TabsTrigger value="monthly">Monthly</TabsTrigger>
                     <TabsTrigger value="yearly">Yearly</TabsTrigger>
+                    <TabsTrigger value="quarterly">Quarterly</TabsTrigger>
                 </TabsList>
             </div>
             <TabsContent value="monthly" className="pt-6">
@@ -468,6 +677,9 @@ export default function ReportsPage() {
             </TabsContent>
             <TabsContent value="yearly" className="pt-6">
                 <ReportView period="yearly" />
+            </TabsContent>
+            <TabsContent value="quarterly" className="pt-6">
+                <QuarterlyReportView />
             </TabsContent>
         </Tabs>
     )
