@@ -338,7 +338,7 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
             onDateRangeChange={setDateRange}
             onPresetChange={handlePresetChange}
         />
-        <Card>
+        <Card id="overview-chart-card">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle className="flex items-center gap-2"><TrendingUp/> Income vs. Expense Overview</CardTitle>
@@ -346,7 +346,12 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
                 A summary of your cash flow for the selected period.
               </CardDescription>
             </div>
-            <ExportReportDialog transactions={dateFilteredTransactions} dateRange={dateRange} />
+            <ExportReportDialog 
+              transactions={dateFilteredTransactions} 
+              dateRange={dateRange} 
+              chartId="overview-chart-card"
+              chartTitle="Income vs Expense Overview"
+            />
           </CardHeader>
           <CardContent>
             <OverviewChart data={overviewData} />
@@ -374,7 +379,7 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
           )}
         </Card>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
+        <Card id="income-breakdown-card">
           <CardHeader>
             <div className="flex justify-between items-center">
               <div>
@@ -383,7 +388,12 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
                   Where your income comes from. Select a single category to see sub-category details.
                 </CardDescription>
               </div>
-               <ExportReportDialog transactions={incomeTransactionsForExport} dateRange={dateRange} />
+               <ExportReportDialog 
+                transactions={incomeTransactionsForExport} 
+                dateRange={dateRange}
+                chartId="income-breakdown-card"
+                chartTitle="Income Breakdown"
+              />
             </div>
           </CardHeader>
           <CardContent>
@@ -401,7 +411,7 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
             <CategoryPieChart data={incomeByCategory} />
           </CardContent>
         </Card>
-        <Card>
+        <Card id="expense-breakdown-card">
           <CardHeader>
             <div className="flex justify-between items-center">
               <div>
@@ -410,7 +420,12 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
                   Where your money is going. Select a single category to see sub-category details.
                 </CardDescription>
               </div>
-              <ExportReportDialog transactions={expenseTransactionsForExport} dateRange={dateRange} />
+              <ExportReportDialog 
+                transactions={expenseTransactionsForExport} 
+                dateRange={dateRange}
+                chartId="expense-breakdown-card"
+                chartTitle="Expense Breakdown"
+              />
             </div>
           </CardHeader>
           <CardContent>
