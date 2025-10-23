@@ -99,25 +99,25 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
     });
   }, [allTransactions, dateRange]);
 
-  const findMainCategory = useCallback((subCategoryName: string, allCategories: Category[]): string => {
-      for (const mainCat of allCategories) {
-          if (mainCat.name === subCategoryName) {
-              return mainCat.name;
-          }
-          if (mainCat.subCategories) {
-              const findInSubs = (subs: SubCategory[], path: string[]): boolean => {
-                  for (const sub of subs) {
-                      if (sub.name === subCategoryName) return true;
-                      if (sub.subCategories && findInSubs(sub.subCategories, [...path, sub.name])) return true;
-                  }
-                  return false;
-              }
-              if (findInSubs(mainCat.subCategories, [mainCat.name])) {
-                  return mainCat.name;
-              }
-          }
-      }
-      return 'Uncategorized';
+ const findMainCategory = useCallback((subCategoryName: string, allCategories: Category[]): string => {
+    for (const mainCat of allCategories) {
+        if (mainCat.name === subCategoryName) {
+            return mainCat.name;
+        }
+        if (mainCat.subCategories) {
+            const findInSubs = (subs: SubCategory[]): boolean => {
+                for (const sub of subs) {
+                    if (sub.name === subCategoryName) return true;
+                    if (sub.subCategories && findInSubs(sub.subCategories)) return true;
+                }
+                return false;
+            }
+            if (findInSubs(mainCat.subCategories)) {
+                return mainCat.name;
+            }
+        }
+    }
+    return 'Uncategorized';
   }, []);
   
   const getCategoryOptions = useCallback((type: 'income' | 'expense') => {
@@ -127,41 +127,78 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
 
   const expenseByCategory = useMemo(() => {
     const data: { [key: string]: number } = {};
-    dateFilteredTransactions
-      .filter(t => {
-        const mainCategory = findMainCategory(t.category, categories);
-        return t.type === 'expense' && (selectedExpenseCategories.length === 0 || selectedExpenseCategories.includes(mainCategory));
-      })
-      .forEach(t => {
-        const mainCategory = findMainCategory(t.category, categories);
-        data[mainCategory] = (data[mainCategory] || 0) + t.amount;
-      });
+    const filteredTransactions = dateFilteredTransactions.filter(t => t.type === 'expense');
+
+    if (selectedExpenseCategories.length === 1) {
+      // Drill-down view: show sub-categories of the selected main category
+      const mainCatName = selectedExpenseCategories[0];
+      const mainCat = categories.find(c => c.name === mainCatName && c.type === 'expense');
+      
+      if (mainCat && mainCat.subCategories) {
+        filteredTransactions.forEach(t => {
+            if (mainCat.subCategories?.some(sub => sub.name === t.category)) {
+                data[t.category] = (data[t.category] || 0) + t.amount;
+            }
+        });
+        // If the main category itself has transactions assigned to it.
+        const mainCatTransactions = filteredTransactions.filter(t => t.category === mainCatName);
+        if (mainCatTransactions.length > 0) {
+            data[mainCatName] = mainCatTransactions.reduce((acc, t) => acc + t.amount, 0);
+        }
+      }
+    } else {
+      // Default view: show main categories
+      filteredTransactions
+        .filter(t => {
+          const mainCategory = findMainCategory(t.category, categories);
+          return selectedExpenseCategories.length === 0 || selectedExpenseCategories.includes(mainCategory);
+        })
+        .forEach(t => {
+          const mainCategory = findMainCategory(t.category, categories);
+          data[mainCategory] = (data[mainCategory] || 0) + t.amount;
+        });
+    }
   
     return Object.entries(data)
-      .map(([name, amount]) => ({
-        category: name,
-        amount: amount,
-      }))
+      .map(([name, amount]) => ({ category: name, amount: amount, }))
       .sort((a, b) => b.amount - a.amount);
   }, [dateFilteredTransactions, categories, findMainCategory, selectedExpenseCategories]);
   
   const incomeByCategory = useMemo(() => {
     const data: { [key: string]: number } = {};
-    dateFilteredTransactions
-      .filter(t => {
-        const mainCategory = findMainCategory(t.category, categories);
-        return t.type === 'income' && (selectedIncomeCategories.length === 0 || selectedIncomeCategories.includes(mainCategory));
-      })
-      .forEach(t => {
-        const mainCategory = findMainCategory(t.category, categories);
-        data[mainCategory] = (data[mainCategory] || 0) + t.amount;
-      });
+    const filteredTransactions = dateFilteredTransactions.filter(t => t.type === 'income');
+  
+    if (selectedIncomeCategories.length === 1) {
+      // Drill-down view
+      const mainCatName = selectedIncomeCategories[0];
+      const mainCat = categories.find(c => c.name === mainCatName && c.type === 'income');
+      
+      if (mainCat && mainCat.subCategories) {
+         filteredTransactions.forEach(t => {
+            if (mainCat.subCategories?.some(sub => sub.name === t.category)) {
+                data[t.category] = (data[t.category] || 0) + t.amount;
+            }
+        });
+        const mainCatTransactions = filteredTransactions.filter(t => t.category === mainCatName);
+        if (mainCatTransactions.length > 0) {
+            data[mainCatName] = mainCatTransactions.reduce((acc, t) => acc + t.amount, 0);
+        }
+      }
+    } else {
+      // Default view
+      filteredTransactions
+        .filter(t => {
+          const mainCategory = findMainCategory(t.category, categories);
+          return selectedIncomeCategories.length === 0 || selectedIncomeCategories.includes(mainCategory);
+        })
+        .forEach(t => {
+          const mainCategory = findMainCategory(t.category, categories);
+          data[mainCategory] = (data[mainCategory] || 0) + t.amount;
+        });
+    }
   
     return Object.entries(data)
-      .map(([name, amount]) => ({
-        category: name,
-        amount: amount,
-      }))
+      .map(([name, amount]) => ({ category: name, amount: amount, }))
       .sort((a, b) => b.amount - a.amount);
   }, [dateFilteredTransactions, categories, findMainCategory, selectedIncomeCategories]);
 
@@ -212,7 +249,7 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><PieChartIcon/> Income Breakdown</CardTitle>
              <CardDescription>
-              Where your income comes from.
+              Where your income comes from. Select a single category to see sub-category details.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -234,7 +271,7 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><PieChartIcon/> Expense Breakdown</CardTitle>
             <CardDescription>
-              Where your money is going.
+              Where your money is going. Select a single category to see sub-category details.
             </CardDescription>
           </CardHeader>
           <CardContent>
