@@ -20,7 +20,6 @@ import {
 import { 
   PieChart as PieChartIcon, 
   TrendingUp,
-  TrendingDown,
   ArrowUp,
   ArrowDown,
 } from 'lucide-react';
@@ -226,10 +225,18 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
       const sumXY = data.reduce((sum, y, i) => sum + i * y, 0);
       const sumX2 = (n * (n - 1) * (2 * n - 1)) / 6;
       
+      if (n * sumX2 - sumX * sumX === 0) {
+        return { m: 0, c: sumY / n, change: 0 };
+      }
+
       const m = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
       const c = (sumY - m * sumX) / n;
       
-      return { m, c, change: ((data[n - 1] - data[0]) / data[0]) * 100 };
+      const firstVal = data[0];
+      const lastVal = data[n - 1];
+      const change = firstVal !== 0 ? ((lastVal - firstVal) / firstVal) * 100 : (lastVal > 0 ? 100 : 0);
+
+      return { m, c, change };
     };
 
     const incomeTrend = calculateTrend(sortedData.map(d => d.income));
@@ -271,11 +278,21 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
           {overviewData.length > 1 && (
              <CardFooter className="flex-col items-start gap-2 text-sm">
                 <div className="flex gap-2 font-medium leading-none">
-                    Trending
-                    {trendStats.income > 0 ? <ArrowUp className="h-4 w-4 text-emerald-500" /> : <ArrowDown className="h-4 w-4 text-red-500" />}
+                    Trending Income:
+                    {trendStats.income >= 0 ? <ArrowUp className="h-4 w-4 text-emerald-500" /> : <ArrowDown className="h-4 w-4 text-red-500" />}
+                     <span className={cn(trendStats.income >= 0 ? "text-emerald-500" : "text-red-500")}>
+                        {trendStats.income.toFixed(1)}%
+                    </span>
+                </div>
+                 <div className="flex gap-2 font-medium leading-none">
+                     Trending Expense:
+                    {trendStats.expense >= 0 ? <ArrowUp className="h-4 w-4 text-red-500" /> : <ArrowDown className="h-4 w-4 text-emerald-500" />}
+                     <span className={cn(trendStats.expense >= 0 ? "text-red-500" : "text-emerald-500")}>
+                        {trendStats.expense.toFixed(1)}%
+                    </span>
                 </div>
                  <div className="leading-none text-muted-foreground">
-                    Income is up by {trendStats.income.toFixed(1)}% and expenses are up by {trendStats.expense.toFixed(1)}% this period.
+                    Change over the selected period.
                 </div>
             </CardFooter>
           )}
