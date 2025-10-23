@@ -6,9 +6,13 @@ import { db } from './firebase';
 import { startOfQuarter, endOfQuarter, isWithinInterval, getQuarter } from 'date-fns';
 import type { Transaction, Category, Budget, Goal, SubCategory, QuarterlyReport } from '@/types';
 import { getAuth } from 'firebase-admin/auth';
-import { adminDb } from './firebase-admin';
+import { getAdminDb } from './firebase-admin';
 
 async function getUserData(userId: string, collectionName: string) {
+    const adminDb = getAdminDb();
+    if (!adminDb) {
+        throw new Error("Firebase Admin SDK is not initialized.");
+    }
     const collRef = adminDb.collection('users').doc(userId).collection(collectionName);
     const snapshot = await collRef.get();
     return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
@@ -67,6 +71,11 @@ export async function generateAndSaveQuarterlyReport({
   try {
     if (!userId) {
         throw new Error("User not authenticated.");
+    }
+
+    const adminDb = getAdminDb();
+    if (!adminDb) {
+        throw new Error("Firebase Admin SDK is not initialized.");
     }
     
     const referenceDate = new Date(referenceDateString);
