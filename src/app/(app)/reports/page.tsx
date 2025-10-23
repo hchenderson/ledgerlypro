@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useMemo, useCallback } from 'react';
@@ -25,7 +26,7 @@ import {
 } from 'lucide-react';
 import type { Category, SubCategory } from '@/types';
 import { DateRange } from 'react-day-picker';
-import { subMonths, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns';
+import { subMonths, startOfMonth, endOfMonth, startOfYear, endOfYear, getYear } from 'date-fns';
 
 import { OverviewChart } from '@/components/dashboard/overview-chart';
 import { CategoryPieChart } from '@/components/reports/category-pie-chart';
@@ -38,6 +39,10 @@ const PRESET_RANGES = [
   { label: 'This Year', value: 'this-year' },
   { label: 'Last 30 Days', value: 'last-30' },
   { label: 'Last 90 Days', value: 'last-90' },
+  { label: 'Q1', value: 'q1' },
+  { label: 'Q2', value: 'q2' },
+  { label: 'Q3', value: 'q3' },
+  { label: 'Q4', value: 'q4' },
 ];
 
 function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
@@ -64,6 +69,7 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
 
   const handlePresetChange = (value: string) => {
     const now = new Date();
+    const currentYear = getYear(now);
     let fromDate: Date;
     let toDate: Date;
     switch (value) {
@@ -88,6 +94,22 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
         fromDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 89);
         toDate = now;
         break;
+      case 'q1':
+        fromDate = new Date(currentYear, 0, 1);
+        toDate = new Date(currentYear, 2, 31);
+        break;
+      case 'q2':
+        fromDate = new Date(currentYear, 3, 1);
+        toDate = new Date(currentYear, 5, 30);
+        break;
+      case 'q3':
+        fromDate = new Date(currentYear, 6, 1);
+        toDate = new Date(currentYear, 8, 30);
+        break;
+      case 'q4':
+        fromDate = new Date(currentYear, 9, 1);
+        toDate = new Date(currentYear, 11, 31);
+        break;
       default:
         return;
     }
@@ -108,17 +130,19 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
         if (mainCat.name === subCategoryName) {
             return mainCat.name;
         }
+        const findInSubs = (subs: SubCategory[], mainCatName: string): string | null => {
+          for (const sub of subs) {
+            if (sub.name === subCategoryName) return mainCatName;
+            if (sub.subCategories) {
+              const found = findInSubs(sub.subCategories, mainCatName);
+              if (found) return found;
+            }
+          }
+          return null;
+        }
         if (mainCat.subCategories) {
-            const findInSubs = (subs: SubCategory[]): boolean => {
-                for (const sub of subs) {
-                    if (sub.name === subCategoryName) return true;
-                    if (sub.subCategories && findInSubs(sub.subCategories)) return true;
-                }
-                return false;
-            }
-            if (findInSubs(mainCat.subCategories)) {
-                return mainCat.name;
-            }
+            const found = findInSubs(mainCat.subCategories, mainCat.name);
+            if (found) return found;
         }
     }
     return 'Uncategorized';
@@ -136,12 +160,27 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
     if (selectedExpenseCategories.length === 1) {
       // Drill-down view: show sub-categories of the selected main category
       const mainCatName = selectedExpenseCategories[0];
+      const mainCat = categories.find(c => c.name === mainCatName);
       
       const transactionsForMainCategory = filteredTransactions.filter(t => findMainCategory(t.category, categories) === mainCatName);
 
       transactionsForMainCategory.forEach(t => {
-          data[t.category] = (data[t.category] || 0) + t.amount;
+          const isMain = t.category === mainCatName;
+          const subCategory = mainCat?.subCategories?.find(sc => sc.name === t.category);
+          
+          if (isMain && !mainCat?.subCategories?.length) { // Main cat with no subs
+              data[t.category] = (data[t.category] || 0) + t.amount;
+          } else if (subCategory) { // Is a direct subcategory
+              data[t.category] = (data[t.category] || 0) + t.amount;
+          } else if (!isMain) { // Could be a sub-sub-category
+             data[t.category] = (data[t.category] || 0) + t.amount;
+          }
       });
+      // If no sub-category transactions, show total for main category
+      if (Object.keys(data).length === 0 && transactionsForMainCategory.length > 0) {
+        data[mainCatName] = transactionsForMainCategory.reduce((acc, t) => acc + t.amount, 0);
+      }
+
 
     } else {
       // Default view: show main categories
@@ -168,11 +207,25 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
     if (selectedIncomeCategories.length === 1) {
       // Drill-down view
       const mainCatName = selectedIncomeCategories[0];
+      const mainCat = categories.find(c => c.name === mainCatName);
+
       const transactionsForMainCategory = filteredTransactions.filter(t => findMainCategory(t.category, categories) === mainCatName);
 
       transactionsForMainCategory.forEach(t => {
-          data[t.category] = (data[t.category] || 0) + t.amount;
+          const isMain = t.category === mainCatName;
+          const subCategory = mainCat?.subCategories?.find(sc => sc.name === t.category);
+
+          if (isMain && !mainCat?.subCategories?.length) {
+              data[t.category] = (data[t.category] || 0) + t.amount;
+          } else if (subCategory) {
+              data[t.category] = (data[t.category] || 0) + t.amount;
+          } else if (!isMain) {
+             data[t.category] = (data[t.category] || 0) + t.amount;
+          }
       });
+      if (Object.keys(data).length === 0 && transactionsForMainCategory.length > 0) {
+        data[mainCatName] = transactionsForMainCategory.reduce((acc, t) => acc + t.amount, 0);
+      }
 
     } else {
       // Default view
@@ -371,3 +424,5 @@ export default function ReportsPage() {
         </Tabs>
     )
 }
+
+    
