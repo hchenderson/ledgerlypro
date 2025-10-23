@@ -32,6 +32,7 @@ import { OverviewChart } from '@/components/dashboard/overview-chart';
 import { CategoryPieChart } from '@/components/reports/category-pie-chart';
 import { GlobalFilters } from '@/components/reports/global-filters';
 import { cn } from '@/lib/utils';
+import { ExportReportDialog } from '@/components/reports/export-report-dialog';
 
 const PRESET_RANGES = [
   { label: 'This Month', value: 'this-month' },
@@ -319,11 +320,14 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
             onPresetChange={handlePresetChange}
         />
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><TrendingUp/> Income vs. Expense Overview</CardTitle>
-             <CardDescription>
-              A summary of your cash flow for the selected period.
-            </CardDescription>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2"><TrendingUp/> Income vs. Expense Overview</CardTitle>
+              <CardDescription>
+                A summary of your cash flow for the selected period.
+              </CardDescription>
+            </div>
+            <ExportReportDialog transactions={dateFilteredTransactions} dateRange={dateRange} />
           </CardHeader>
           <CardContent>
             <OverviewChart data={overviewData} />
@@ -424,5 +428,3 @@ export default function ReportsPage() {
         </Tabs>
     )
 }
-
-    
