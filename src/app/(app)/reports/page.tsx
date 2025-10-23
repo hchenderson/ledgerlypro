@@ -129,28 +129,30 @@ function BasicReports() {
 
   const findMainCategory = useCallback((subCategoryName: string, allCategories: Category[]): string => {
       for (const mainCat of allCategories) {
-        if (mainCat.name === subCategoryName) return mainCat.name;
-
-        const recurse = (currentSubs: SubCategory[] | undefined): string | null => {
-            if (!currentSubs) return null;
-            for (const sub of currentSubs) {
-                if (sub.name === subCategoryName) return mainCat.name;
-                const found = recurse(sub.subCategories);
-                if (found) return found;
-            }
-            return null;
-        }
-        const found = recurse(mainCat.subCategories);
-        if (found) return found;
+          if (mainCat.name === subCategoryName) {
+              return mainCat.name;
+          }
+          if (mainCat.subCategories) {
+              const findInSubs = (subs: SubCategory[]): boolean => {
+                  for (const sub of subs) {
+                      if (sub.name === subCategoryName) return true;
+                      if (sub.subCategories && findInSubs(sub.subCategories)) return true;
+                  }
+                  return false;
+              }
+              if (findInSubs(mainCat.subCategories)) {
+                  return mainCat.name;
+              }
+          }
       }
       return 'Uncategorized';
-    }, []);
+  }, []);
 
   const expenseByCategory = useMemo(() => {
     const data: { [key: string]: number } = {};
     dateFilteredTransactions
       .filter(t => t.type === 'expense')
-      .filter(t => selectedExpenseCategories.length === 0 || selectedExpenseCategories.includes(findMainCategory(t.category, categories)))
+      .filter(t => selectedExpenseCategories.length === 0 || selectedExpenseCategories.some(selectedCat => findMainCategory(t.category, categories) === selectedCat || t.category === selectedCat))
       .forEach(t => {
         const mainCategory = findMainCategory(t.category, categories);
         data[mainCategory] = (data[mainCategory] || 0) + t.amount;
@@ -168,7 +170,7 @@ function BasicReports() {
     const data: { [key: string]: number } = {};
     dateFilteredTransactions
       .filter(t => t.type === 'income')
-      .filter(t => selectedIncomeCategories.length === 0 || selectedIncomeCategories.includes(findMainCategory(t.category, categories)))
+      .filter(t => selectedIncomeCategories.length === 0 || selectedIncomeCategories.some(selectedCat => findMainCategory(t.category, categories) === selectedCat || t.category === selectedCat))
       .forEach(t => {
         const mainCategory = findMainCategory(t.category, categories);
         data[mainCategory] = (data[mainCategory] || 0) + t.amount;
