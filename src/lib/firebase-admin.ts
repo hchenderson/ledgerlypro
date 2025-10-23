@@ -1,3 +1,4 @@
+
 'use server';
 
 import * as admin from 'firebase-admin';
@@ -23,14 +24,14 @@ const initializeFirebaseAdmin = () => {
 
 initializeFirebaseAdmin();
 
-export function getAdminDb() {
+export async function getAdminDb() {
     if (!admin.apps.length) {
         return null;
     }
     return admin.firestore();
 }
 
-export function getAdminAuth() {
+export async function getAdminAuth() {
     if (!admin.apps.length) {
         return null;
     }

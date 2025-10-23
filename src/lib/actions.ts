@@ -1,15 +1,12 @@
 
 'use server';
 
-import { collection, doc, setDoc, getDocs, query, where, getDoc } from 'firebase/firestore';
-import { db } from './firebase';
-import { startOfQuarter, endOfQuarter, isWithinInterval, getQuarter } from 'date-fns';
+import { getQuarter, startOfQuarter, endOfQuarter } from 'date-fns';
 import type { Transaction, Category, Budget, Goal, SubCategory, QuarterlyReport } from '@/types';
-import { getAuth } from 'firebase-admin/auth';
 import { getAdminDb } from './firebase-admin';
 
 async function getUserData(userId: string, collectionName: string) {
-    const adminDb = getAdminDb();
+    const adminDb = await getAdminDb();
     if (!adminDb) {
         throw new Error("Firebase Admin SDK is not initialized.");
     }
@@ -73,7 +70,7 @@ export async function generateAndSaveQuarterlyReport({
         throw new Error("User not authenticated.");
     }
 
-    const adminDb = getAdminDb();
+    const adminDb = await getAdminDb();
     if (!adminDb) {
         throw new Error("Firebase Admin SDK is not initialized.");
     }
