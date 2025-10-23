@@ -1,19 +1,32 @@
 
+'use server';
+
 import * as admin from 'firebase-admin';
 
 if (!admin.apps.length) {
-  const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT;
+  const serviceAccountString = process.env.FIREBASE_SERVICE_ACCOUNT;
   
-  if (serviceAccount) {
-    admin.initializeApp({
-      credential: admin.credential.cert(JSON.parse(serviceAccount) as admin.ServiceAccount),
-    });
+  if (serviceAccountString) {
+    try {
+        const serviceAccount = JSON.parse(serviceAccountString);
+        admin.initializeApp({
+            credential: admin.credential.cert(serviceAccount),
+        });
+    } catch (error) {
+        console.error("Failed to parse or initialize Firebase Admin SDK:", error);
+    }
   } else {
-    // For environments like Google Cloud Run where the service account is automatically available
-    admin.initializeApp();
+    console.warn("FIREBASE_SERVICE_ACCOUNT environment variable is not set. Firebase Admin SDK not initialized.");
   }
 }
 
-export const adminApp = admin.app();
-export const adminDb = admin.firestore();
-export const adminAuth = admin.auth();
+let adminDb: admin.firestore.Firestore;
+let adminAuth: admin.auth.Auth;
+
+if (admin.apps.length > 0) {
+    adminDb = admin.firestore();
+    adminAuth = admin.auth();
+}
+
+// @ts-ignore
+export { adminDb, adminAuth };
