@@ -1,7 +1,7 @@
 
 "use client"
 
-import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend } from "recharts"
+import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend, Line } from "recharts"
 import {
   ChartContainer,
   ChartTooltipContent,
@@ -19,10 +19,18 @@ const chartConfig = {
     label: "Expense",
     color: "hsl(var(--chart-2))",
   },
+  incomeTrend: {
+    label: "Income Trend",
+    color: "hsl(var(--chart-1))",
+  },
+  expenseTrend: {
+    label: "Expense Trend",
+    color: "hsl(var(--chart-2))",
+  }
 } satisfies ChartConfig
 
 interface OverviewChartProps {
-    data: { name: string; income: number; expense: number }[];
+    data: { name: string; income: number; expense: number; incomeTrend?: number, expenseTrend?: number }[];
 }
 
 export function OverviewChart({ data }: OverviewChartProps) {
@@ -46,11 +54,13 @@ export function OverviewChart({ data }: OverviewChartProps) {
           />
           <Tooltip
             cursor={{ fill: "hsl(var(--muted))" }}
-            content={<ChartTooltipContent />}
+            content={<ChartTooltipContent hideIndicator />}
           />
           <Legend content={<ChartLegendContent />} />
           <Bar dataKey="income" fill="hsl(var(--chart-1))" radius={[4, 4, 0, 0]} />
           <Bar dataKey="expense" fill="hsl(var(--chart-2))" radius={[4, 4, 0, 0]} />
+          <Line type="monotone" dataKey="incomeTrend" stroke="hsl(var(--chart-1))" strokeWidth={2} dot={false} strokeDasharray="5 5" />
+          <Line type="monotone" dataKey="expenseTrend" stroke="hsl(var(--chart-2))" strokeWidth={2} dot={false} strokeDasharray="5 5"/>
         </BarChart>
       </ResponsiveContainer>
     </ChartContainer>

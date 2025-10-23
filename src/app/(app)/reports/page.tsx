@@ -8,7 +8,8 @@ import {
   CardContent, 
   CardDescription, 
   CardHeader, 
-  CardTitle 
+  CardTitle,
+  CardFooter,
 } from '@/components/ui/card';
 import { 
   Tabs, 
@@ -19,6 +20,9 @@ import {
 import { 
   PieChart as PieChartIcon, 
   TrendingUp,
+  TrendingDown,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 import type { Category, SubCategory } from '@/types';
 import { DateRange } from 'react-day-picker';
@@ -27,6 +31,7 @@ import { subMonths, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'dat
 import { OverviewChart } from '@/components/dashboard/overview-chart';
 import { CategoryPieChart } from '@/components/reports/category-pie-chart';
 import { GlobalFilters } from '@/components/reports/global-filters';
+import { cn } from '@/lib/utils';
 
 const PRESET_RANGES = [
   { label: 'This Month', value: 'this-month' },
@@ -132,7 +137,6 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
     if (selectedExpenseCategories.length === 1) {
       // Drill-down view: show sub-categories of the selected main category
       const mainCatName = selectedExpenseCategories[0];
-      const mainCat = categories.find(c => c.name === mainCatName && c.type === 'expense');
       
       const transactionsForMainCategory = filteredTransactions.filter(t => findMainCategory(t.category, categories) === mainCatName);
 
@@ -189,7 +193,7 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
       .sort((a, b) => b.amount - a.amount);
   }, [dateFilteredTransactions, categories, findMainCategory, selectedIncomeCategories]);
 
-  const overviewData = useMemo(() => {
+  const { overviewData, trendStats } = useMemo(() => {
     const dataByPeriod: { [key: string]: { name: string; income: number; expense: number } } = {};
     dateFilteredTransactions.forEach(t => {
       const tDate = new Date(t.date);
@@ -209,7 +213,41 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
       }
       dataByPeriod[periodKey][t.type] += t.amount;
     });
-    return Object.values(dataByPeriod).sort((a, b) => new Date(a.name) > new Date(b.name) ? 1 : -1);
+
+    const sortedData = Object.values(dataByPeriod).sort((a, b) => new Date(a.name) > new Date(b.name) ? 1 : -1);
+    const n = sortedData.length;
+
+    if (n < 2) return { overviewData: sortedData, trendStats: { income: 0, expense: 0 } };
+
+    // Linear regression calculation
+    const calculateTrend = (data: number[]) => {
+      const sumX = (n * (n - 1)) / 2;
+      const sumY = data.reduce((a, b) => a + b, 0);
+      const sumXY = data.reduce((sum, y, i) => sum + i * y, 0);
+      const sumX2 = (n * (n - 1) * (2 * n - 1)) / 6;
+      
+      const m = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+      const c = (sumY - m * sumX) / n;
+      
+      return { m, c, change: ((data[n - 1] - data[0]) / data[0]) * 100 };
+    };
+
+    const incomeTrend = calculateTrend(sortedData.map(d => d.income));
+    const expenseTrend = calculateTrend(sortedData.map(d => d.expense));
+    
+    const dataWithTrend = sortedData.map((d, i) => ({
+      ...d,
+      incomeTrend: incomeTrend.m * i + incomeTrend.c,
+      expenseTrend: expenseTrend.m * i + expenseTrend.c,
+    }));
+
+    return { 
+      overviewData: dataWithTrend, 
+      trendStats: {
+        income: isFinite(incomeTrend.change) ? incomeTrend.change : 0,
+        expense: isFinite(expenseTrend.change) ? expenseTrend.change : 0,
+      } 
+    };
   }, [dateFilteredTransactions, period]);
 
   return (
@@ -230,6 +268,17 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
           <CardContent>
             <OverviewChart data={overviewData} />
           </CardContent>
+          {overviewData.length > 1 && (
+             <CardFooter className="flex-col items-start gap-2 text-sm">
+                <div className="flex gap-2 font-medium leading-none">
+                    Trending
+                    {trendStats.income > 0 ? <ArrowUp className="h-4 w-4 text-emerald-500" /> : <ArrowDown className="h-4 w-4 text-red-500" />}
+                </div>
+                 <div className="leading-none text-muted-foreground">
+                    Income is up by {trendStats.income.toFixed(1)}% and expenses are up by {trendStats.expense.toFixed(1)}% this period.
+                </div>
+            </CardFooter>
+          )}
         </Card>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
