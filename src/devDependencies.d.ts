@@ -7,6 +7,3 @@
 // If you want to add a new package, add it to package.json and then
 // add a declaration here if needed.
 
-declare module 'expr-eval';
-
-    
