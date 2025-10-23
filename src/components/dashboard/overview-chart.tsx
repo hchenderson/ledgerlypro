@@ -1,7 +1,7 @@
 
 "use client"
 
-import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend, Line } from "recharts"
+import { Bar, ComposedChart, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend, Line } from "recharts"
 import {
   ChartContainer,
   ChartTooltipContent,
@@ -37,7 +37,7 @@ export function OverviewChart({ data }: OverviewChartProps) {
   return (
     <ChartContainer config={chartConfig} className="h-[300px] w-full">
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} margin={{ top: 20 }}>
+        <ComposedChart data={data} margin={{ top: 20 }}>
            <XAxis
             dataKey="name"
             stroke="#888888"
@@ -65,7 +65,7 @@ export function OverviewChart({ data }: OverviewChartProps) {
           {data[0]?.expenseTrend !== undefined && (
              <Line type="monotone" dataKey="expenseTrend" stroke="var(--color-expense)" strokeWidth={2} dot={false} strokeDasharray="5 5"/>
           )}
-        </BarChart>
+        </ComposedChart>
       </ResponsiveContainer>
     </ChartContainer>
   )
