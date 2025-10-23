@@ -27,7 +27,7 @@ import {
 } from 'lucide-react';
 import type { Category, SubCategory, QuarterlyReport } from '@/types';
 import { DateRange } from 'react-day-picker';
-import { subMonths, startOfMonth, endOfMonth, startOfYear, endOfYear, getYear, format, startOfQuarter, endOfQuarter, subQuarters } from 'date-fns';
+import { subMonths, startOfMonth, endOfMonth, startOfYear, endOfYear, getYear, format, startOfQuarter, endOfQuarter, subQuarters, getQuarter } from 'date-fns';
 
 import { OverviewChart } from '@/components/dashboard/overview-chart';
 import { CategoryPieChart } from '@/components/reports/category-pie-chart';
@@ -49,6 +49,18 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Progress } from '@/components/ui/progress';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogClose
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 
 const PRESET_RANGES = [
   { label: 'This Month', value: 'this-month' },
@@ -464,12 +476,92 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
   );
 }
 
+function GenerateReportDialog({
+  onGenerate,
+}: {
+  onGenerate: (referenceDate: Date) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const currentYear = getYear(new Date());
+  const currentQuarter = getQuarter(new Date());
+
+  const [year, setYear] = useState(currentYear.toString());
+  const [quarter, setQuarter] = useState(currentQuarter.toString());
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  const handleGenerate = async () => {
+    setIsGenerating(true);
+    // Create a date from the selected year and quarter to pass to the server action
+    const quarterMonth = (parseInt(quarter) - 1) * 3;
+    const referenceDate = new Date(parseInt(year), quarterMonth, 1);
+    
+    await onGenerate(referenceDate);
+
+    setIsGenerating(false);
+    setIsOpen(false);
+  };
+
+  const years = Array.from({ length: 5 }, (_, i) => (currentYear - i).toString());
+
+  return (
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <DialogTrigger asChild>
+        <Button>Generate New Report</Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Generate Quarterly Report</DialogTitle>
+          <DialogDescription>
+            Select the period for the report. It will be saved for future reference.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid grid-cols-2 gap-4 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="year">Year</Label>
+            <Select value={year} onValueChange={setYear}>
+              <SelectTrigger id="year">
+                <SelectValue placeholder="Select year" />
+              </SelectTrigger>
+              <SelectContent>
+                {years.map(y => <SelectItem key={y} value={y}>{y}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="quarter">Quarter</Label>
+            <Select value={quarter} onValueChange={setQuarter}>
+              <SelectTrigger id="quarter">
+                <SelectValue placeholder="Select quarter" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1">Q1</SelectItem>
+                <SelectItem value="2">Q2</SelectItem>
+                <SelectItem value="3">Q3</SelectItem>
+                <SelectItem value="4">Q4</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline">Cancel</Button>
+          </DialogClose>
+          <Button onClick={handleGenerate} disabled={isGenerating}>
+            {isGenerating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {isGenerating ? 'Generating...' : 'Generate Report'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+
 function QuarterlyReportView() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [reports, setReports] = useState<QuarterlyReport[]>([]);
   const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
   const [selectedReport, setSelectedReport] = useState<QuarterlyReport | null>(null);
 
   useEffect(() => {
@@ -480,16 +572,22 @@ function QuarterlyReportView() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const fetchedReports = snapshot.docs.map(doc => doc.data() as QuarterlyReport);
       setReports(fetchedReports);
+      if (fetchedReports.length > 0 && !selectedReport) {
+        setSelectedReport(fetchedReports[0]);
+      }
       setLoading(false);
     });
     return () => unsubscribe();
-  }, [user]);
+  }, [user, selectedReport]);
 
-  const handleGenerateReport = async () => {
+  const handleGenerateReport = async (referenceDate: Date) => {
     if (!user) return;
-    setGenerating(true);
+    
     try {
-      const result = await generateAndSaveQuarterlyReport({ userId: user.uid, referenceDate: new Date().toISOString() });
+      const result = await generateAndSaveQuarterlyReport({ 
+        userId: user.uid, 
+        referenceDate: referenceDate.toISOString(),
+      });
       if (result.success) {
         toast({
           title: "Report Generated",
@@ -504,8 +602,6 @@ function QuarterlyReportView() {
         title: "Generation Failed",
         description: error.message,
       });
-    } finally {
-      setGenerating(false);
     }
   };
 
@@ -682,12 +778,9 @@ function QuarterlyReportView() {
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle>Generate Report</CardTitle>
-            <CardDescription>Create a financial snapshot for the current quarter.</CardDescription>
+            <CardDescription>Create a financial snapshot for a specific quarter.</CardDescription>
           </div>
-          <Button onClick={handleGenerateReport} disabled={generating}>
-            {generating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {generating ? 'Generating...' : 'Generate Report for Current Quarter'}
-          </Button>
+          <GenerateReportDialog onGenerate={handleGenerateReport} />
         </CardHeader>
       </Card>
 
@@ -700,7 +793,7 @@ function QuarterlyReportView() {
             {loading ? (
               <div className="text-center text-muted-foreground">Loading reports...</div>
             ) : reports.length === 0 ? (
-              <div className="text-center text-muted-foreground">No reports generated yet.</div>
+              <div className="text-center text-muted-foreground py-4">No reports generated yet.</div>
             ) : (
               <div className="space-y-2">
                 {reports.map(report => (

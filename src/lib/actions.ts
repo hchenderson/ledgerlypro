@@ -63,7 +63,13 @@ const getSubCategoryNames = (category: Category | SubCategory): string[] => {
     return names;
 };
 
-export async function generateAndSaveQuarterlyReport({ userId, referenceDate: referenceDateString }: { userId: string, referenceDate: string }): Promise<{ success: boolean; error?: string; report?: Partial<QuarterlyReport> }> {
+export async function generateAndSaveQuarterlyReport({ 
+    userId, 
+    referenceDate: referenceDateString,
+}: { 
+    userId: string, 
+    referenceDate: string,
+}): Promise<{ success: boolean; error?: string; report?: Partial<QuarterlyReport> }> {
   try {
     if (!userId) {
         throw new Error("User not authenticated.");
