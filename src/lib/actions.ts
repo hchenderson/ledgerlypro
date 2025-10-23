@@ -6,19 +6,11 @@ import { db } from './firebase';
 import { startOfQuarter, endOfQuarter, isWithinInterval, getQuarter } from 'date-fns';
 import type { Transaction, Category, Budget, Goal, SubCategory, QuarterlyReport } from '@/types';
 import { getAuth } from 'firebase-admin/auth';
-import { adminApp } from './firebase-admin';
-
-async function getCurrentUserId(): Promise<string> {
-    // This is a placeholder. In a real app, you'd get the user ID from the session.
-    // For this server action, we'll assume a hardcoded or passed-in user ID for now.
-    // In a real scenario, this would involve using something like next-auth or firebase-admin to get the current user.
-    // As we are calling this from a client component that has the user, we will pass it in.
-    return "NOT_IMPLEMENTED";
-}
+import { adminDb } from './firebase-admin';
 
 async function getUserData(userId: string, collectionName: string) {
-    const collRef = collection(db, 'users', userId, collectionName);
-    const snapshot = await getDocs(collRef);
+    const collRef = adminDb.collection('users').doc(userId).collection(collectionName);
+    const snapshot = await collRef.get();
     return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
 }
 
@@ -66,9 +58,11 @@ const getSubCategoryNames = (category: Category | SubCategory): string[] => {
 export async function generateAndSaveQuarterlyReport({ 
     userId, 
     referenceDate: referenceDateString,
+    notes,
 }: { 
     userId: string, 
     referenceDate: string,
+    notes?: string;
 }): Promise<{ success: boolean; error?: string; report?: Partial<QuarterlyReport> }> {
   try {
     if (!userId) {
@@ -136,7 +130,7 @@ export async function generateAndSaveQuarterlyReport({
         name: goal.name,
         targetAmount: goal.targetAmount,
         savedAmount: goal.savedAmount,
-        progress: (goal.savedAmount / goal.targetAmount) * 100,
+        progress: goal.targetAmount > 0 ? (goal.savedAmount / goal.targetAmount) * 100 : 0,
     }));
 
 
@@ -157,14 +151,15 @@ export async function generateAndSaveQuarterlyReport({
       budgetComparison,
       goalsProgress,
       kpis,
+      notes: notes || undefined,
     };
 
-    const reportsRef = collection(db, 'users', userId, 'reports');
-    const reportRef = doc(reportsRef, period);
+    const reportsRef = adminDb.collection('users').doc(userId).collection('reports');
+    const reportRef = reportsRef.doc(period);
 
-    await setDoc(reportRef, { ...reportDoc, createdAt: new Date() });
+    await reportRef.set({ ...reportDoc, createdAt: new Date() });
     
-    const finalReport = await getDoc(reportRef);
+    const finalReport = await reportRef.get();
     
     return { success: true, report: finalReport.data() as QuarterlyReport };
   } catch (error: any) {
