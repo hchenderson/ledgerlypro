@@ -134,18 +134,12 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
       const mainCatName = selectedExpenseCategories[0];
       const mainCat = categories.find(c => c.name === mainCatName && c.type === 'expense');
       
-      if (mainCat && mainCat.subCategories) {
-        filteredTransactions.forEach(t => {
-            if (mainCat.subCategories?.some(sub => sub.name === t.category)) {
-                data[t.category] = (data[t.category] || 0) + t.amount;
-            }
-        });
-        // If the main category itself has transactions assigned to it.
-        const mainCatTransactions = filteredTransactions.filter(t => t.category === mainCatName);
-        if (mainCatTransactions.length > 0) {
-            data[mainCatName] = mainCatTransactions.reduce((acc, t) => acc + t.amount, 0);
-        }
-      }
+      const transactionsForMainCategory = filteredTransactions.filter(t => findMainCategory(t.category, categories) === mainCatName);
+
+      transactionsForMainCategory.forEach(t => {
+          data[t.category] = (data[t.category] || 0) + t.amount;
+      });
+
     } else {
       // Default view: show main categories
       filteredTransactions
@@ -171,19 +165,12 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
     if (selectedIncomeCategories.length === 1) {
       // Drill-down view
       const mainCatName = selectedIncomeCategories[0];
-      const mainCat = categories.find(c => c.name === mainCatName && c.type === 'income');
-      
-      if (mainCat && mainCat.subCategories) {
-         filteredTransactions.forEach(t => {
-            if (mainCat.subCategories?.some(sub => sub.name === t.category)) {
-                data[t.category] = (data[t.category] || 0) + t.amount;
-            }
-        });
-        const mainCatTransactions = filteredTransactions.filter(t => t.category === mainCatName);
-        if (mainCatTransactions.length > 0) {
-            data[mainCatName] = mainCatTransactions.reduce((acc, t) => acc + t.amount, 0);
-        }
-      }
+      const transactionsForMainCategory = filteredTransactions.filter(t => findMainCategory(t.category, categories) === mainCatName);
+
+      transactionsForMainCategory.forEach(t => {
+          data[t.category] = (data[t.category] || 0) + t.amount;
+      });
+
     } else {
       // Default view
       filteredTransactions
