@@ -311,6 +311,25 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
     };
   }, [dateFilteredTransactions, period]);
 
+  const incomeTransactionsForExport = useMemo(() => {
+    return dateFilteredTransactions.filter(t => {
+        if (t.type !== 'income') return false;
+        if (selectedIncomeCategories.length === 0) return true;
+        const mainCategory = findMainCategory(t.category, categories);
+        return selectedIncomeCategories.includes(mainCategory);
+    });
+  }, [dateFilteredTransactions, selectedIncomeCategories, findMainCategory, categories]);
+
+  const expenseTransactionsForExport = useMemo(() => {
+      return dateFilteredTransactions.filter(t => {
+          if (t.type !== 'expense') return false;
+          if (selectedExpenseCategories.length === 0) return true;
+          const mainCategory = findMainCategory(t.category, categories);
+          return selectedExpenseCategories.includes(mainCategory);
+      });
+  }, [dateFilteredTransactions, selectedExpenseCategories, findMainCategory, categories]);
+
+
   return (
     <div className="space-y-6">
        <GlobalFilters
@@ -357,10 +376,15 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><PieChartIcon/> Income Breakdown</CardTitle>
-             <CardDescription>
-              Where your income comes from. Select a single category to see sub-category details.
-            </CardDescription>
+            <div className="flex justify-between items-center">
+              <div>
+                <CardTitle className="flex items-center gap-2"><PieChartIcon/> Income Breakdown</CardTitle>
+                <CardDescription>
+                  Where your income comes from. Select a single category to see sub-category details.
+                </CardDescription>
+              </div>
+               <ExportReportDialog transactions={incomeTransactionsForExport} dateRange={dateRange} />
+            </div>
           </CardHeader>
           <CardContent>
              <GlobalFilters
@@ -379,10 +403,15 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><PieChartIcon/> Expense Breakdown</CardTitle>
-            <CardDescription>
-              Where your money is going. Select a single category to see sub-category details.
-            </CardDescription>
+            <div className="flex justify-between items-center">
+              <div>
+                <CardTitle className="flex items-center gap-2"><PieChartIcon/> Expense Breakdown</CardTitle>
+                <CardDescription>
+                  Where your money is going. Select a single category to see sub-category details.
+                </CardDescription>
+              </div>
+              <ExportReportDialog transactions={expenseTransactionsForExport} dateRange={dateRange} />
+            </div>
           </CardHeader>
           <CardContent>
             <GlobalFilters
