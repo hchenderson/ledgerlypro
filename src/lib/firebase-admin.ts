@@ -1,14 +1,17 @@
 
 import * as admin from 'firebase-admin';
 
-const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT
-  ? JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)
-  : undefined;
-
 if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount as admin.ServiceAccount),
-  });
+  const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT;
+  
+  if (serviceAccount) {
+    admin.initializeApp({
+      credential: admin.credential.cert(JSON.parse(serviceAccount) as admin.ServiceAccount),
+    });
+  } else {
+    // For environments like Google Cloud Run where the service account is automatically available
+    admin.initializeApp();
+  }
 }
 
 export const adminApp = admin.app();
