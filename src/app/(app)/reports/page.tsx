@@ -55,6 +55,8 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
   }, [period]);
 
   const [dateRange, setDateRange] = useState<DateRange | undefined>(defaultDateRange);
+  const [selectedIncomeCategories, setSelectedIncomeCategories] = useState<string[]>([]);
+  const [selectedExpenseCategories, setSelectedExpenseCategories] = useState<string[]>([]);
 
   const handlePresetChange = (value: string) => {
     const now = new Date();
@@ -103,25 +105,33 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
               return mainCat.name;
           }
           if (mainCat.subCategories) {
-              const findInSubs = (subs: SubCategory[]): boolean => {
+              const findInSubs = (subs: SubCategory[], path: string[]): boolean => {
                   for (const sub of subs) {
                       if (sub.name === subCategoryName) return true;
-                      if (sub.subCategories && findInSubs(sub.subCategories)) return true;
+                      if (sub.subCategories && findInSubs(sub.subCategories, [...path, sub.name])) return true;
                   }
                   return false;
               }
-              if (findInSubs(mainCat.subCategories)) {
+              if (findInSubs(mainCat.subCategories, [mainCat.name])) {
                   return mainCat.name;
               }
           }
       }
       return 'Uncategorized';
   }, []);
+  
+  const getCategoryOptions = useCallback((type: 'income' | 'expense') => {
+    const mainCategories = categories.filter(c => c.type === type);
+    return mainCategories.map(c => ({ value: c.name, label: c.name }));
+  }, [categories]);
 
   const expenseByCategory = useMemo(() => {
     const data: { [key: string]: number } = {};
     dateFilteredTransactions
-      .filter(t => t.type === 'expense')
+      .filter(t => {
+        const mainCategory = findMainCategory(t.category, categories);
+        return t.type === 'expense' && (selectedExpenseCategories.length === 0 || selectedExpenseCategories.includes(mainCategory));
+      })
       .forEach(t => {
         const mainCategory = findMainCategory(t.category, categories);
         data[mainCategory] = (data[mainCategory] || 0) + t.amount;
@@ -133,12 +143,15 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
         amount: amount,
       }))
       .sort((a, b) => b.amount - a.amount);
-  }, [dateFilteredTransactions, categories, findMainCategory]);
+  }, [dateFilteredTransactions, categories, findMainCategory, selectedExpenseCategories]);
   
   const incomeByCategory = useMemo(() => {
     const data: { [key: string]: number } = {};
     dateFilteredTransactions
-      .filter(t => t.type === 'income')
+      .filter(t => {
+        const mainCategory = findMainCategory(t.category, categories);
+        return t.type === 'income' && (selectedIncomeCategories.length === 0 || selectedIncomeCategories.includes(mainCategory));
+      })
       .forEach(t => {
         const mainCategory = findMainCategory(t.category, categories);
         data[mainCategory] = (data[mainCategory] || 0) + t.amount;
@@ -150,7 +163,7 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
         amount: amount,
       }))
       .sort((a, b) => b.amount - a.amount);
-  }, [dateFilteredTransactions, categories, findMainCategory]);
+  }, [dateFilteredTransactions, categories, findMainCategory, selectedIncomeCategories]);
 
   const overviewData = useMemo(() => {
     const dataByPeriod: { [key: string]: { name: string; income: number; expense: number } } = {};
@@ -182,10 +195,6 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
             dateRange={dateRange}
             onDateRangeChange={setDateRange}
             onPresetChange={handlePresetChange}
-            categoryOptions={[]}
-            selectedCategories={[]}
-            onSelectedCategoriesChange={() => {}}
-            showCategoryFilter={false}
         />
         <Card>
           <CardHeader>
@@ -207,6 +216,17 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
             </CardDescription>
           </CardHeader>
           <CardContent>
+             <GlobalFilters
+                presetRanges={[]}
+                dateRange={undefined}
+                onDateRangeChange={() => {}}
+                onPresetChange={() => {}}
+                categoryOptions={getCategoryOptions('income')}
+                selectedCategories={selectedIncomeCategories}
+                onSelectedCategoriesChange={setSelectedIncomeCategories}
+                showCategoryFilter={true}
+                filterTitle="Filter Income Categories"
+              />
             <CategoryPieChart data={incomeByCategory} />
           </CardContent>
         </Card>
@@ -218,6 +238,17 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            <GlobalFilters
+                presetRanges={[]}
+                dateRange={undefined}
+                onDateRangeChange={() => {}}
+                onPresetChange={() => {}}
+                categoryOptions={getCategoryOptions('expense')}
+                selectedCategories={selectedExpenseCategories}
+                onSelectedCategoriesChange={setSelectedExpenseCategories}
+                showCategoryFilter={true}
+                filterTitle="Filter Expense Categories"
+              />
             <CategoryPieChart data={expenseByCategory} />
           </CardContent>
         </Card>

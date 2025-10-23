@@ -18,10 +18,11 @@ interface GlobalFiltersProps {
     dateRange: DateRange | undefined;
     onDateRangeChange: (range: DateRange | undefined) => void;
     onPresetChange: (value: string) => void;
-    categoryOptions: { value: string; label: string }[];
-    selectedCategories: string[];
-    onSelectedCategoriesChange: (value: string[]) => void;
-    showCategoryFilter: boolean;
+    categoryOptions?: { value: string; label: string }[];
+    selectedCategories?: string[];
+    onSelectedCategoriesChange?: (value: string[]) => void;
+    showCategoryFilter?: boolean;
+    filterTitle?: string;
 }
 
 export function GlobalFilters({
@@ -32,55 +33,64 @@ export function GlobalFilters({
     categoryOptions,
     selectedCategories,
     onSelectedCategoriesChange,
-    showCategoryFilter,
+    showCategoryFilter = false,
+    filterTitle = "Filters"
 }: GlobalFiltersProps) {
+    const showDateFilter = presetRanges.length > 0;
+    
+    if (!showDateFilter && !showCategoryFilter) {
+        return null;
+    }
+
     return (
-        <Card>
-            <CardHeader>
+        <Card className={cn(!showDateFilter && "border-none shadow-none")}>
+            <CardHeader className={cn(!showDateFilter && "p-0 mb-4")}>
                 <CardTitle className="flex items-center gap-2">
                     <Filter className="h-5 w-5" />
-                    Filters
+                    {filterTitle}
                 </CardTitle>
             </CardHeader>
-            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                 <div className="space-y-2">
-                    <Label>Date Range</Label>
-                    <div className="flex gap-2">
-                        <Select onValueChange={onPresetChange}>
-                            <SelectTrigger className="w-[180px]">
-                                <SelectValue placeholder="Select a preset" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {presetRanges.map(preset => (
-                                    <SelectItem key={preset.value} value={preset.value}>{preset.label}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                        <Popover>
-                            <PopoverTrigger asChild>
-                                <Button
-                                    variant="outline"
-                                    className={cn('flex-1 justify-start text-left font-normal', !dateRange && 'text-muted-foreground')}
-                                >
-                                    <CalendarIcon className="mr-2 h-4 w-4" />
-                                    {dateRange?.from ? (dateRange.to ? (`${format(dateRange.from, 'LLL dd, y')} - ${format(dateRange.to, 'LLL dd, y')}`) : format(dateRange.from, 'LLL dd, y')) : (<span>Pick a date</span>)}
-                                </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0" align="start">
-                                <Calendar
-                                    initialFocus
-                                    mode="range"
-                                    defaultMonth={dateRange?.from}
-                                    selected={dateRange}
-                                    onSelect={onDateRangeChange}
-                                    numberOfMonths={2}
-                                />
-                            </PopoverContent>
-                        </Popover>
+            <CardContent className={cn("grid grid-cols-1 md:grid-cols-2 gap-4", !showDateFilter && "p-0")}>
+                 {showDateFilter && (
+                     <div className="space-y-2">
+                        <Label>Date Range</Label>
+                        <div className="flex gap-2">
+                            <Select onValueChange={onPresetChange}>
+                                <SelectTrigger className="w-[180px]">
+                                    <SelectValue placeholder="Select a preset" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {presetRanges.map(preset => (
+                                        <SelectItem key={preset.value} value={preset.value}>{preset.label}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                    <Button
+                                        variant="outline"
+                                        className={cn('flex-1 justify-start text-left font-normal', !dateRange && 'text-muted-foreground')}
+                                    >
+                                        <CalendarIcon className="mr-2 h-4 w-4" />
+                                        {dateRange?.from ? (dateRange.to ? (`${format(dateRange.from, 'LLL dd, y')} - ${format(dateRange.to, 'LLL dd, y')}`) : format(dateRange.from, 'LLL dd, y')) : (<span>Pick a date</span>)}
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-0" align="start">
+                                    <Calendar
+                                        initialFocus
+                                        mode="range"
+                                        defaultMonth={dateRange?.from}
+                                        selected={dateRange}
+                                        onSelect={onDateRangeChange}
+                                        numberOfMonths={2}
+                                    />
+                                </PopoverContent>
+                            </Popover>
+                        </div>
                     </div>
-                </div>
+                 )}
 
-                {showCategoryFilter && (
+                {showCategoryFilter && categoryOptions && selectedCategories && onSelectedCategoriesChange && (
                     <div className="space-y-2">
                         <Label>Categories</Label>
                         <SearchableMultiSelect
