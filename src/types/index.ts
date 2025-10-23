@@ -99,6 +99,19 @@ export interface QuarterlyReport {
   incomeSummary: Record<string, number>;
   expenseSummary: Record<string, number>;
   netIncome: number;
+  budgetComparison: {
+    categoryName: string;
+    budget: number;
+    actual: number;
+    variance: number;
+    percentUsed: number;
+  }[];
+  goalsProgress: {
+    name: string;
+    targetAmount: number;
+    savedAmount: number;
+    progress: number;
+  }[];
   kpis: {
     profitMargin: number;
     expenseToIncomeRatio: number;

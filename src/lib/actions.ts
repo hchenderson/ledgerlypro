@@ -53,6 +53,16 @@ function summarizeByCategory(transactions: Transaction[], type: 'income' | 'expe
     return totals;
 }
 
+const getSubCategoryNames = (category: Category | SubCategory): string[] => {
+    let names = [category.name];
+    if (category.subCategories) {
+        category.subCategories.forEach(sub => {
+            names = [...names, ...getSubCategoryNames(sub)];
+        });
+    }
+    return names;
+};
+
 export async function generateAndSaveQuarterlyReport({ userId, referenceDate: referenceDateString }: { userId: string, referenceDate: string }): Promise<{ success: boolean; error?: string; report?: Partial<QuarterlyReport> }> {
   try {
     if (!userId) {
@@ -65,7 +75,9 @@ export async function generateAndSaveQuarterlyReport({ userId, referenceDate: re
 
     const transactions = await getUserData(userId, 'transactions') as Transaction[];
     const categories = await getUserData(userId, 'categories') as Category[];
-    // We can fetch budgets and goals here if needed for budgetComparison and goalsProgress
+    const budgets = await getUserData(userId, 'budgets') as Budget[];
+    const goals = await getUserData(userId, 'goals') as Goal[];
+
 
     const transactionsInQuarter = transactions.filter(t => {
         const transactionDate = new Date(t.date);
@@ -84,6 +96,43 @@ export async function generateAndSaveQuarterlyReport({ userId, referenceDate: re
 
     const incomeSummary = summarizeByCategory(transactionsInQuarter, 'income', categories);
     const expenseSummary = summarizeByCategory(transactionsInQuarter, 'expense', categories);
+    
+    const findCategoryById = (id: string, cats: (Category | SubCategory)[]): (Category | SubCategory | undefined) => {
+        for (const cat of cats) {
+            if (cat.id === id) return cat;
+            if (cat.subCategories) {
+                const found = findCategoryById(id, cat.subCategories);
+                if (found) return found;
+            }
+        }
+        return undefined;
+    }
+
+    const budgetComparison = budgets.map(budget => {
+        const category = findCategoryById(budget.categoryId, categories);
+        const categoryName = category?.name || 'Unknown Category';
+        const allCategoryNamesForBudget = category ? getSubCategoryNames(category) : [];
+
+        // Adjust budget amount for the quarter if it's monthly
+        const budgetAmountForPeriod = budget.period === 'monthly' ? budget.amount * 3 : budget.amount;
+
+        const actual = transactionsInQuarter
+            .filter(t => t.type === 'expense' && allCategoryNamesForBudget.includes(t.category))
+            .reduce((sum, t) => sum + t.amount, 0);
+        
+        const variance = budgetAmountForPeriod - actual;
+        const percentUsed = budgetAmountForPeriod > 0 ? (actual / budgetAmountForPeriod) * 100 : 0;
+
+        return { categoryName, budget: budgetAmountForPeriod, actual, variance, percentUsed };
+    });
+
+    const goalsProgress = goals.map(goal => ({
+        name: goal.name,
+        targetAmount: goal.targetAmount,
+        savedAmount: goal.savedAmount,
+        progress: (goal.savedAmount / goal.targetAmount) * 100,
+    }));
+
 
     const kpis = {
       profitMargin: income > 0 ? (netIncome / income) * 100 : 0,
@@ -99,6 +148,8 @@ export async function generateAndSaveQuarterlyReport({ userId, referenceDate: re
       incomeSummary,
       expenseSummary,
       netIncome,
+      budgetComparison,
+      goalsProgress,
       kpis,
     };
 

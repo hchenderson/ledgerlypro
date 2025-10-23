@@ -48,6 +48,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { Progress } from '@/components/ui/progress';
 
 const PRESET_RANGES = [
   { label: 'This Month', value: 'this-month' },
@@ -488,7 +489,7 @@ function QuarterlyReportView() {
     if (!user) return;
     setGenerating(true);
     try {
-      const result = await generateAndSaveQuarterlyReport({ referenceDate: new Date().toISOString() });
+      const result = await generateAndSaveQuarterlyReport({ userId: user.uid, referenceDate: new Date().toISOString() });
       if (result.success) {
         toast({
           title: "Report Generated",
@@ -579,6 +580,74 @@ function QuarterlyReportView() {
                 <span className={cn(selectedReport.netIncome >= 0 ? "text-emerald-600" : "text-destructive")}>{formatCurrency(selectedReport.netIncome)}</span>
             </div>
           </div>
+
+          {/* Budget vs Actual */}
+          {selectedReport.budgetComparison && selectedReport.budgetComparison.length > 0 && (
+            <div>
+                <h3 className="text-lg font-semibold mb-2 border-b pb-2">Budget vs. Actual</h3>
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Category</TableHead>
+                            <TableHead className="text-right">Budget</TableHead>
+                            <TableHead className="text-right">Actual</TableHead>
+                            <TableHead className="text-right">Variance</TableHead>
+                            <TableHead className="text-right">% Used</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {selectedReport.budgetComparison.map(item => (
+                            <TableRow key={item.categoryName}>
+                                <TableCell>{item.categoryName}</TableCell>
+                                <TableCell className="text-right">{formatCurrency(item.budget)}</TableCell>
+                                <TableCell className="text-right">{formatCurrency(item.actual)}</TableCell>
+                                <TableCell className={cn("text-right", item.variance >= 0 ? 'text-emerald-600' : 'text-destructive')}>
+                                    {formatCurrency(item.variance)}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                    <div className="flex items-center justify-end gap-2">
+                                        <span>{item.percentUsed.toFixed(0)}%</span>
+                                        <Progress value={item.percentUsed} className="w-20 h-2 [&>div]:bg-primary"/>
+                                    </div>
+                                </TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+            </div>
+          )}
+
+           {/* Goals Progress */}
+          {selectedReport.goalsProgress && selectedReport.goalsProgress.length > 0 && (
+            <div>
+                <h3 className="text-lg font-semibold mb-2 border-b pb-2">Goals Progress</h3>
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Goal</TableHead>
+                            <TableHead className="text-right">Saved</TableHead>
+                            <TableHead className="text-right">Target</TableHead>
+                            <TableHead className="text-right">Progress</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {selectedReport.goalsProgress.map(item => (
+                            <TableRow key={item.name}>
+                                <TableCell>{item.name}</TableCell>
+                                <TableCell className="text-right">{formatCurrency(item.savedAmount)}</TableCell>
+                                <TableCell className="text-right">{formatCurrency(item.targetAmount)}</TableCell>
+                                <TableCell className="text-right">
+                                    <div className="flex items-center justify-end gap-2">
+                                        <span>{item.progress.toFixed(0)}%</span>
+                                        <Progress value={item.progress} className="w-20 h-2 [&>div]:bg-primary"/>
+                                    </div>
+                                </TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+            </div>
+          )}
 
           {/* KPIs */}
           <div>
