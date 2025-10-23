@@ -59,8 +59,12 @@ export function OverviewChart({ data }: OverviewChartProps) {
           <Legend content={<ChartLegendContent />} />
           <Bar dataKey="income" fill="hsl(var(--chart-1))" radius={[4, 4, 0, 0]} />
           <Bar dataKey="expense" fill="hsl(var(--chart-2))" radius={[4, 4, 0, 0]} />
-          <Line type="monotone" dataKey="incomeTrend" stroke="hsl(var(--chart-1))" strokeWidth={2} dot={false} strokeDasharray="5 5" />
-          <Line type="monotone" dataKey="expenseTrend" stroke="hsl(var(--chart-2))" strokeWidth={2} dot={false} strokeDasharray="5 5"/>
+          {data[0]?.incomeTrend !== undefined && (
+            <Line type="monotone" dataKey="incomeTrend" stroke="hsl(var(--chart-1))" strokeWidth={2} dot={false} strokeDasharray="5 5" />
+          )}
+          {data[0]?.expenseTrend !== undefined && (
+             <Line type="monotone" dataKey="expenseTrend" stroke="hsl(var(--chart-2))" strokeWidth={2} dot={false} strokeDasharray="5 5"/>
+          )}
         </BarChart>
       </ResponsiveContainer>
     </ChartContainer>
