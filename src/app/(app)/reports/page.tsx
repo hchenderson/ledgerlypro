@@ -59,9 +59,10 @@ function BasicReports() {
     from: startOfMonth(new Date()),
     to: endOfMonth(new Date()),
   });
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
-  
-  const allCategoryOptions = useMemo(() => {
+  const [selectedExpenseCategories, setSelectedExpenseCategories] = useState<string[]>([]);
+  const [selectedIncomeCategories, setSelectedIncomeCategories] = useState<string[]>([]);
+
+  const expenseCategoryOptions = useMemo(() => {
     const options: { value: string; label: string }[] = [];
     const recurse = (cats: (Category | SubCategory)[]) => {
       (cats || []).forEach(c => {
@@ -70,6 +71,18 @@ function BasicReports() {
       });
     };
     recurse(categories.filter(c => c.type === 'expense'));
+    return options.sort((a,b) => a.label.localeCompare(b.label));
+  }, [categories]);
+
+  const incomeCategoryOptions = useMemo(() => {
+    const options: { value: string; label: string }[] = [];
+    const recurse = (cats: (Category | SubCategory)[]) => {
+      (cats || []).forEach(c => {
+        options.push({ value: c.name, label: c.name });
+        if (c.subCategories) recurse(c.subCategories);
+      });
+    };
+    recurse(categories.filter(c => c.type === 'income'));
     return options.sort((a,b) => a.label.localeCompare(b.label));
   }, [categories]);
 
@@ -114,8 +127,7 @@ function BasicReports() {
     });
   }, [allTransactions, dateRange]);
 
-  const expenseByCategory = useMemo(() => {
-    const findMainCategory = (subCategoryName: string, allCategories: Category[]): string => {
+  const findMainCategory = useCallback((subCategoryName: string, allCategories: Category[]): string => {
       for (const mainCat of allCategories) {
         if (mainCat.name === subCategoryName) return mainCat.name;
 
@@ -132,12 +144,13 @@ function BasicReports() {
         if (found) return found;
       }
       return 'Uncategorized';
-    };
-  
+    }, []);
+
+  const expenseByCategory = useMemo(() => {
     const data: { [key: string]: number } = {};
     dateFilteredTransactions
       .filter(t => t.type === 'expense')
-      .filter(t => selectedCategories.length === 0 || selectedCategories.includes(findMainCategory(t.category, categories)))
+      .filter(t => selectedExpenseCategories.length === 0 || selectedExpenseCategories.includes(findMainCategory(t.category, categories)))
       .forEach(t => {
         const mainCategory = findMainCategory(t.category, categories);
         data[mainCategory] = (data[mainCategory] || 0) + t.amount;
@@ -149,7 +162,25 @@ function BasicReports() {
         amount: amount,
       }))
       .sort((a, b) => b.amount - a.amount);
-  }, [dateFilteredTransactions, categories, selectedCategories]);
+  }, [dateFilteredTransactions, categories, selectedExpenseCategories, findMainCategory]);
+  
+  const incomeByCategory = useMemo(() => {
+    const data: { [key: string]: number } = {};
+    dateFilteredTransactions
+      .filter(t => t.type === 'income')
+      .filter(t => selectedIncomeCategories.length === 0 || selectedIncomeCategories.includes(findMainCategory(t.category, categories)))
+      .forEach(t => {
+        const mainCategory = findMainCategory(t.category, categories);
+        data[mainCategory] = (data[mainCategory] || 0) + t.amount;
+      });
+  
+    return Object.entries(data)
+      .map(([name, amount]) => ({
+        category: name,
+        amount: amount,
+      }))
+      .sort((a, b) => b.amount - a.amount);
+  }, [dateFilteredTransactions, categories, selectedIncomeCategories, findMainCategory]);
 
   const overviewData = useMemo(() => {
     const dataByMonth: { [key: string]: { name: string; income: number; expense: number } } = {};
@@ -172,18 +203,32 @@ function BasicReports() {
             dateRange={dateRange}
             onDateRangeChange={setDateRange}
             onPresetChange={handlePresetChange}
-            categoryOptions={allCategoryOptions}
-            selectedCategories={selectedCategories}
-            onSelectedCategoriesChange={setSelectedCategories}
+            categoryOptions={[]}
+            selectedCategories={[]}
+            onSelectedCategoriesChange={() => {}}
             showCategoryFilter={false}
         />
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><TrendingUp/> Income vs. Expense</CardTitle>
+            <CardTitle className="flex items-center gap-2"><TrendingUp/> Income vs. Expense Overview</CardTitle>
           </CardHeader>
           <CardContent>
             <OverviewChart data={overviewData} />
+          </CardContent>
+        </Card>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><PieChartIcon/> Income Breakdown</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+             <SearchableMultiSelect
+                options={incomeCategoryOptions}
+                selected={selectedIncomeCategories}
+                onChange={setSelectedIncomeCategories}
+                placeholder="Filter income categories..."
+            />
+            <CategoryPieChart data={incomeByCategory} />
           </CardContent>
         </Card>
         <Card>
@@ -192,10 +237,10 @@ function BasicReports() {
           </CardHeader>
           <CardContent className="space-y-4">
              <SearchableMultiSelect
-                options={allCategoryOptions}
-                selected={selectedCategories}
-                onChange={setSelectedCategories}
-                placeholder="Filter categories..."
+                options={expenseCategoryOptions}
+                selected={selectedExpenseCategories}
+                onChange={setSelectedExpenseCategories}
+                placeholder="Filter expense categories..."
             />
             <CategoryPieChart data={expenseByCategory} />
           </CardContent>
@@ -541,5 +586,3 @@ export default function ReportsPage() {
         </Tabs>
     )
 }
-
-    
