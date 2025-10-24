@@ -3,13 +3,10 @@
 
 import { getQuarter, startOfQuarter, endOfQuarter } from 'date-fns';
 import type { Transaction, Category, Budget, Goal, SubCategory, QuarterlyReport } from '@/types';
-import { getAdminDb } from './firebase-admin';
+import { adminDb } from './firebase-admin';
+
 
 async function getUserData(userId: string, collectionName: string) {
-    const adminDb = await getAdminDb();
-    if (!adminDb) {
-        throw new Error("Firebase Admin SDK is not initialized.");
-    }
     const collRef = adminDb.collection('users').doc(userId).collection(collectionName);
     const snapshot = await collRef.get();
     return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
@@ -69,11 +66,6 @@ export async function generateAndSaveQuarterlyReport({
     if (!userId) {
         throw new Error("User not authenticated.");
     }
-
-    const adminDb = await getAdminDb();
-    if (!adminDb) {
-        throw new Error("Firebase Admin SDK is not initialized.");
-    }
     
     const referenceDate = new Date(referenceDateString);
     const startDate = startOfQuarter(referenceDate);
@@ -119,7 +111,6 @@ export async function generateAndSaveQuarterlyReport({
         const categoryName = category?.name || 'Unknown Category';
         const allCategoryNamesForBudget = category ? getSubCategoryNames(category) : [];
 
-        // Adjust budget amount for the quarter if it's monthly
         const budgetAmountForPeriod = budget.period === 'monthly' ? budget.amount * 3 : budget.amount;
 
         const actual = transactionsInQuarter
@@ -165,9 +156,9 @@ export async function generateAndSaveQuarterlyReport({
 
     await reportRef.set({ ...reportDoc, createdAt: new Date() });
     
-    const finalReport = await reportRef.get();
+    const finalReport = (await reportRef.get()).data() as QuarterlyReport;
     
-    return { success: true, report: finalReport.data() as QuarterlyReport };
+    return { success: true, report: finalReport };
   } catch (error: any) {
     console.error("Failed to generate quarterly report:", error);
     return { success: false, error: error.message };

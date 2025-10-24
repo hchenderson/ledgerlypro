@@ -1,39 +1,19 @@
 
-'use server';
-
+// /lib/firebase-admin.ts
 import * as admin from 'firebase-admin';
 
-const initializeFirebaseAdmin = () => {
-    if (!admin.apps.length) {
-        const serviceAccountString = process.env.FIREBASE_SERVICE_ACCOUNT;
-        
-        if (serviceAccountString) {
-            try {
-                const serviceAccount = JSON.parse(serviceAccountString);
-                admin.initializeApp({
-                    credential: admin.credential.cert(serviceAccount),
-                });
-            } catch (error) {
-                console.error("Failed to parse or initialize Firebase Admin SDK:", error);
-            }
-        } else {
-            console.warn("FIREBASE_SERVICE_ACCOUNT environment variable is not set. Firebase Admin SDK not initialized.");
-        }
-    }
-};
-
-initializeFirebaseAdmin();
-
-export async function getAdminDb() {
-    if (!admin.apps.length) {
-        return null;
-    }
-    return admin.firestore();
+if (!admin.apps.length) {
+  try {
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+      }),
+    });
+  } catch (error: any) {
+    console.error('Firebase admin initialization error', error.stack);
+  }
 }
 
-export async function getAdminAuth() {
-    if (!admin.apps.length) {
-        return null;
-    }
-    return admin.auth();
-}
+export const adminDb = admin.firestore();
