@@ -59,5 +59,3 @@ export const signOut = async () => {
         throw error;
     }
 }
-
-export { auth as authState };
