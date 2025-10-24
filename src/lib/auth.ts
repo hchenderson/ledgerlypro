@@ -1,7 +1,6 @@
 
-import { app } from "./firebase";
+import { app, auth } from "./firebase";
 import { 
-    getAuth, 
     signInWithPopup, 
     GoogleAuthProvider,
     signOut as firebaseSignOut,
@@ -11,7 +10,6 @@ import {
     UserCredential
 } from "firebase/auth";
 
-const auth = getAuth(app);
 const provider = new GoogleAuthProvider();
 
 export const signInWithGoogle = async (): Promise<UserCredential> => {
@@ -63,3 +61,4 @@ export const signOut = async () => {
 }
 
 export const authState = auth;
+
