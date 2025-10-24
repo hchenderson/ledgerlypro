@@ -3,7 +3,7 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { authState } from '@/lib/auth';
+import { auth } from '@/lib/firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
@@ -32,7 +32,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [showInstructions, setShowInstructionsState] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(authState, async (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setUser(user);
       if (user) {
         const userDocRef = doc(db, 'users', user.uid, 'settings', 'main');

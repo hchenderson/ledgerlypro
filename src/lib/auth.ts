@@ -1,6 +1,5 @@
 
-
-import { app, auth } from "./firebase";
+import { auth } from "./firebase";
 import { 
     signInWithPopup, 
     GoogleAuthProvider,
@@ -62,5 +61,3 @@ export const signOut = async () => {
 }
 
 export const authState = auth;
-
-
