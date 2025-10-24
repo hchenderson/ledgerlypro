@@ -7,12 +7,10 @@ import {
     signInWithEmailAndPassword,
     sendPasswordResetEmail as firebaseSendPasswordResetEmail,
     UserCredential,
-    getAuth
 } from "firebase/auth";
-import { app } from "./firebase";
+import { auth } from "./firebase";
 
 const provider = new GoogleAuthProvider();
-const auth = getAuth(app);
 
 export const signInWithGoogle = async (): Promise<UserCredential> => {
     try {
@@ -62,4 +60,4 @@ export const signOut = async () => {
     }
 }
 
-export const authState = auth;
+export { auth as authState };
