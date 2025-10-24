@@ -21,7 +21,7 @@ if (!admin.apps.length && hasRequiredEnvVars) {
     console.error('Firebase admin initialization error:', error.stack);
   }
 } else if (!hasRequiredEnvVars) {
-    console.warn("Firebase admin environment variables are not set. Skipping initialization.");
+    console.warn("Firebase admin environment variables are not set. Server-side features relying on it will fail.");
 }
 
 // Export the firestore instance. This will be undefined if initialization fails.
