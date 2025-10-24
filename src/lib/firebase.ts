@@ -1,6 +1,6 @@
 
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
+import { getFirestore, enableNetwork } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
 const firebaseConfig = {
@@ -23,5 +23,11 @@ if (!firebaseConfig.apiKey) {
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const db = getFirestore(app);
 const auth = getAuth(app);
+
+// Force the client to go online. This can help in environments like
+// Cloud Workstations where the SDK might incorrectly flag itself as offline.
+enableNetwork(db).catch((err) => {
+    console.warn("Firestore network could not be enabled:", err);
+});
 
 export { app, db, auth };
