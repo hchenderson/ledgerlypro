@@ -3,7 +3,7 @@
 
 import { getQuarter, startOfQuarter, endOfQuarter } from 'date-fns';
 import type { Transaction, Category, Budget, Goal, SubCategory, QuarterlyReport } from '@/types';
-import { adminDb } from '@/lib/firebase-admin';
+import { adminDb } from '@/lib/firebaseAdmin';
 
 
 async function getUserData(userId: string, collectionName: string) {
@@ -166,7 +166,7 @@ export async function generateAndSaveQuarterlyReport({
     // The `createdAt` field from Firestore is a Timestamp object, which is not serializable
     // for the client. We need to convert it to an object that can be serialized.
     const serializableReport = {
-        ...finalReportData,
+        ...finalReportDara,
         createdAt: {
             seconds: finalReportData.createdAt.seconds,
             nanoseconds: finalReportData.createdAt.nanoseconds,
