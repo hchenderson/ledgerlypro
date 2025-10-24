@@ -1,4 +1,5 @@
 
+
 import { app, auth } from "./firebase";
 import { 
     signInWithPopup, 
@@ -61,4 +62,5 @@ export const signOut = async () => {
 }
 
 export const authState = auth;
+
 
