@@ -3,7 +3,7 @@
 
 import { getQuarter, startOfQuarter, endOfQuarter } from 'date-fns';
 import type { Transaction, Category, Budget, Goal, SubCategory, QuarterlyReport } from '@/types';
-import { adminDb } from './firebase-admin';
+import { adminDb } from '@/lib/firebase-admin';
 
 
 async function getUserData(userId: string, collectionName: string) {
