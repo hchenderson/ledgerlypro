@@ -1,5 +1,4 @@
 
-import { auth } from "./firebase";
 import { 
     signInWithPopup, 
     GoogleAuthProvider,
@@ -7,10 +6,13 @@ import {
     createUserWithEmailAndPassword,
     signInWithEmailAndPassword,
     sendPasswordResetEmail as firebaseSendPasswordResetEmail,
-    UserCredential
+    UserCredential,
+    getAuth
 } from "firebase/auth";
+import { app } from "./firebase";
 
 const provider = new GoogleAuthProvider();
+const auth = getAuth(app);
 
 export const signInWithGoogle = async (): Promise<UserCredential> => {
     try {
