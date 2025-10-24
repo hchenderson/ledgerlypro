@@ -7,6 +7,7 @@ import { adminDb } from '@/lib/firebase-admin';
 
 
 async function getUserData(userId: string, collectionName: string) {
+    if (!adminDb) throw new Error("Firebase Admin SDK not initialized.");
     const collRef = adminDb.collection('users').doc(userId).collection(collectionName);
     const snapshot = await collRef.get();
     return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
@@ -65,6 +66,9 @@ export async function generateAndSaveQuarterlyReport({
   try {
     if (!userId) {
         throw new Error("User not authenticated.");
+    }
+    if (!adminDb) {
+        throw new Error("Firebase Admin SDK is not initialized. Please check server configuration.");
     }
     
     const referenceDate = new Date(referenceDateString);
@@ -156,9 +160,20 @@ export async function generateAndSaveQuarterlyReport({
 
     await reportRef.set({ ...reportDoc, createdAt: new Date() });
     
-    const finalReport = (await reportRef.get()).data() as QuarterlyReport;
+    const finalReportData = (await reportRef.get()).data();
+    if (!finalReportData) throw new Error("Could not retrieve the saved report.");
     
-    return { success: true, report: finalReport };
+    // The `createdAt` field from Firestore is a Timestamp object, which is not serializable
+    // for the client. We need to convert it to an object that can be serialized.
+    const serializableReport = {
+        ...finalReportData,
+        createdAt: {
+            seconds: finalReportData.createdAt.seconds,
+            nanoseconds: finalReportData.createdAt.nanoseconds,
+        }
+    } as QuarterlyReport;
+    
+    return { success: true, report: serializableReport };
   } catch (error: any) {
     console.error("Failed to generate quarterly report:", error);
     return { success: false, error: error.message };
