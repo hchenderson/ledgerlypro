@@ -196,6 +196,8 @@ export function NewTransactionSheet({
     resolver: zodResolver(formSchema),
   })
 
+  const isEditing = !!transaction?.id;
+
   // State for the text input for the date
   const [dateInput, setDateInput] = useState("");
   
@@ -253,7 +255,6 @@ export function NewTransactionSheet({
     });
   }
 
-  const isEditing = !!transaction?.id;
   const sheetTitle = isEditing ? "Edit Transaction" : "New Transaction";
   const sheetDescription = isEditing 
     ? "Update the details of your transaction." 
@@ -261,7 +262,7 @@ export function NewTransactionSheet({
   const buttonText = isEditing ? "Save Changes" : "Create Transaction";
 
   const availableCategories = useMemo(() => {
-    const filtered = categories.filter(c => c.type === transactionType);
+    const filtered = isEditing ? categories : categories.filter(c => c.type === transactionType);
     
     const getCategoryOptions = (categories: (Category | SubCategory)[]) => {
       let options: { label: string; value: string }[] = [];
@@ -304,7 +305,7 @@ export function NewTransactionSheet({
         ]
     }));
 
-  }, [categories, transactionType]);
+  }, [categories, transactionType, isEditing]);
 
 
   return (
