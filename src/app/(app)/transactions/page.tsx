@@ -87,6 +87,7 @@ export default function TransactionsPage() {
   const [hasMore, setHasMore] = useState(true);
   const [lastVisible, setLastVisible] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
   const [totalTransactions, setTotalTransactions] = useState(0);
+  const [isSearching, setIsSearching] = useState(false);
 
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
@@ -118,6 +119,7 @@ export default function TransactionsPage() {
   const fetchTransactions = useCallback(async (reset: boolean = false) => {
     if (!user) return;
     setLoading(true);
+    setIsSearching(!!debouncedDescription);
 
     if (debouncedDescription && isAlgoliaConfigured && searchIndex) {
         try {
@@ -148,20 +150,26 @@ export default function TransactionsPage() {
                 algoliaFilters.push(`(${categoryNames.map(name => `category:"${name}"`).join(' OR ')})`);
             }
 
-            if (filters.dateRange?.from) algoliaFilters.push(`date_timestamp >= ${filters.dateRange.from.getTime() / 1000}`);
+            if (filters.dateRange?.from) algoliaFilters.push(`date_timestamp >= ${Math.floor(filters.dateRange.from.getTime() / 1000)}`);
             if (filters.dateRange?.to) {
                 const toDate = new Date(filters.dateRange.to);
                 toDate.setHours(23, 59, 59, 999);
-                algoliaFilters.push(`date_timestamp <= ${toDate.getTime() / 1000}`);
+                algoliaFilters.push(`date_timestamp <= ${Math.floor(toDate.getTime() / 1000)}`);
             }
             if (filters.minAmount !== undefined) algoliaFilters.push(`amount >= ${filters.minAmount}`);
             if (filters.maxAmount !== undefined) algoliaFilters.push(`amount <= ${filters.maxAmount}`);
 
-            const { hits, nbHits } = await searchIndex.search<Transaction>(debouncedDescription, {
+            const page = reset ? 0 : Math.floor(transactions.length / TRANSACTIONS_PAGE_SIZE);
+
+            const { hits, nbHits } = await searchIndex.search<Omit<Transaction, 'id'> & { objectID: string }>(debouncedDescription, {
               filters: algoliaFilters.join(' AND '),
-              page: reset ? 0 : Math.floor(transactions.length / TRANSACTIONS_PAGE_SIZE),
-              hitsPerPage: TRANSACTIONS_PAGE_SIZE
+              page: page,
+              hitsPerPage: TRANSACTIONS_PAGE_SIZE,
+              // Treat numbers as text in search
+              numericFilters: [],
+              queryType: 'prefixLast'
             });
+            
             const searchResults = hits.map(hit => ({ ...hit, id: hit.objectID }));
             setTransactions(prev => reset ? searchResults : [...prev, ...searchResults]);
             setTotalTransactions(nbHits);
@@ -208,7 +216,7 @@ export default function TransactionsPage() {
         if (categoryNames.length > 30) {
             console.warn(`Too many subcategories (${categoryNames.length}) for Firestore 'in' query. This may fail. Max is 30.`);
         }
-        queryConstraints.push(where("category", "in", categoryNames));
+        queryConstraints.push(where("category", "in", categoryNames.slice(0, 30)));
 
     }
 
@@ -221,7 +229,6 @@ export default function TransactionsPage() {
     if (filters.minAmount !== undefined) queryConstraints.push(where("amount", ">=", filters.minAmount));
     if (filters.maxAmount !== undefined) queryConstraints.push(where("amount", "<=", filters.maxAmount));
     
-    // Only query without orderBy when not searching by description
     let q = query(collRef, ...queryConstraints, orderBy("date", "desc"));
     
     const currentLastVisible = reset ? null : lastVisible;
@@ -454,8 +461,11 @@ export default function TransactionsPage() {
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle>Transactions</CardTitle>
-            <CardDescription>
-              Showing {transactions.length} of {totalTransactions} transactions.
+             <CardDescription>
+              {isSearching 
+                ? `Found ${totalTransactions} transactions matching your search.`
+                : `Showing ${transactions.length} of ${totalTransactions} transactions.`
+              }
             </CardDescription>
           </div>
           <ExportTransactionsDialog
@@ -585,3 +595,5 @@ export default function TransactionsPage() {
     </div>
   );
 }
+
+    
