@@ -87,7 +87,7 @@ export default function TransactionsPage() {
   const [hasMore, setHasMore] = useState(true);
   const [lastVisible, setLastVisible] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
   const [totalTransactions, setTotalTransactions] = useState(0);
-  const [isSearching, setIsSearching] = useState(false);
+  const [currentPage, setCurrentPage] = useState(0);
 
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
@@ -118,152 +118,97 @@ export default function TransactionsPage() {
     maxAmount: debouncedMaxAmount && !isNaN(parseFloat(debouncedMaxAmount)) ? parseFloat(debouncedMaxAmount) : undefined,
   }), [categoryFilter, dateRange, debouncedMinAmount, debouncedMaxAmount]);
   
-  const fetchTransactions = useCallback(async (reset: boolean = false, loadMore: boolean = false) => {
+  const fetchTransactions = useCallback(async (loadMore: boolean = false) => {
     if (!user) return;
     setLoading(true);
 
-    const isDescriptionSearch = !!debouncedDescription;
-    setIsSearching(isDescriptionSearch);
+    const pageToFetch = loadMore ? currentPage + 1 : 0;
+    const isSearchActive = !!debouncedDescription;
 
-    // --- ALGOLIA SEARCH LOGIC ---
-    if (isDescriptionSearch && searchIndex) {
-        try {
-            const algoliaFilters = [`_tags:${user.uid}`];
-            if (filters.category) {
-                const getSubCategoryNames = (category: Category | SubCategory): string[] => {
-                    let names = [category.name];
-                    if (category.subCategories) {
-                        category.subCategories.forEach(sub => names = [...names, ...getSubCategoryNames(sub)]);
-                    }
-                    return names;
-                };
-
-                const findCategoryByName = (name: string, cats: (Category|SubCategory)[]): Category | SubCategory | undefined => {
-                    for (const cat of cats) {
-                        if (cat.name === name) return cat;
-                        if (cat.subCategories) {
-                            const found = findCategoryByName(name, cat.subCategories);
-                            if (found) return found;
-                        }
-                    }
-                    return undefined;
-                };
-                
-                const mainCategory = findCategoryByName(filters.category, categories);
-                const categoryNames = mainCategory ? getSubCategoryNames(mainCategory) : [filters.category];
-
-                algoliaFilters.push(`(${categoryNames.map(name => `category:"${name}"`).join(' OR ')})`);
-            }
-            if (filters.dateRange?.from) algoliaFilters.push(`date_timestamp >= ${Math.floor(filters.dateRange.from.getTime() / 1000)}`);
-            if (filters.dateRange?.to) {
-                const toDate = new Date(filters.dateRange.to);
-                toDate.setHours(23, 59, 59, 999);
-                algoliaFilters.push(`date_timestamp <= ${Math.floor(toDate.getTime() / 1000)}`);
-            }
-            if (filters.minAmount !== undefined) algoliaFilters.push(`amount >= ${filters.minAmount}`);
-            if (filters.maxAmount !== undefined) algoliaFilters.push(`amount <= ${filters.maxAmount}`);
-
-            const page = loadMore ? Math.floor(transactions.length / TRANSACTIONS_PAGE_SIZE) : 0;
-            
-            const { hits, nbHits, nbPages } = await searchIndex.search<Omit<Transaction, 'id'> & { objectID: string }>(debouncedDescription, {
-              filters: algoliaFilters.join(' AND '),
-              page: page,
-              hitsPerPage: TRANSACTIONS_PAGE_SIZE,
-            });
-            
-            const searchResults = hits.map(hit => ({ ...hit, id: hit.objectID, date: new Date(hit.date_timestamp * 1000).toISOString() } as Transaction));
-            
-            setTransactions(prev => loadMore ? [...prev, ...searchResults] : searchResults);
-            setTotalTransactions(nbHits);
-            setHasMore(page + 1 < nbPages);
-
-        } catch (error) {
-            console.error("Algolia search error:", error);
-            toast({ variant: "destructive", title: "Search Error", description: "Could not perform search." });
-            setTransactions([]);
-            setTotalTransactions(0);
-            setHasMore(false);
-        } finally {
-            setLoading(false);
-        }
-        return;
-    }
-
-    // --- FIRESTORE FETCH LOGIC (NO DESCRIPTION SEARCH) ---
-    const collRef = collection(db, 'users', user.uid, 'transactions');
-    const queryConstraints: QueryConstraint[] = [];
-    
-    if (filters.category) {
-        const getSubCategoryNames = (category: Category | SubCategory): string[] => {
-            let names = [category.name];
-            if (category.subCategories) {
-                names.push(...category.subCategories.flatMap(getSubCategoryNames));
-            }
-            return names;
-        };
-
-        const findCategoryByName = (name: string, cats: (Category|SubCategory)[]): Category | SubCategory | undefined => {
-            for (const cat of cats) {
-                if (cat.name === name) return cat;
-                if (cat.subCategories) {
-                    const found = findCategoryByName(name, cat.subCategories);
-                    if (found) return found;
-                }
-            }
-            return undefined;
-        };
-        
-        const mainCategory = findCategoryByName(filters.category, categories);
-        const categoryNames = mainCategory ? getSubCategoryNames(mainCategory) : [filters.category];
-
-        if (categoryNames.length > 30) {
-            console.warn(`Too many subcategories (${categoryNames.length}) for Firestore 'in' query. This may fail. Max is 30.`);
-        }
-        queryConstraints.push(where("category", "in", categoryNames.slice(0, 30)));
-    }
-    if (filters.dateRange?.from) queryConstraints.push(where("date", ">=", filters.dateRange.from.toISOString()));
-    if (filters.dateRange?.to) {
-        const toDate = new Date(filters.dateRange.to);
-        toDate.setHours(23, 59, 59, 999);
-        queryConstraints.push(where("date", "<=", toDate.toISOString()));
-    }
-    if (filters.minAmount !== undefined) queryConstraints.push(where("amount", ">=", filters.minAmount));
-    if (filters.maxAmount !== undefined) queryConstraints.push(where("amount", "<=", filters.maxAmount));
-    
-    let q = query(collRef, ...queryConstraints, orderBy("date", "desc"));
-    
-    const currentLastVisible = loadMore ? lastVisible : null;
-    if (currentLastVisible) {
-      q = query(q, startAfter(currentLastVisible));
-    }
-    q = query(q, limit(TRANSACTIONS_PAGE_SIZE));
-
-    try {
-       if (reset || !loadMore) {
-        const countQuery = query(collRef, ...queryConstraints);
-        const totalCountSnap = await getCountFromServer(countQuery);
-        setTotalTransactions(totalCountSnap.data().count);
+    if (isSearchActive && searchIndex) {
+      // --- ALGOLIA SEARCH LOGIC ---
+      try {
+          const algoliaFilters = [`_tags:${user.uid}`];
+          if (filters.category) {
+              algoliaFilters.push(`category:"${filters.category}"`);
+          }
+          if (filters.dateRange?.from) {
+              algoliaFilters.push(`date_timestamp >= ${Math.floor(filters.dateRange.from.getTime() / 1000)}`);
+          }
+          if (filters.dateRange?.to) {
+              const toDate = new Date(filters.dateRange.to);
+              toDate.setHours(23, 59, 59, 999);
+              algoliaFilters.push(`date_timestamp <= ${Math.floor(toDate.getTime() / 1000)}`);
+          }
+          if (filters.minAmount !== undefined) algoliaFilters.push(`amount >= ${filters.minAmount}`);
+          if (filters.maxAmount !== undefined) algoliaFilters.push(`amount <= ${filters.maxAmount}`);
+          
+          const { hits, nbHits, nbPages } = await searchIndex.search<Omit<Transaction, 'id'> & { objectID: string, date_timestamp: number }>(debouncedDescription, {
+            filters: algoliaFilters.join(' AND '),
+            page: pageToFetch,
+            hitsPerPage: TRANSACTIONS_PAGE_SIZE,
+          });
+          
+          const searchResults = hits.map(hit => ({ ...hit, id: hit.objectID, date: new Date(hit.date_timestamp * 1000).toISOString() } as Transaction));
+          
+          setTransactions(prev => pageToFetch > 0 ? [...prev, ...searchResults] : searchResults);
+          setTotalTransactions(nbHits);
+          setCurrentPage(pageToFetch);
+          setHasMore(pageToFetch + 1 < nbPages);
+      } catch (error) {
+          console.error("Algolia search error:", error);
+          toast({ variant: "destructive", title: "Search Error", description: "Could not perform search." });
+          setTransactions([]);
+          setTotalTransactions(0);
+          setHasMore(false);
       }
-      
-      const docsSnap = await getDocs(q);
-      const docsData = docsSnap.docs.map(doc => doc.data() as Transaction);
-      
-      setHasMore(docsSnap.docs.length === TRANSACTIONS_PAGE_SIZE);
-      setLastVisible(docsSnap.docs[docsSnap.docs.length - 1] || null);
-      setTransactions(prev => (loadMore ? [...prev, ...docsData] : docsData));
+    } else {
+      // --- FIRESTORE FETCH LOGIC ---
+      try {
+        const collRef = collection(db, 'users', user.uid, 'transactions');
+        const queryConstraints: QueryConstraint[] = [];
+        
+        if (filters.category) queryConstraints.push(where("category", "==", filters.category));
+        if (filters.dateRange?.from) queryConstraints.push(where("date", ">=", filters.dateRange.from.toISOString()));
+        if (filters.dateRange?.to) {
+            const toDate = new Date(filters.dateRange.to);
+            toDate.setHours(23, 59, 59, 999);
+            queryConstraints.push(where("date", "<=", toDate.toISOString()));
+        }
+        if (filters.minAmount !== undefined) queryConstraints.push(where("amount", ">=", filters.minAmount));
+        if (filters.maxAmount !== undefined) queryConstraints.push(where("amount", "<=", filters.maxAmount));
+        
+        if (pageToFetch === 0) {
+            const countQuery = query(collRef, ...queryConstraints);
+            const totalCountSnap = await getCountFromServer(countQuery);
+            setTotalTransactions(totalCountSnap.data().count);
+        }
 
-    } catch (error: any) {
-      console.error("Error fetching transactions:", error);
-      toast({ variant: "destructive", title: "Filter Error", description: "Could not apply filters. A Firestore index may be required for this combination." });
-    } finally {
-      setLoading(false);
+        let q = query(collRef, ...queryConstraints, orderBy("date", "desc"), limit(TRANSACTIONS_PAGE_SIZE));
+        
+        if (pageToFetch > 0 && lastVisible) {
+          q = query(q, startAfter(lastVisible));
+        }
+        
+        const docsSnap = await getDocs(q);
+        const docsData = docsSnap.docs.map(doc => doc.data() as Transaction);
+        
+        setHasMore(docsSnap.docs.length === TRANSACTIONS_PAGE_SIZE);
+        setLastVisible(docsSnap.docs[docsSnap.docs.length - 1] || null);
+        setCurrentPage(pageToFetch);
+        setTransactions(prev => pageToFetch > 0 ? [...prev, ...docsData] : docsData);
+      } catch (error: any) {
+        console.error("Error fetching transactions:", error);
+        toast({ variant: "destructive", title: "Filter Error", description: "Could not apply filters. A Firestore index may be required for this combination." });
+      }
     }
-  }, [user, debouncedDescription, searchIndex, filters, lastVisible, categories, toast, transactions.length]);
+    setLoading(false);
+  }, [user, debouncedDescription, searchIndex, filters, lastVisible, currentPage, toast]);
   
   useEffect(() => {
-    fetchTransactions(true, false);
+    fetchTransactions(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedDescription, filters.category, filters.dateRange, filters.minAmount, filters.maxAmount, user]);
+  }, [debouncedDescription, filters, user]);
 
 
   useEffect(() => {
@@ -311,13 +256,13 @@ export default function TransactionsPage() {
   
   const handleTransactionCreated = useCallback(async (values: any) => {
     await addTransaction({...values, date: values.date.toISOString()});
-    await fetchTransactions(true);
+    await fetchTransactions(false); // Refetch from page 0
     toast({ title: "Transaction Added", description: "The transaction has been successfully created." });
   }, [addTransaction, fetchTransactions, toast]);
 
   const handleTransactionUpdated = useCallback(async (id: string, values: any) => {
     await updateTransaction(id, {...values, date: values.date.toISOString()});
-    await fetchTransactions(true);
+    await fetchTransactions(false); // Refetch from page 0
     toast({ title: "Transaction Updated", description: "The transaction has been successfully updated." });
   }, [updateTransaction, fetchTransactions, toast]);
 
@@ -325,6 +270,7 @@ export default function TransactionsPage() {
   const handleDelete = useCallback(async (id: string) => {
       try {
         await deleteTransaction(id);
+        // Optimistically remove from UI
         setTransactions(prev => prev.filter(t => t.id !== id));
         setTotalTransactions(prev => prev - 1);
         toast({
@@ -342,7 +288,7 @@ export default function TransactionsPage() {
   
   const handleLoadMore = useCallback(() => {
     if (hasMore && !loading) {
-      fetchTransactions(false, true);
+      fetchTransactions(true);
     }
   }, [fetchTransactions, hasMore, loading]);
 
@@ -369,7 +315,9 @@ export default function TransactionsPage() {
     }
   }, []);
   
-  if (loading && transactions.length === 0 && !isSearching) {
+  const isFiltering = descriptionFilter || categoryFilter !== 'all' || dateRange || minAmount || maxAmount;
+
+  if (loading && transactions.length === 0) {
     return <TransactionsSkeleton />;
   }
 
@@ -452,7 +400,7 @@ export default function TransactionsPage() {
           </div>
           
           <div className="lg:col-span-2 flex justify-end">
-            <Button onClick={resetFilters} variant="ghost">
+            <Button onClick={resetFilters} variant="ghost" disabled={!isFiltering}>
               <X className="mr-2 h-4 w-4"/>
               Reset Filters
             </Button>
@@ -465,9 +413,9 @@ export default function TransactionsPage() {
           <div>
             <CardTitle>Transactions</CardTitle>
              <CardDescription>
-              {isSearching 
-                ? `Found ${totalTransactions} transactions matching your search.`
-                : `Showing ${transactions.length} of ${totalTransactions} transactions.`
+              {isFiltering
+                ? `Found ${totalTransactions} transactions matching your filters.`
+                : `Showing ${transactions.length} of ${totalTransactions} total transactions.`
               }
             </CardDescription>
           </div>
