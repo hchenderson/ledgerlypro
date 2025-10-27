@@ -263,48 +263,22 @@ export function NewTransactionSheet({
 
   const availableCategories = useMemo(() => {
     const filtered = isEditing ? categories : categories.filter(c => c.type === transactionType);
-    
-    const getCategoryOptions = (categories: (Category | SubCategory)[]) => {
+
+    const flattenCategories = (cats: (Category | SubCategory)[], level = 0): { label: string; value: string }[] => {
       let options: { label: string; value: string }[] = [];
-      categories.forEach(c => {
-        options.push({ label: c.name, value: c.name });
+      cats.forEach(c => {
+        options.push({
+          label: `${'  '.repeat(level)}${c.name}`,
+          value: c.name,
+        });
+        if (c.subCategories) {
+          options = [...options, ...flattenCategories(c.subCategories, level + 1)];
+        }
       });
       return options;
-    }
-
-    const groupedCategories: { group: string; items: { label: string; value: string }[] }[] = [];
+    };
     
-    filtered.forEach(mainCategory => {
-      groupedCategories.push({
-        group: mainCategory.name,
-        items: getCategoryOptions([mainCategory])
-      });
-      if (mainCategory.subCategories && mainCategory.subCategories.length > 0) {
-        mainCategory.subCategories.forEach(sub1 => {
-           groupedCategories.push({
-             group: `  ${sub1.name}`,
-             items: getCategoryOptions([sub1])
-           });
-           if (sub1.subCategories && sub1.subCategories.length > 0) {
-             sub1.subCategories.forEach(sub2 => {
-                groupedCategories.push({
-                  group: `    ${sub2.name}`,
-                  items: getCategoryOptions([sub2])
-                });
-             });
-           }
-        });
-      }
-    });
-
-    return filtered.map(mainCategory => ({
-        label: mainCategory.name,
-        options: [
-            { label: mainCategory.name, value: mainCategory.name },
-            ...(mainCategory.subCategories || []).map(sub => ({ label: sub.name, value: sub.name }))
-        ]
-    }));
-
+    return flattenCategories(filtered);
   }, [categories, transactionType, isEditing]);
 
 
@@ -390,15 +364,10 @@ export function NewTransactionSheet({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {availableCategories.map((group) => (
-                        <SelectGroup key={group.label}>
-                            <SelectLabel>{group.label}</SelectLabel>
-                            {group.options.map(option => (
-                                <SelectItem key={option.value} value={option.value}>
-                                    {option.label}
-                                </SelectItem>
-                            ))}
-                        </SelectGroup>
+                      {availableCategories.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
                       ))}
                       <AddCategoryDialog onCategoryAdded={handleCategoryAdded} type={transactionType || 'expense'} categories={categories}/>
                     </SelectContent>
