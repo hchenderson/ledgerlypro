@@ -76,6 +76,7 @@ const TRANSACTIONS_PAGE_SIZE = 25;
 export default function TransactionsPage() {
   const { user } = useAuth();
   const { 
+    addTransaction,
     updateTransaction, 
     deleteTransaction, 
     categories = [], 
@@ -253,9 +254,18 @@ export default function TransactionsPage() {
     setIsSheetOpen(open);
   }, []);
   
-  const handleSaveTransaction = useCallback(async () => {
+  const handleTransactionCreated = useCallback(async (values: any) => {
+    await addTransaction({...values, date: values.date.toISOString()});
     await fetchTransactions(true);
-  }, [fetchTransactions]);
+    toast({ title: "Transaction Added", description: "The transaction has been successfully created." });
+  }, [addTransaction, fetchTransactions, toast]);
+
+  const handleTransactionUpdated = useCallback(async (id: string, values: any) => {
+    await updateTransaction(id, {...values, date: values.date.toISOString()});
+    await fetchTransactions(true);
+    toast({ title: "Transaction Updated", description: "The transaction has been successfully updated." });
+  }, [updateTransaction, fetchTransactions, toast]);
+
 
   const handleDelete = useCallback(async (id: string) => {
       try {
@@ -518,14 +528,8 @@ export default function TransactionsPage() {
         isOpen={isSheetOpen}
         onOpenChange={handleSheetClose}
         transaction={selectedTransaction}
-        onTransactionCreated={() => {
-            handleSaveTransaction();
-            toast({ title: "Transaction Added", description: "The transaction has been successfully created." });
-        }}
-        onTransactionUpdated={() => {
-            handleSaveTransaction();
-            toast({ title: "Transaction Updated", description: "The transaction has been successfully updated." });
-        }}
+        onTransactionCreated={handleTransactionCreated}
+        onTransactionUpdated={handleTransactionUpdated}
         categories={categories}
       />
     </div>

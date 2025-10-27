@@ -1,12 +1,11 @@
 
 "use client"
 
-import { useState, useEffect, useMemo, useRef } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { z } from "zod"
 import { useForm, useWatch } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { format, isValid, parse } from "date-fns"
-import * as icons from "lucide-react"
 import { Calendar as CalendarIcon, PlusCircle } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -29,7 +28,6 @@ import {
   SheetDescription,
   SheetHeader,
   SheetTitle,
-  SheetTrigger,
   SheetFooter,
   SheetClose
 } from "@/components/ui/sheet"
@@ -82,7 +80,7 @@ interface NewTransactionSheetProps {
     onOpenChange?: (isOpen: boolean) => void;
     transaction?: Partial<Omit<Transaction, 'id'>> & { id: string } | null;
     onTransactionCreated?: (values: FormValues) => void;
-    onTransactionUpdated?: (values: FormValues) => void;
+    onTransactionUpdated?: (id: string, values: FormValues) => void;
     children?: React.ReactNode;
     categories: Category[];
 }
@@ -189,7 +187,6 @@ export function NewTransactionSheet({
     children,
     categories,
 }: NewTransactionSheetProps) {
-  const { addTransaction, updateTransaction } = useUserData();
   const { toast } = useToast()
   
   const form = useForm<FormValues>({
@@ -231,15 +228,11 @@ export function NewTransactionSheet({
   async function onSubmit(values: FormValues) {
     if (transaction && transaction.id) {
         if(onTransactionUpdated) {
-            onTransactionUpdated(values);
-        } else if (updateTransaction) {
-            await updateTransaction(transaction.id, {...values, date: values.date.toISOString()});
+            onTransactionUpdated(transaction.id, values);
         }
     } else {
         if (onTransactionCreated) {
             onTransactionCreated(values);
-        } else if (addTransaction) {
-            await addTransaction({...values, date: values.date.toISOString()});
         }
     }
 
@@ -262,24 +255,50 @@ export function NewTransactionSheet({
   const buttonText = isEditing ? "Save Changes" : "Create Transaction";
 
   const availableCategories = useMemo(() => {
-    const filtered = isEditing ? categories : categories.filter(c => c.type === transactionType);
+    const filtered = categories.filter(c => c.type === transactionType);
 
-    const flattenCategories = (cats: (Category | SubCategory)[], level = 0): { label: string; value: string }[] => {
-      let options: { label: string; value: string }[] = [];
-      cats.forEach(c => {
-        options.push({
-          label: `${'  '.repeat(level)}${c.name}`,
-          value: c.name,
-        });
-        if (c.subCategories) {
-          options = [...options, ...flattenCategories(c.subCategories, level + 1)];
+    const getCategoryOptions = (cats: (Category | SubCategory)[]) => {
+      const options: {
+        label: string;
+        options: { label: string; value: string; }[];
+        disabled?: boolean;
+      }[] = [];
+
+      cats.forEach(cat => {
+        const hasSubCategories = cat.subCategories && cat.subCategories.length > 0;
+        
+        let subOptions: { label: string; value: string }[] = [];
+        if (hasSubCategories) {
+          cat.subCategories!.forEach(subCat => {
+             const hasSubSubCategories = subCat.subCategories && subCat.subCategories.length > 0;
+             if (hasSubSubCategories) {
+                subCat.subCategories!.forEach(subSubCat => {
+                    subOptions.push({ label: subSubCat.name, value: subSubCat.name });
+                });
+             } else {
+                subOptions.push({ label: subCat.name, value: subCat.name });
+             }
+          });
+        }
+        
+        // If there are sub-options, the main category should be a group label.
+        // If not, it shouldn't appear at all as it's not a leaf.
+        if (subOptions.length > 0) {
+            options.push({ label: cat.name, options: subOptions });
+        } else if (!hasSubCategories) {
+             // This case handles a main category with no sub-categories.
+             // It shouldn't really happen with the new rules, but as a fallback.
+             options.push({
+                 label: 'Uncategorized',
+                 options: [{label: cat.name, value: cat.name}]
+             })
         }
       });
       return options;
     };
     
-    return flattenCategories(filtered);
-  }, [categories, transactionType, isEditing]);
+    return getCategoryOptions(filtered);
+  }, [categories, transactionType]);
 
 
   return (
@@ -306,6 +325,7 @@ export function NewTransactionSheet({
                       }}
                       defaultValue={field.value}
                       className="flex items-center space-x-4"
+                      disabled={isEditing}
                     >
                       <FormItem className="flex items-center space-x-2 space-y-0">
                         <FormControl>
@@ -364,10 +384,15 @@ export function NewTransactionSheet({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {availableCategories.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
+                      {availableCategories.map((group) => (
+                        <SelectGroup key={group.label}>
+                          <SelectLabel>{group.label}</SelectLabel>
+                          {group.options.map(option => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
                       ))}
                       <AddCategoryDialog onCategoryAdded={handleCategoryAdded} type={transactionType || 'expense'} categories={categories}/>
                     </SelectContent>
