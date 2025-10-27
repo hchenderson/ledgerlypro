@@ -25,7 +25,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { collection, query, orderBy, limit, startAfter, where, getDocs, getCountFromServer, QueryConstraint, DocumentData, QueryDocumentSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { ExportTransactionsDialog } from "@/components/export-transactions-dialog";
-
+import { searchClient, algoliaIndexName, isAlgoliaConfigured } from "@/lib/algolia";
 
 // Custom hook with proper typing
 const useDebounce = <T>(value: T, delay: number): T => {
@@ -64,7 +64,6 @@ function TransactionsSkeleton() {
 
 // Define proper types for filters
 interface TransactionFilters {
-  description?: string;
   category?: string;
   dateRange?: DateRange;
   minAmount?: number;
@@ -102,25 +101,47 @@ export default function TransactionsPage() {
   const [maxAmount, setMaxAmount] = useState('');
   
   // Debounced values
-  const debouncedDescription = useDebounce(descriptionFilter, 500);
+  const debouncedDescription = useDebounce(descriptionFilter, 300);
   const debouncedMinAmount = useDebounce(minAmount, 500);
   const debouncedMaxAmount = useDebounce(maxAmount, 500);
+
+  const searchIndex = useMemo(() => isAlgoliaConfigured ? searchClient.initIndex(algoliaIndexName) : null, []);
   
   // Memoized filters object
   const filters = useMemo((): TransactionFilters => ({
-    description: debouncedDescription || undefined,
     category: categoryFilter === 'all' ? undefined : categoryFilter,
     dateRange: dateRange,
     minAmount: debouncedMinAmount && !isNaN(parseFloat(debouncedMinAmount)) ? parseFloat(debouncedMinAmount) : undefined,
     maxAmount: debouncedMaxAmount && !isNaN(parseFloat(debouncedMaxAmount)) ? parseFloat(debouncedMaxAmount) : undefined,
-  }), [debouncedDescription, categoryFilter, dateRange, debouncedMinAmount, debouncedMaxAmount]);
+  }), [categoryFilter, dateRange, debouncedMinAmount, debouncedMaxAmount]);
   
   const fetchTransactions = useCallback(async (reset: boolean = false) => {
     if (!user) return;
     setLoading(true);
 
+    if (debouncedDescription && isAlgoliaConfigured && searchIndex) {
+        try {
+            const { hits, nbHits } = await searchIndex.search<Transaction>(debouncedDescription, {
+              filters: `_tags:${user.uid}`,
+              page: reset ? 0 : Math.floor(transactions.length / TRANSACTIONS_PAGE_SIZE),
+              hitsPerPage: TRANSACTIONS_PAGE_SIZE
+            });
+            const searchResults = hits.map(hit => ({ ...hit, id: hit.objectID }));
+            setTransactions(prev => reset ? searchResults : [...prev, ...searchResults]);
+            setTotalTransactions(nbHits);
+            setHasMore(reset ? (searchResults.length === TRANSACTIONS_PAGE_SIZE) : (transactions.length + searchResults.length < nbHits));
+        } catch (error) {
+            console.error("Algolia search error:", error);
+            toast({ variant: "destructive", title: "Search Error", description: "Could not perform search." });
+        } finally {
+            setLoading(false);
+        }
+        return;
+    }
+
+
     const collRef = collection(db, 'users', user.uid, 'transactions');
-    const queryConstraints: QueryConstraint[] = [];
+    const queryConstraints: QueryConstraint[] = [where("_tags", "array-contains", user.uid)];
     
     // Server-side filtering
     if (filters.category) {
@@ -198,21 +219,13 @@ export default function TransactionsPage() {
     } finally {
       setLoading(false);
     }
-  }, [user, filters, lastVisible, toast, categories]);
-
-  const displayedTransactions = useMemo(() => {
-    if (filters.description) {
-      return transactions.filter(t => 
-        t.description.toLowerCase().includes(filters.description!.toLowerCase())
-      );
-    }
-    return transactions;
-  }, [transactions, filters.description]);
-
+  }, [user, filters, lastVisible, toast, categories, debouncedDescription, isAlgoliaConfigured, searchIndex, transactions.length]);
+  
   useEffect(() => {
     fetchTransactions(true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.category, filters.dateRange, filters.minAmount, filters.maxAmount, user, categories]);
+  }, [debouncedDescription, filters.category, filters.dateRange, filters.minAmount, filters.maxAmount, user, categories, searchIndex]);
+
 
   useEffect(() => {
     if (!user) return;
@@ -408,7 +421,7 @@ export default function TransactionsPage() {
           <div>
             <CardTitle>Transactions</CardTitle>
             <CardDescription>
-              Showing {displayedTransactions.length} of {totalTransactions} transactions.
+              Showing {transactions.length} of {totalTransactions} transactions.
             </CardDescription>
           </div>
           <ExportTransactionsDialog
@@ -440,7 +453,7 @@ export default function TransactionsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {displayedTransactions.map((transaction) => (
+              {transactions.map((transaction) => (
                 <TableRow key={transaction.id}>
                   <TableCell className="font-medium">
                     {transaction.description || 'No description'}
@@ -513,7 +526,7 @@ export default function TransactionsPage() {
             </TableBody>
           </Table>
           
-          {hasMore && !filters.description && (
+          {hasMore && (
             <div className="flex justify-center mt-4">
               <Button 
                 onClick={handleLoadMore} 
@@ -538,5 +551,3 @@ export default function TransactionsPage() {
     </div>
   );
 }
-
-    
