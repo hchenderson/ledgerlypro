@@ -26,6 +26,7 @@ import { collection, query, orderBy, limit, startAfter, where, getDocs, getCount
 import { db } from "@/lib/firebase";
 import { ExportTransactionsDialog } from "@/components/export-transactions-dialog";
 import { searchClient, algoliaIndexName, isAlgoliaConfigured } from "@/lib/algolia";
+import aa from 'search-insights';
 
 // Custom hook with proper typing
 const useDebounce = <T>(value: T, delay: number): T => {
@@ -70,6 +71,8 @@ interface TransactionFilters {
   maxAmount?: number;
 }
 
+type AlgoliaTransaction = Omit<Transaction, 'id'> & { objectID: string; date_timestamp: number };
+
 const TRANSACTIONS_PAGE_SIZE = 25;
 
 export default function TransactionsPage() {
@@ -88,6 +91,7 @@ export default function TransactionsPage() {
   const [lastVisible, setLastVisible] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
   const [totalTransactions, setTotalTransactions] = useState(0);
   const [currentPage, setCurrentPage] = useState(0);
+  const [queryID, setQueryID] = useState<string | null>(null);
 
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
@@ -108,7 +112,7 @@ export default function TransactionsPage() {
 
   const searchIndex = useMemo(() => {
     return isAlgoliaConfigured && searchClient ? searchClient.initIndex(algoliaIndexName) : null;
-  }, [searchClient]);
+  }, []);
   
   // Memoized filters object
   const filters = useMemo((): TransactionFilters => ({
@@ -128,7 +132,7 @@ export default function TransactionsPage() {
     if (isSearchActive && searchIndex) {
       // --- ALGOLIA SEARCH LOGIC ---
       try {
-          const algoliaFilters = [`_tags:${user.uid}`];
+          const algoliaFilters: string[] = [`_tags:${user.uid}`];
           if (filters.category) {
               algoliaFilters.push(`category:"${filters.category}"`);
           }
@@ -143,11 +147,14 @@ export default function TransactionsPage() {
           if (filters.minAmount !== undefined) algoliaFilters.push(`amount >= ${filters.minAmount}`);
           if (filters.maxAmount !== undefined) algoliaFilters.push(`amount <= ${filters.maxAmount}`);
           
-          const { hits, nbHits, nbPages } = await searchIndex.search<Omit<Transaction, 'id'> & { objectID: string, date_timestamp: number }>(debouncedDescription, {
+          const { hits, nbHits, nbPages, queryID: newQueryID } = await searchIndex.search<AlgoliaTransaction>(debouncedDescription, {
             filters: algoliaFilters.join(' AND '),
             page: pageToFetch,
             hitsPerPage: TRANSACTIONS_PAGE_SIZE,
+            clickAnalytics: true,
           });
+
+          setQueryID(newQueryID);
           
           const searchResults = hits.map(hit => ({ ...hit, id: hit.objectID, date: new Date(hit.date_timestamp * 1000).toISOString() } as Transaction));
           
@@ -164,6 +171,7 @@ export default function TransactionsPage() {
       }
     } else {
       // --- FIRESTORE FETCH LOGIC ---
+      setQueryID(null); // No search, so no queryID
       try {
         const collRef = collection(db, 'users', user.uid, 'transactions');
         const queryConstraints: QueryConstraint[] = [];
@@ -199,14 +207,22 @@ export default function TransactionsPage() {
         setTransactions(prev => pageToFetch > 0 ? [...prev, ...docsData] : docsData);
       } catch (error: any) {
         console.error("Error fetching transactions:", error);
-        toast({ variant: "destructive", title: "Filter Error", description: "Could not apply filters. A Firestore index may be required for this combination." });
+        if (error.message.includes('requires an index')) {
+           toast({ variant: "destructive", title: "Filter Error", description: "This combination of filters requires a custom Firestore index. The functionality is not yet supported." });
+        } else {
+           toast({ variant: "destructive", title: "Error", description: "Could not retrieve transactions." });
+        }
       }
     }
     setLoading(false);
   }, [user, debouncedDescription, searchIndex, filters, lastVisible, currentPage, toast]);
   
   useEffect(() => {
+    // Reset pagination when filters change
+    setCurrentPage(0);
+    setLastVisible(null);
     fetchTransactions(false);
+  // We only want this to run when these specific deps change.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedDescription, filters, user]);
 
@@ -243,9 +259,22 @@ export default function TransactionsPage() {
   }, []);
 
   const handleEdit = useCallback((transaction: Transaction) => {
+    if (queryID) {
+        const hit = transactions.find(t => t.id === transaction.id);
+        if(hit) {
+            const position = transactions.indexOf(hit) + 1;
+            aa.clickedObjectIDsAfterSearch({
+                index: algoliaIndexName,
+                eventName: 'Transaction Edited',
+                queryID: queryID,
+                objectIDs: [transaction.id],
+                positions: [position],
+            });
+        }
+    }
     setSelectedTransaction(transaction);
     setIsSheetOpen(true);
-  }, []);
+  }, [queryID, transactions]);
   
   const handleSheetClose = useCallback((open: boolean) => {
     if (!open) {
@@ -455,8 +484,8 @@ export default function TransactionsPage() {
                     </TableCell>
                 </TableRow>
               ) : transactions.length > 0 ? (
-                transactions.map((transaction) => (
-                  <TableRow key={transaction.id}>
+                transactions.map((transaction, index) => (
+                  <TableRow key={transaction.id} className="cursor-pointer" onClick={() => handleEdit(transaction)}>
                     <TableCell className="font-medium">
                       {transaction.description || 'No description'}
                     </TableCell>
@@ -476,7 +505,7 @@ export default function TransactionsPage() {
                       <AlertDialog>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button aria-haspopup="true" size="icon" variant="ghost">
+                            <Button aria-haspopup="true" size="icon" variant="ghost" onClick={(e) => e.stopPropagation()}>
                               <MoreHorizontal className="h-4 w-4" />
                               <span className="sr-only">Toggle menu</span>
                             </Button>
