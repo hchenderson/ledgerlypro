@@ -121,8 +121,44 @@ export default function TransactionsPage() {
 
     if (debouncedDescription && isAlgoliaConfigured && searchIndex) {
         try {
+            const algoliaFilters = [`_tags:${user.uid}`];
+            if (filters.category) {
+                const getSubCategoryNames = (category: Category | SubCategory): string[] => {
+                    let names = [category.name];
+                    if (category.subCategories) {
+                        category.subCategories.forEach(sub => names = [...names, ...getSubCategoryNames(sub)]);
+                    }
+                    return names;
+                };
+
+                const findCategoryByName = (name: string, cats: (Category|SubCategory)[]): Category | SubCategory | undefined => {
+                    for (const cat of cats) {
+                        if (cat.name === name) return cat;
+                        if (cat.subCategories) {
+                            const found = findCategoryByName(name, cat.subCategories);
+                            if (found) return found;
+                        }
+                    }
+                    return undefined;
+                };
+                
+                const mainCategory = findCategoryByName(filters.category, categories);
+                const categoryNames = mainCategory ? getSubCategoryNames(mainCategory) : [filters.category];
+
+                algoliaFilters.push(`(${categoryNames.map(name => `category:"${name}"`).join(' OR ')})`);
+            }
+
+            if (filters.dateRange?.from) algoliaFilters.push(`date_timestamp >= ${filters.dateRange.from.getTime() / 1000}`);
+            if (filters.dateRange?.to) {
+                const toDate = new Date(filters.dateRange.to);
+                toDate.setHours(23, 59, 59, 999);
+                algoliaFilters.push(`date_timestamp <= ${toDate.getTime() / 1000}`);
+            }
+            if (filters.minAmount !== undefined) algoliaFilters.push(`amount >= ${filters.minAmount}`);
+            if (filters.maxAmount !== undefined) algoliaFilters.push(`amount <= ${filters.maxAmount}`);
+
             const { hits, nbHits } = await searchIndex.search<Transaction>(debouncedDescription, {
-              filters: `_tags:${user.uid}`,
+              filters: algoliaFilters.join(' AND '),
               page: reset ? 0 : Math.floor(transactions.length / TRANSACTIONS_PAGE_SIZE),
               hitsPerPage: TRANSACTIONS_PAGE_SIZE
             });
@@ -169,19 +205,15 @@ export default function TransactionsPage() {
         const mainCategory = findCategoryByName(filters.category, categories);
         const categoryNames = mainCategory ? getSubCategoryNames(mainCategory) : [filters.category];
 
-        if (categoryNames.length > 10) {
-            console.warn(`Too many subcategories (${categoryNames.length}) for Firestore 'in' query. Filtering by main category only.`);
-            queryConstraints.push(where("category", "==", filters.category));
-        } else if (categoryNames.length > 1) {
-            queryConstraints.push(where("category", "in", categoryNames));
-        } else if (categoryNames.length === 1) {
-            queryConstraints.push(where("category", "==", categoryNames[0]));
+        if (categoryNames.length > 30) {
+            console.warn(`Too many subcategories (${categoryNames.length}) for Firestore 'in' query. This may fail. Max is 30.`);
         }
+        queryConstraints.push(where("category", "in", categoryNames));
+
     }
 
     if (filters.dateRange?.from) queryConstraints.push(where("date", ">=", filters.dateRange.from.toISOString()));
     if (filters.dateRange?.to) {
-        // Adjust to to be end of day
         const toDate = new Date(filters.dateRange.to);
         toDate.setHours(23, 59, 59, 999);
         queryConstraints.push(where("date", "<=", toDate.toISOString()));
@@ -189,10 +221,8 @@ export default function TransactionsPage() {
     if (filters.minAmount !== undefined) queryConstraints.push(where("amount", ">=", filters.minAmount));
     if (filters.maxAmount !== undefined) queryConstraints.push(where("amount", "<=", filters.maxAmount));
     
-    const countQuery = query(collRef, ...queryConstraints.filter(c => c.type !== 'orderBy' && c.type !== 'limit' && c.type !== 'startAfter'));
-    
-    let q = query(collRef, ...queryConstraints);
-    q = query(q, orderBy("date", "desc"));
+    // Only query without orderBy when not searching by description
+    let q = query(collRef, ...queryConstraints, orderBy("date", "desc"));
     
     const currentLastVisible = reset ? null : lastVisible;
 
@@ -202,20 +232,24 @@ export default function TransactionsPage() {
     q = query(q, limit(TRANSACTIONS_PAGE_SIZE));
 
     try {
-      if (reset) {
+       if (reset) {
+        const countQuery = query(collRef, ...queryConstraints);
         const totalCountSnap = await getCountFromServer(countQuery);
         setTotalTransactions(totalCountSnap.data().count);
       }
-
+      
       const docsSnap = await getDocs(q);
       const docsData = docsSnap.docs.map(doc => doc.data() as Transaction);
       
       setHasMore(docsSnap.docs.length === TRANSACTIONS_PAGE_SIZE);
       setLastVisible(docsSnap.docs[docsSnap.docs.length - 1] || null);
       setTransactions(prev => (reset ? docsData : [...prev, ...docsData]));
-    } catch (error) {
-      console.error("Error fetching transactions:", error);
-      toast({ variant: "destructive", title: "Error", description: "Could not fetch transactions." });
+    } catch (error: any) {
+      // Don't show an error for missing index if we are searching, as it's expected.
+      if (!debouncedDescription) {
+        console.error("Error fetching transactions:", error);
+        toast({ variant: "destructive", title: "Filter Error", description: "Could not apply filters. A Firestore index may be required." });
+      }
     } finally {
       setLoading(false);
     }
