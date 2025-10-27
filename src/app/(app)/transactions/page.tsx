@@ -106,7 +106,9 @@ export default function TransactionsPage() {
   const debouncedMinAmount = useDebounce(minAmount, 500);
   const debouncedMaxAmount = useDebounce(maxAmount, 500);
 
-  const searchIndex = useMemo(() => isAlgoliaConfigured ? searchClient.initIndex(algoliaIndexName) : null, []);
+  const searchIndex = useMemo(() => {
+    return isAlgoliaConfigured && searchClient ? searchClient.initIndex(algoliaIndexName) : null;
+  }, [searchClient]);
   
   // Memoized filters object
   const filters = useMemo((): TransactionFilters => ({
@@ -124,7 +126,7 @@ export default function TransactionsPage() {
     setIsSearching(isDescriptionSearch);
 
     // --- ALGOLIA SEARCH LOGIC ---
-    if (isDescriptionSearch && isAlgoliaConfigured && searchIndex) {
+    if (isDescriptionSearch && searchIndex) {
         try {
             const algoliaFilters = [`_tags:${user.uid}`];
             if (filters.category) {
@@ -169,7 +171,7 @@ export default function TransactionsPage() {
               hitsPerPage: TRANSACTIONS_PAGE_SIZE,
             });
             
-            const searchResults = hits.map(hit => ({ ...hit, id: hit.objectID } as Transaction));
+            const searchResults = hits.map(hit => ({ ...hit, id: hit.objectID, date: new Date(hit.date_timestamp * 1000).toISOString() } as Transaction));
             
             setTransactions(prev => loadMore ? [...prev, ...searchResults] : searchResults);
             setTotalTransactions(nbHits);
@@ -256,7 +258,7 @@ export default function TransactionsPage() {
     } finally {
       setLoading(false);
     }
-  }, [user, debouncedDescription, isAlgoliaConfigured, searchIndex, filters, lastVisible, categories, toast, transactions.length]);
+  }, [user, debouncedDescription, searchIndex, filters, lastVisible, categories, toast, transactions.length]);
   
   useEffect(() => {
     fetchTransactions(true, false);
@@ -359,9 +361,6 @@ export default function TransactionsPage() {
     try {
       const date = new Date(dateString);
        if (isNaN(date.getTime())) {
-            // Try to parse Algolia's timestamp
-            const algoliaDate = new Date(parseInt(dateString)*1000);
-            if (!isNaN(algoliaDate.getTime())) return format(algoliaDate, "MMMM d, yyyy");
             return "Invalid Date"
         }
       return format(date, "MMMM d, yyyy");
@@ -609,5 +608,3 @@ export default function TransactionsPage() {
     </div>
   );
 }
-
-    
