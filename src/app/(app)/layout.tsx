@@ -26,7 +26,6 @@ import { UserDataProvider, useUserData } from "@/hooks/use-user-data";
 import type { Transaction } from "@/types";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ThemeProvider } from "next-themes";
-import { AlgoliaInsightsProvider } from "@/components/algolia-insights-provider";
 
 
 function AppLayoutSkeleton() {
@@ -158,9 +157,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   
   return (
       <UserDataProvider>
-        <AlgoliaInsightsProvider>
-          <AppLayoutContent>{children}</AppLayoutContent>
-        </AlgoliaInsightsProvider>
+        {children}
       </UserDataProvider>
   )
 }
+
+    

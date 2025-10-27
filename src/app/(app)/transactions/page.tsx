@@ -21,29 +21,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { DateRange } from "react-day-picker";
 import { cn } from "@/lib/utils";
 import { Calendar } from "@/components/ui/calendar";
-import { useAuth } from "@/hooks/use-auth";
-import { collection, query, orderBy, limit, startAfter, where, getDocs, getCountFromServer, QueryConstraint, DocumentData, QueryDocumentSnapshot } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import { ExportTransactionsDialog } from "@/components/export-transactions-dialog";
-import { searchClient, algoliaIndexName, isAlgoliaConfigured } from "@/lib/algolia";
-import aa from 'search-insights';
 
-// Custom hook with proper typing
-const useDebounce = <T>(value: T, delay: number): T => {
-  const [debouncedValue, setDebouncedValue] = useState<T>(value);
-  
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedValue(value);
-    }, delay);
-    
-    return () => {
-      clearTimeout(handler);
-    };
-  }, [value, delay]);
-  
-  return debouncedValue;
-};
+const TRANSACTIONS_PAGE_SIZE = 25;
 
 function TransactionsSkeleton() {
   return (
@@ -63,38 +43,20 @@ function TransactionsSkeleton() {
   );
 }
 
-// Define proper types for filters
-interface TransactionFilters {
-  category?: string;
-  dateRange?: DateRange;
-  minAmount?: number;
-  maxAmount?: number;
-}
-
-type AlgoliaTransaction = Omit<Transaction, 'id'> & { objectID: string; date_timestamp: number };
-
-const TRANSACTIONS_PAGE_SIZE = 25;
-
 export default function TransactionsPage() {
-  const { user } = useAuth();
   const { 
+    allTransactions,
     addTransaction,
     updateTransaction, 
     deleteTransaction, 
-    categories = [], 
+    categories = [],
+    loading: userDataLoading,
   } = useUserData();
   
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [allTransactionsForExport, setAllTransactionsForExport] = useState<Transaction[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [hasMore, setHasMore] = useState(true);
-  const [lastVisible, setLastVisible] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
-  const [totalTransactions, setTotalTransactions] = useState(0);
-  const [currentPage, setCurrentPage] = useState(0);
-  const [queryID, setQueryID] = useState<string | null>(null);
+  const [paginatedTransactions, setPaginatedTransactions] = useState<Transaction[]>([]);
+  const [page, setPage] = useState(1);
 
   const [isSheetOpen, setIsSheetOpen] = useState(false);
-  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const { toast } = useToast();
 
@@ -104,139 +66,55 @@ export default function TransactionsPage() {
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [minAmount, setMinAmount] = useState('');
   const [maxAmount, setMaxAmount] = useState('');
-  
-  // Debounced values
-  const debouncedDescription = useDebounce(descriptionFilter, 300);
-  const debouncedMinAmount = useDebounce(minAmount, 500);
-  const debouncedMaxAmount = useDebounce(maxAmount, 500);
 
-  const searchIndex = useMemo(() => {
-    return isAlgoliaConfigured && searchClient ? searchClient.initIndex(algoliaIndexName) : null;
-  }, []);
-  
-  // Memoized filters object
-  const filters = useMemo((): TransactionFilters => ({
-    category: categoryFilter === 'all' ? undefined : categoryFilter,
-    dateRange: dateRange,
-    minAmount: debouncedMinAmount && !isNaN(parseFloat(debouncedMinAmount)) ? parseFloat(debouncedMinAmount) : undefined,
-    maxAmount: debouncedMaxAmount && !isNaN(parseFloat(debouncedMaxAmount)) ? parseFloat(debouncedMaxAmount) : undefined,
-  }), [categoryFilter, dateRange, debouncedMinAmount, debouncedMaxAmount]);
-  
-  const fetchTransactions = useCallback(async (loadMore: boolean = false) => {
-    if (!user) return;
-    setLoading(true);
+  const filteredTransactions = useMemo(() => {
+    let transactions = [...allTransactions];
 
-    const pageToFetch = loadMore ? currentPage + 1 : 0;
-    const isSearchActive = !!debouncedDescription;
-
-    if (isSearchActive && searchIndex) {
-      // --- ALGOLIA SEARCH LOGIC ---
-      try {
-          const algoliaFilters: string[] = [`_tags:${user.uid}`];
-          if (filters.category) {
-              algoliaFilters.push(`category:"${filters.category}"`);
-          }
-          if (filters.dateRange?.from) {
-              algoliaFilters.push(`date_timestamp >= ${Math.floor(filters.dateRange.from.getTime() / 1000)}`);
-          }
-          if (filters.dateRange?.to) {
-              const toDate = new Date(filters.dateRange.to);
-              toDate.setHours(23, 59, 59, 999);
-              algoliaFilters.push(`date_timestamp <= ${Math.floor(toDate.getTime() / 1000)}`);
-          }
-          if (filters.minAmount !== undefined) algoliaFilters.push(`amount >= ${filters.minAmount}`);
-          if (filters.maxAmount !== undefined) algoliaFilters.push(`amount <= ${filters.maxAmount}`);
-          
-          const { hits, nbHits, nbPages, queryID: newQueryID } = await searchIndex.search<AlgoliaTransaction>(debouncedDescription, {
-            filters: algoliaFilters.join(' AND '),
-            page: pageToFetch,
-            hitsPerPage: TRANSACTIONS_PAGE_SIZE,
-            clickAnalytics: true,
-          });
-
-          setQueryID(newQueryID);
-          
-          const searchResults = hits.map(hit => ({ ...hit, id: hit.objectID, date: new Date(hit.date_timestamp * 1000).toISOString() } as Transaction));
-          
-          setTransactions(prev => pageToFetch > 0 ? [...prev, ...searchResults] : searchResults);
-          setTotalTransactions(nbHits);
-          setCurrentPage(pageToFetch);
-          setHasMore(pageToFetch + 1 < nbPages);
-      } catch (error) {
-          console.error("Algolia search error:", error);
-          toast({ variant: "destructive", title: "Search Error", description: "Could not perform search." });
-          setTransactions([]);
-          setTotalTransactions(0);
-          setHasMore(false);
-      }
-    } else {
-      // --- FIRESTORE FETCH LOGIC ---
-      setQueryID(null); // No search, so no queryID
-      try {
-        const collRef = collection(db, 'users', user.uid, 'transactions');
-        const queryConstraints: QueryConstraint[] = [];
-        
-        if (filters.category) queryConstraints.push(where("category", "==", filters.category));
-        if (filters.dateRange?.from) queryConstraints.push(where("date", ">=", filters.dateRange.from.toISOString()));
-        if (filters.dateRange?.to) {
-            const toDate = new Date(filters.dateRange.to);
-            toDate.setHours(23, 59, 59, 999);
-            queryConstraints.push(where("date", "<=", toDate.toISOString()));
-        }
-        if (filters.minAmount !== undefined) queryConstraints.push(where("amount", ">=", filters.minAmount));
-        if (filters.maxAmount !== undefined) queryConstraints.push(where("amount", "<=", filters.maxAmount));
-        
-        if (pageToFetch === 0) {
-            const countQuery = query(collRef, ...queryConstraints);
-            const totalCountSnap = await getCountFromServer(countQuery);
-            setTotalTransactions(totalCountSnap.data().count);
-        }
-
-        let q = query(collRef, ...queryConstraints, orderBy("date", "desc"), limit(TRANSACTIONS_PAGE_SIZE));
-        
-        if (pageToFetch > 0 && lastVisible) {
-          q = query(q, startAfter(lastVisible));
-        }
-        
-        const docsSnap = await getDocs(q);
-        const docsData = docsSnap.docs.map(doc => doc.data() as Transaction);
-        
-        setHasMore(docsSnap.docs.length === TRANSACTIONS_PAGE_SIZE);
-        setLastVisible(docsSnap.docs[docsSnap.docs.length - 1] || null);
-        setCurrentPage(pageToFetch);
-        setTransactions(prev => pageToFetch > 0 ? [...prev, ...docsData] : docsData);
-      } catch (error: any) {
-        console.error("Error fetching transactions:", error);
-        if (error.message.includes('requires an index')) {
-           toast({ variant: "destructive", title: "Filter Error", description: "This combination of filters requires a custom Firestore index. The functionality is not yet supported." });
-        } else {
-           toast({ variant: "destructive", title: "Error", description: "Could not retrieve transactions." });
-        }
-      }
+    // Apply description filter
+    if (descriptionFilter) {
+      transactions = transactions.filter(t => 
+        t.description.toLowerCase().includes(descriptionFilter.toLowerCase())
+      );
     }
-    setLoading(false);
-  }, [user, debouncedDescription, searchIndex, filters, lastVisible, currentPage, toast]);
-  
-  useEffect(() => {
-    // Reset pagination when filters change
-    setCurrentPage(0);
-    setLastVisible(null);
-    fetchTransactions(false);
-  // We only want this to run when these specific deps change.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedDescription, filters, user]);
+    
+    // Apply category filter
+    if (categoryFilter !== 'all') {
+      transactions = transactions.filter(t => t.category === categoryFilter);
+    }
 
+    // Apply date range filter
+    if (dateRange?.from) {
+      transactions = transactions.filter(t => new Date(t.date) >= dateRange.from!);
+    }
+    if (dateRange?.to) {
+       const toDate = new Date(dateRange.to);
+       toDate.setHours(23, 59, 59, 999);
+      transactions = transactions.filter(t => new Date(t.date) <= toDate);
+    }
+
+    // Apply amount filters
+    const min = minAmount ? parseFloat(minAmount) : -Infinity;
+    const max = maxAmount ? parseFloat(maxAmount) : Infinity;
+    if (minAmount || maxAmount) {
+        transactions = transactions.filter(t => t.amount >= min && t.amount <= max);
+    }
+
+    return transactions;
+  }, [allTransactions, descriptionFilter, categoryFilter, dateRange, minAmount, maxAmount]);
+  
+   useEffect(() => {
+    setPage(1); // Reset page to 1 when filters change
+  }, [filteredTransactions]);
 
   useEffect(() => {
-    if (!user) return;
-    const fetchAllForExport = async () => {
-        const collRef = collection(db, 'users', user.uid, 'transactions');
-        const q = query(collRef, orderBy('date', 'desc'));
-        const querySnapshot = await getDocs(q);
-        setAllTransactionsForExport(querySnapshot.docs.map(doc => doc.data() as Transaction));
-    }
-    fetchAllForExport();
-  }, [user]);
+    const startIndex = (page - 1) * TRANSACTIONS_PAGE_SIZE;
+    const endIndex = page * TRANSACTIONS_PAGE_SIZE;
+    setPaginatedTransactions(filteredTransactions.slice(startIndex, endIndex));
+  }, [page, filteredTransactions]);
+
+  const totalPages = Math.ceil(filteredTransactions.length / TRANSACTIONS_PAGE_SIZE);
+  const hasMore = page < totalPages;
+
 
   const allCategoryOptions = useMemo(() => {
     const options: { value: string; label: string }[] = [];
@@ -259,22 +137,9 @@ export default function TransactionsPage() {
   }, []);
 
   const handleEdit = useCallback((transaction: Transaction) => {
-    if (queryID) {
-        const hit = transactions.find(t => t.id === transaction.id);
-        if(hit) {
-            const position = transactions.indexOf(hit) + 1;
-            aa.clickedObjectIDsAfterSearch({
-                index: algoliaIndexName,
-                eventName: 'Transaction Edited',
-                queryID: queryID,
-                objectIDs: [transaction.id],
-                positions: [position],
-            });
-        }
-    }
     setSelectedTransaction(transaction);
     setIsSheetOpen(true);
-  }, [queryID, transactions]);
+  }, []);
   
   const handleSheetClose = useCallback((open: boolean) => {
     if (!open) {
@@ -285,23 +150,17 @@ export default function TransactionsPage() {
   
   const handleTransactionCreated = useCallback(async (values: any) => {
     await addTransaction({...values, date: values.date.toISOString()});
-    await fetchTransactions(false); // Refetch from page 0
     toast({ title: "Transaction Added", description: "The transaction has been successfully created." });
-  }, [addTransaction, fetchTransactions, toast]);
+  }, [addTransaction, toast]);
 
   const handleTransactionUpdated = useCallback(async (id: string, values: any) => {
     await updateTransaction(id, {...values, date: values.date.toISOString()});
-    await fetchTransactions(false); // Refetch from page 0
     toast({ title: "Transaction Updated", description: "The transaction has been successfully updated." });
-  }, [updateTransaction, fetchTransactions, toast]);
-
+  }, [updateTransaction, toast]);
 
   const handleDelete = useCallback(async (id: string) => {
       try {
         await deleteTransaction(id);
-        // Optimistically remove from UI
-        setTransactions(prev => prev.filter(t => t.id !== id));
-        setTotalTransactions(prev => prev - 1);
         toast({
           title: "Transaction Deleted",
           description: "The transaction has been successfully deleted.",
@@ -316,37 +175,27 @@ export default function TransactionsPage() {
   }, [deleteTransaction, toast]);
   
   const handleLoadMore = useCallback(() => {
-    if (hasMore && !loading) {
-      fetchTransactions(true);
+    if (hasMore) {
+      setPage(prev => prev + 1);
+      const newTransactions = filteredTransactions.slice(
+        paginatedTransactions.length, 
+        paginatedTransactions.length + TRANSACTIONS_PAGE_SIZE
+      );
+      setPaginatedTransactions(prev => [...prev, ...newTransactions]);
     }
-  }, [fetchTransactions, hasMore, loading]);
+  }, [hasMore, filteredTransactions, paginatedTransactions]);
 
   const formatCurrency = useCallback((amount: number) => {
-    try {
-      return new Intl.NumberFormat("en-US", { 
-        style: "currency", 
-        currency: "USD" 
-      }).format(Math.abs(amount) || 0);
-    } catch {
-      return `$${Math.abs(amount || 0).toFixed(2)}`;
-    }
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(amount);
   }, []);
 
   const formatDate = useCallback((dateString: string) => {
-    try {
-      const date = new Date(dateString);
-       if (isNaN(date.getTime())) {
-            return "Invalid Date"
-        }
-      return format(date, "MMMM d, yyyy");
-    } catch {
-      return 'Invalid date';
-    }
+    return format(new Date(dateString), "MMMM d, yyyy");
   }, []);
   
   const isFiltering = descriptionFilter || categoryFilter !== 'all' || dateRange || minAmount || maxAmount;
 
-  if (loading && transactions.length === 0) {
+  if (userDataLoading && allTransactions.length === 0) {
     return <TransactionsSkeleton />;
   }
 
@@ -443,18 +292,18 @@ export default function TransactionsPage() {
             <CardTitle>Transactions</CardTitle>
              <CardDescription>
               {isFiltering
-                ? `Found ${totalTransactions} transactions matching your filters.`
-                : `Showing ${transactions.length} of ${totalTransactions} total transactions.`
+                ? `Found ${filteredTransactions.length} transactions matching your filters.`
+                : `Showing ${paginatedTransactions.length} of ${allTransactions.length} total transactions.`
               }
             </CardDescription>
           </div>
           <ExportTransactionsDialog
-            transactions={allTransactionsForExport}
+            transactions={allTransactions}
             categories={categories}
             triggerButton={
                  <Button 
                     variant="outline"
-                    disabled={allTransactionsForExport.length === 0}
+                    disabled={allTransactions.length === 0}
                   >
                     <Upload className="mr-2 h-4 w-4" />
                     Export
@@ -477,21 +326,21 @@ export default function TransactionsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {loading && transactions.length === 0 ? (
+              {userDataLoading && allTransactions.length === 0 ? (
                  <TableRow>
                     <TableCell colSpan={5} className="h-24 text-center">
                         <Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" />
                     </TableCell>
                 </TableRow>
-              ) : transactions.length > 0 ? (
-                transactions.map((transaction, index) => (
+              ) : paginatedTransactions.length > 0 ? (
+                paginatedTransactions.map((transaction) => (
                   <TableRow key={transaction.id} className="cursor-pointer" onClick={() => handleEdit(transaction)}>
                     <TableCell className="font-medium">
-                      {transaction.description || 'No description'}
+                      {transaction.description}
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline">
-                        {transaction.category || 'Uncategorized'}
+                        {transaction.category}
                       </Badge>
                     </TableCell>
                     <TableCell className="hidden md:table-cell">
@@ -549,14 +398,14 @@ export default function TransactionsPage() {
               ) : (
                 <TableRow>
                   <TableCell colSpan={5} className="h-24 text-center">
-                    No transactions found matching your filters.
+                    No transactions found.
                   </TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
           
-          {hasMore && !loading && (
+          {hasMore && (
             <div className="flex justify-center mt-4">
               <Button 
                 onClick={handleLoadMore} 
@@ -566,11 +415,6 @@ export default function TransactionsPage() {
               </Button>
             </div>
           )}
-           {loading && transactions.length > 0 && (
-               <div className="flex justify-center mt-4">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-               </div>
-           )}
         </CardContent>
       </Card>
 
@@ -585,3 +429,5 @@ export default function TransactionsPage() {
     </div>
   );
 }
+
+    
