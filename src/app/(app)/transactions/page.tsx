@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
-import { MoreHorizontal, Upload, Calendar as CalendarIcon, X } from "lucide-react";
+import { MoreHorizontal, Upload, Calendar as CalendarIcon, X, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { NewTransactionSheet } from "@/components/new-transaction-sheet";
@@ -116,12 +116,15 @@ export default function TransactionsPage() {
     maxAmount: debouncedMaxAmount && !isNaN(parseFloat(debouncedMaxAmount)) ? parseFloat(debouncedMaxAmount) : undefined,
   }), [categoryFilter, dateRange, debouncedMinAmount, debouncedMaxAmount]);
   
-  const fetchTransactions = useCallback(async (reset: boolean = false) => {
+  const fetchTransactions = useCallback(async (reset: boolean = false, loadMore: boolean = false) => {
     if (!user) return;
     setLoading(true);
-    setIsSearching(!!debouncedDescription);
 
-    if (debouncedDescription && isAlgoliaConfigured && searchIndex) {
+    const isDescriptionSearch = !!debouncedDescription;
+    setIsSearching(isDescriptionSearch);
+
+    // --- ALGOLIA SEARCH LOGIC ---
+    if (isDescriptionSearch && isAlgoliaConfigured && searchIndex) {
         try {
             const algoliaFilters = [`_tags:${user.uid}`];
             if (filters.category) {
@@ -149,7 +152,6 @@ export default function TransactionsPage() {
 
                 algoliaFilters.push(`(${categoryNames.map(name => `category:"${name}"`).join(' OR ')})`);
             }
-
             if (filters.dateRange?.from) algoliaFilters.push(`date_timestamp >= ${Math.floor(filters.dateRange.from.getTime() / 1000)}`);
             if (filters.dateRange?.to) {
                 const toDate = new Date(filters.dateRange.to);
@@ -159,42 +161,41 @@ export default function TransactionsPage() {
             if (filters.minAmount !== undefined) algoliaFilters.push(`amount >= ${filters.minAmount}`);
             if (filters.maxAmount !== undefined) algoliaFilters.push(`amount <= ${filters.maxAmount}`);
 
-            const page = reset ? 0 : Math.floor(transactions.length / TRANSACTIONS_PAGE_SIZE);
-
-            const { hits, nbHits } = await searchIndex.search<Omit<Transaction, 'id'> & { objectID: string }>(debouncedDescription, {
+            const page = loadMore ? Math.floor(transactions.length / TRANSACTIONS_PAGE_SIZE) : 0;
+            
+            const { hits, nbHits, nbPages } = await searchIndex.search<Omit<Transaction, 'id'> & { objectID: string }>(debouncedDescription, {
               filters: algoliaFilters.join(' AND '),
               page: page,
               hitsPerPage: TRANSACTIONS_PAGE_SIZE,
-              // Treat numbers as text in search
-              numericFilters: [],
-              queryType: 'prefixLast'
             });
             
-            const searchResults = hits.map(hit => ({ ...hit, id: hit.objectID }));
-            setTransactions(prev => reset ? searchResults : [...prev, ...searchResults]);
+            const searchResults = hits.map(hit => ({ ...hit, id: hit.objectID } as Transaction));
+            
+            setTransactions(prev => loadMore ? [...prev, ...searchResults] : searchResults);
             setTotalTransactions(nbHits);
-            setHasMore(reset ? (searchResults.length === TRANSACTIONS_PAGE_SIZE) : (transactions.length + searchResults.length < nbHits));
+            setHasMore(page + 1 < nbPages);
+
         } catch (error) {
             console.error("Algolia search error:", error);
             toast({ variant: "destructive", title: "Search Error", description: "Could not perform search." });
+            setTransactions([]);
+            setTotalTransactions(0);
+            setHasMore(false);
         } finally {
             setLoading(false);
         }
         return;
     }
 
-
+    // --- FIRESTORE FETCH LOGIC (NO DESCRIPTION SEARCH) ---
     const collRef = collection(db, 'users', user.uid, 'transactions');
     const queryConstraints: QueryConstraint[] = [];
     
-    // Server-side filtering
     if (filters.category) {
         const getSubCategoryNames = (category: Category | SubCategory): string[] => {
             let names = [category.name];
             if (category.subCategories) {
-                category.subCategories.forEach(sub => {
-                    names = [...names, ...getSubCategoryNames(sub)];
-                });
+                names.push(...category.subCategories.flatMap(getSubCategoryNames));
             }
             return names;
         };
@@ -217,9 +218,7 @@ export default function TransactionsPage() {
             console.warn(`Too many subcategories (${categoryNames.length}) for Firestore 'in' query. This may fail. Max is 30.`);
         }
         queryConstraints.push(where("category", "in", categoryNames.slice(0, 30)));
-
     }
-
     if (filters.dateRange?.from) queryConstraints.push(where("date", ">=", filters.dateRange.from.toISOString()));
     if (filters.dateRange?.to) {
         const toDate = new Date(filters.dateRange.to);
@@ -231,15 +230,14 @@ export default function TransactionsPage() {
     
     let q = query(collRef, ...queryConstraints, orderBy("date", "desc"));
     
-    const currentLastVisible = reset ? null : lastVisible;
-
+    const currentLastVisible = loadMore ? lastVisible : null;
     if (currentLastVisible) {
       q = query(q, startAfter(currentLastVisible));
     }
     q = query(q, limit(TRANSACTIONS_PAGE_SIZE));
 
     try {
-       if (reset) {
+       if (reset || !loadMore) {
         const countQuery = query(collRef, ...queryConstraints);
         const totalCountSnap = await getCountFromServer(countQuery);
         setTotalTransactions(totalCountSnap.data().count);
@@ -250,22 +248,20 @@ export default function TransactionsPage() {
       
       setHasMore(docsSnap.docs.length === TRANSACTIONS_PAGE_SIZE);
       setLastVisible(docsSnap.docs[docsSnap.docs.length - 1] || null);
-      setTransactions(prev => (reset ? docsData : [...prev, ...docsData]));
+      setTransactions(prev => (loadMore ? [...prev, ...docsData] : docsData));
+
     } catch (error: any) {
-      // Don't show an error for missing index if we are searching, as it's expected.
-      if (!debouncedDescription) {
-        console.error("Error fetching transactions:", error);
-        toast({ variant: "destructive", title: "Filter Error", description: "Could not apply filters. A Firestore index may be required." });
-      }
+      console.error("Error fetching transactions:", error);
+      toast({ variant: "destructive", title: "Filter Error", description: "Could not apply filters. A Firestore index may be required for this combination." });
     } finally {
       setLoading(false);
     }
-  }, [user, filters, lastVisible, toast, categories, debouncedDescription, isAlgoliaConfigured, searchIndex, transactions.length]);
+  }, [user, debouncedDescription, isAlgoliaConfigured, searchIndex, filters, lastVisible, categories, toast, transactions.length]);
   
   useEffect(() => {
-    fetchTransactions(true);
+    fetchTransactions(true, false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedDescription, filters.category, filters.dateRange, filters.minAmount, filters.maxAmount, user, categories, searchIndex]);
+  }, [debouncedDescription, filters.category, filters.dateRange, filters.minAmount, filters.maxAmount, user]);
 
 
   useEffect(() => {
@@ -328,6 +324,7 @@ export default function TransactionsPage() {
       try {
         await deleteTransaction(id);
         setTransactions(prev => prev.filter(t => t.id !== id));
+        setTotalTransactions(prev => prev - 1);
         toast({
           title: "Transaction Deleted",
           description: "The transaction has been successfully deleted.",
@@ -343,7 +340,7 @@ export default function TransactionsPage() {
   
   const handleLoadMore = useCallback(() => {
     if (hasMore && !loading) {
-      fetchTransactions(false);
+      fetchTransactions(false, true);
     }
   }, [fetchTransactions, hasMore, loading]);
 
@@ -360,13 +357,20 @@ export default function TransactionsPage() {
 
   const formatDate = useCallback((dateString: string) => {
     try {
-      return format(new Date(dateString), "MMMM d, yyyy");
+      const date = new Date(dateString);
+       if (isNaN(date.getTime())) {
+            // Try to parse Algolia's timestamp
+            const algoliaDate = new Date(parseInt(dateString)*1000);
+            if (!isNaN(algoliaDate.getTime())) return format(algoliaDate, "MMMM d, yyyy");
+            return "Invalid Date"
+        }
+      return format(date, "MMMM d, yyyy");
     } catch {
       return 'Invalid date';
     }
   }, []);
   
-  if (loading && transactions.length === 0) {
+  if (loading && transactions.length === 0 && !isSearching) {
     return <TransactionsSkeleton />;
   }
 
@@ -497,70 +501,76 @@ export default function TransactionsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {transactions.map((transaction) => (
-                <TableRow key={transaction.id}>
-                  <TableCell className="font-medium">
-                    {transaction.description || 'No description'}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">
-                      {transaction.category || 'Uncategorized'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell">
-                    {formatDate(transaction.date)}
-                  </TableCell>
-                  <TableCell className={`text-right font-mono ${transaction.type === 'income' ? 'text-emerald-600' : ''}`}>
-                    {transaction.type === 'income' ? '+' : '-'}
-                    {formatCurrency(transaction.amount)}
-                  </TableCell>
-                  <TableCell>
-                    <AlertDialog>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button aria-haspopup="true" size="icon" variant="ghost">
-                            <MoreHorizontal className="h-4 w-4" />
-                            <span className="sr-only">Toggle menu</span>
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                          <DropdownMenuItem onSelect={() => handleEdit(transaction)}>
-                            Edit
-                          </DropdownMenuItem>
-                          <AlertDialogTrigger asChild>
-                            <DropdownMenuItem 
-                              className="text-red-600 focus:text-red-600"
-                              onSelect={(e) => e.preventDefault()}
+              {loading && transactions.length === 0 ? (
+                 <TableRow>
+                    <TableCell colSpan={5} className="h-24 text-center">
+                        <Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" />
+                    </TableCell>
+                </TableRow>
+              ) : transactions.length > 0 ? (
+                transactions.map((transaction) => (
+                  <TableRow key={transaction.id}>
+                    <TableCell className="font-medium">
+                      {transaction.description || 'No description'}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline">
+                        {transaction.category || 'Uncategorized'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      {formatDate(transaction.date)}
+                    </TableCell>
+                    <TableCell className={`text-right font-mono ${transaction.type === 'income' ? 'text-emerald-600' : ''}`}>
+                      {transaction.type === 'income' ? '+' : '-'}
+                      {formatCurrency(transaction.amount)}
+                    </TableCell>
+                    <TableCell>
+                      <AlertDialog>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button aria-haspopup="true" size="icon" variant="ghost">
+                              <MoreHorizontal className="h-4 w-4" />
+                              <span className="sr-only">Toggle menu</span>
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                            <DropdownMenuItem onSelect={() => handleEdit(transaction)}>
+                              Edit
+                            </DropdownMenuItem>
+                            <AlertDialogTrigger asChild>
+                              <DropdownMenuItem 
+                                className="text-red-600 focus:text-red-600"
+                                onSelect={(e) => e.preventDefault()}
+                              >
+                                Delete
+                              </DropdownMenuItem>
+                            </AlertDialogTrigger>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              This action cannot be undone. This will permanently delete this transaction.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction 
+                              onClick={() => handleDelete(transaction.id)}
+                              className="bg-red-600 hover:bg-red-700"
                             >
                               Delete
-                            </DropdownMenuItem>
-                          </AlertDialogTrigger>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            This action cannot be undone. This will permanently delete this transaction.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction 
-                            onClick={() => handleDelete(transaction.id)}
-                            className="bg-red-600 hover:bg-red-700"
-                          >
-                            Delete
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  </TableCell>
-                </TableRow>
-              ))}
-              
-              {transactions.length === 0 && !loading && (
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : (
                 <TableRow>
                   <TableCell colSpan={5} className="h-24 text-center">
                     No transactions found matching your filters.
@@ -570,17 +580,21 @@ export default function TransactionsPage() {
             </TableBody>
           </Table>
           
-          {hasMore && (
+          {hasMore && !loading && (
             <div className="flex justify-center mt-4">
               <Button 
                 onClick={handleLoadMore} 
-                disabled={loading}
                 variant="outline"
               >
-                {loading ? 'Loading...' : 'Load More'}
+                Load More
               </Button>
             </div>
           )}
+           {loading && transactions.length > 0 && (
+               <div className="flex justify-center mt-4">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+               </div>
+           )}
         </CardContent>
       </Card>
 
