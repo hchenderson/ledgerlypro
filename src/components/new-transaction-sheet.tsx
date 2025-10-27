@@ -29,7 +29,8 @@ import {
   SheetHeader,
   SheetTitle,
   SheetFooter,
-  SheetClose
+  SheetClose,
+  SheetTrigger,
 } from "@/components/ui/sheet"
 import {
   Select,
@@ -255,50 +256,32 @@ export function NewTransactionSheet({
   const buttonText = isEditing ? "Save Changes" : "Create Transaction";
 
   const availableCategories = useMemo(() => {
-    const filtered = categories.filter(c => c.type === transactionType);
+    const typeToFilter = isEditing ? transaction?.type : transactionType;
+    const filtered = categories.filter(c => c.type === typeToFilter);
 
-    const getCategoryOptions = (cats: (Category | SubCategory)[]) => {
-      const options: {
-        label: string;
-        options: { label: string; value: string; }[];
-        disabled?: boolean;
-      }[] = [];
-
+    const getCategoryOptions = (cats: (Category | SubCategory)[], indent = 0): { label: string; value: string; disabled: boolean, indent: number }[] => {
+      let options: { label: string; value: string; disabled: boolean, indent: number }[] = [];
+      
       cats.forEach(cat => {
         const hasSubCategories = cat.subCategories && cat.subCategories.length > 0;
+        const isLeaf = !hasSubCategories;
+
+        options.push({
+          label: cat.name,
+          value: cat.name,
+          disabled: !isLeaf,
+          indent,
+        });
         
-        let subOptions: { label: string; value: string }[] = [];
         if (hasSubCategories) {
-          cat.subCategories!.forEach(subCat => {
-             const hasSubSubCategories = subCat.subCategories && subCat.subCategories.length > 0;
-             if (hasSubSubCategories) {
-                subCat.subCategories!.forEach(subSubCat => {
-                    subOptions.push({ label: subSubCat.name, value: subSubCat.name });
-                });
-             } else {
-                subOptions.push({ label: subCat.name, value: subCat.name });
-             }
-          });
-        }
-        
-        // If there are sub-options, the main category should be a group label.
-        // If not, it shouldn't appear at all as it's not a leaf.
-        if (subOptions.length > 0) {
-            options.push({ label: cat.name, options: subOptions });
-        } else if (!hasSubCategories) {
-             // This case handles a main category with no sub-categories.
-             // It shouldn't really happen with the new rules, but as a fallback.
-             options.push({
-                 label: 'Uncategorized',
-                 options: [{label: cat.name, value: cat.name}]
-             })
+          options = options.concat(getCategoryOptions(cat.subCategories!, indent + 1));
         }
       });
       return options;
     };
     
     return getCategoryOptions(filtered);
-  }, [categories, transactionType]);
+  }, [categories, transactionType, isEditing, transaction?.type]);
 
 
   return (
@@ -384,15 +367,16 @@ export function NewTransactionSheet({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {availableCategories.map((group) => (
-                        <SelectGroup key={group.label}>
-                          <SelectLabel>{group.label}</SelectLabel>
-                          {group.options.map(option => (
-                              <SelectItem key={option.value} value={option.value}>
-                                {option.label}
-                            </SelectItem>
-                          ))}
-                        </SelectGroup>
+                      {availableCategories.map((option) => (
+                        <SelectItem 
+                          key={option.value} 
+                          value={option.value} 
+                          disabled={option.disabled}
+                          style={{ paddingLeft: `${option.indent * 1.5 + 1}rem`}}
+                          className={cn(option.disabled && "font-bold text-muted-foreground")}
+                        >
+                          {option.label}
+                        </SelectItem>
                       ))}
                       <AddCategoryDialog onCategoryAdded={handleCategoryAdded} type={transactionType || 'expense'} categories={categories}/>
                     </SelectContent>
