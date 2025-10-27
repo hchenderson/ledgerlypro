@@ -168,12 +168,6 @@ export default function TransactionsPage() {
     if (filters.minAmount !== undefined) queryConstraints.push(where("amount", ">=", filters.minAmount));
     if (filters.maxAmount !== undefined) queryConstraints.push(where("amount", "<=", filters.maxAmount));
     
-    // Server-side filtering for description with prefix search
-    if (filters.description) {
-        queryConstraints.push(where("description", ">=", filters.description));
-        queryConstraints.push(where("description", "<=", filters.description + '\uf8ff'));
-    }
-
     const countQuery = query(collRef, ...queryConstraints.filter(c => c.type !== 'orderBy' && c.type !== 'limit' && c.type !== 'startAfter'));
     
     let q = query(collRef, ...queryConstraints);
@@ -206,10 +200,19 @@ export default function TransactionsPage() {
     }
   }, [user, filters, lastVisible, toast, categories]);
 
+  const displayedTransactions = useMemo(() => {
+    if (filters.description) {
+      return transactions.filter(t => 
+        t.description.toLowerCase().includes(filters.description!.toLowerCase())
+      );
+    }
+    return transactions;
+  }, [transactions, filters.description]);
+
   useEffect(() => {
     fetchTransactions(true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters, user, categories]);
+  }, [filters.category, filters.dateRange, filters.minAmount, filters.maxAmount, user, categories]);
 
   useEffect(() => {
     if (!user) return;
@@ -405,7 +408,7 @@ export default function TransactionsPage() {
           <div>
             <CardTitle>Transactions</CardTitle>
             <CardDescription>
-              Showing {transactions.length} of {totalTransactions} transactions.
+              Showing {displayedTransactions.length} of {totalTransactions} transactions.
             </CardDescription>
           </div>
           <ExportTransactionsDialog
@@ -437,7 +440,7 @@ export default function TransactionsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {transactions.map((transaction) => (
+              {displayedTransactions.map((transaction) => (
                 <TableRow key={transaction.id}>
                   <TableCell className="font-medium">
                     {transaction.description || 'No description'}
@@ -510,7 +513,7 @@ export default function TransactionsPage() {
             </TableBody>
           </Table>
           
-          {hasMore && (
+          {hasMore && !filters.description && (
             <div className="flex justify-center mt-4">
               <Button 
                 onClick={handleLoadMore} 
@@ -535,3 +538,5 @@ export default function TransactionsPage() {
     </div>
   );
 }
+
+    
