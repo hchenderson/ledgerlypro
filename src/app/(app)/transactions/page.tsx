@@ -141,7 +141,7 @@ export default function TransactionsPage() {
 
 
     const collRef = collection(db, 'users', user.uid, 'transactions');
-    const queryConstraints: QueryConstraint[] = [where("_tags", "array-contains", user.uid)];
+    const queryConstraints: QueryConstraint[] = [];
     
     // Server-side filtering
     if (filters.category) {
