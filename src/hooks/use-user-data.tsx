@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
@@ -40,6 +39,7 @@ interface UserDataContextType {
   clearTransactions: () => Promise<void>;
   clearAllData: () => Promise<void>;
   clearTransactionsByDateRange: (startDate: Date, endDate: Date) => Promise<void>;
+  importCategories: (importedData: { name: string; type: 'income' | 'expense'; parent_name: string }[]) => Promise<void>;
 }
 
 const UserDataContext = createContext<UserDataContextType | undefined>(undefined);
@@ -484,6 +484,55 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       clearCollection('goals'),
     ]);
   }
+  
+  const importCategories = async (importedData: { name: string; type: 'income' | 'expense'; parent_name: string }[]) => {
+    const collRef = getCollectionRef('categories');
+    if (!collRef) throw new Error("User not authenticated");
+    
+    const existingCats = [...categories];
+
+    const findCategory = (name: string, cats: (Category|SubCategory)[]): Category | SubCategory | undefined => {
+        for (const cat of cats) {
+            if (cat.name.toLowerCase() === name.toLowerCase()) return cat;
+            if (cat.subCategories) {
+                const found = findCategory(name, cat.subCategories);
+                if (found) return found;
+            }
+        }
+        return undefined;
+    };
+
+    const batch = writeBatch(db);
+
+    // First pass: create main categories
+    const mainCategoriesToCreate = importedData.filter(item => !item.parent_name && !findCategory(item.name, existingCats));
+    
+    mainCategoriesToCreate.forEach(item => {
+        const newDocRef = doc(collRef);
+        batch.set(newDocRef, {
+            id: newDocRef.id,
+            name: item.name,
+            type: item.type,
+            icon: 'Sparkles',
+            subCategories: []
+        });
+        existingCats.push({ id: newDocRef.id, name: item.name, type: item.type, subCategories: [] });
+    });
+    
+    await batch.commit();
+
+    // Second pass: create sub-categories
+    const subCategoriesToCreate = importedData.filter(item => item.parent_name);
+    for (const item of subCategoriesToCreate) {
+        if (!findCategory(item.name, existingCats)) {
+            const parent = findCategory(item.parent_name, existingCats) as Category | undefined;
+            if (parent && parent.type) { // Ensure parent is a main category and has a type
+                const newSub: Omit<SubCategory, 'id'> = { name: item.name, icon: 'Sparkles' };
+                await addSubCategory(parent.id, newSub);
+            }
+        }
+    }
+  };
 
 
   const value = { 
@@ -517,6 +566,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         clearTransactions,
         clearAllData,
         clearTransactionsByDateRange,
+        importCategories,
     };
 
   return (

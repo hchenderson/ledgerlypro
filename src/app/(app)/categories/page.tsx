@@ -35,6 +35,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { ExportCategoriesDialog } from "@/components/export-categories-dialog";
+import { ImportCategoriesDialog } from "@/components/import-categories-dialog";
 
 
 function EditCategoryDialog({ 
@@ -148,7 +150,8 @@ function SubCategoryList({ items, parentId, parentPath = [] }: { items: SubCateg
 }
 
 export default function CategoriesPage() {
-    const { categories, addCategory, addSubCategory, updateCategory, deleteCategory, loading } = useUserData();
+    const { categories, addCategory, addSubCategory, updateCategory, deleteCategory, importCategories, loading } = useUserData();
+    const { toast } = useToast();
 
     const handleAddCategory = (categoryName: string, type: 'income' | 'expense') => {
         const newCategory: Omit<Category, 'id'> = { 
@@ -165,6 +168,22 @@ export default function CategoriesPage() {
             icon: 'Sparkles'
         };
         addSubCategory(parentId, newSubCategory);
+    }
+    
+    const handleImport = async (importedData: { name: string; type: 'income' | 'expense'; parent_name: string }[]) => {
+        try {
+            await importCategories(importedData);
+            toast({
+                title: "Import Successful",
+                description: "Your categories have been imported."
+            });
+        } catch(e: any) {
+            toast({
+                variant: 'destructive',
+                title: "Import Failed",
+                description: e.message
+            });
+        }
     }
 
     const renderCategoryList = (filteredCategories: Category[]) => (
@@ -243,7 +262,11 @@ export default function CategoriesPage() {
                         Organize your transactions with categories and sub-categories.
                     </p>
                 </div>
-                <NewCategorySheet onAddCategory={handleAddCategory} />
+                <div className="flex gap-2">
+                    <ImportCategoriesDialog onImport={handleImport}/>
+                    <ExportCategoriesDialog categories={categories} />
+                    <NewCategorySheet onAddCategory={handleAddCategory} />
+                </div>
             </div>
 
             <Card>
