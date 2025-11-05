@@ -20,9 +20,9 @@ interface UserDataContextType {
   deleteTransaction: (id: string) => Promise<void>;
   addCategory: (category: Omit<Category, 'id'>) => Promise<void>;
   addSubCategory: (parentId: string, subCategory: Omit<SubCategory, 'id'>, parentPath?: string[]) => Promise<void>;
-  updateCategory: (id: string, newName: string) => Promise<void>;
+  updateCategory: (id: string, oldName: string, newName: string) => Promise<void>;
   deleteCategory: (id: string) => Promise<void>;
-  updateSubCategory: (categoryId: string, subCategoryId: string, newName: string, parentPath?: string[]) => Promise<void>;
+  updateSubCategory: (categoryId: string, subCategoryId: string, oldName: string, newName: string, parentPath?: string[]) => Promise<void>;
   deleteSubCategory: (categoryId: string, subCategoryId: string, parentPath?: string[]) => Promise<void>;
   addBudget: (budget: Omit<Budget, 'id'>) => Promise<void>;
   updateBudget: (id: string, values: Partial<Omit<Budget, 'id'>>) => Promise<void>;
@@ -216,12 +216,30 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     await setDoc(newDocRef, { ...category, id: newDocRef.id });
   };
   
-  const updateCategory = async (id: string, newName: string) => {
-    const collRef = getCollectionRef('categories');
-    if (!collRef) return;
-    const docRef = doc(collRef, id);
-    await setDoc(docRef, { name: newName }, { merge: true });
+  const updateCategory = async (id: string, oldName: string, newName: string) => {
+    const categoriesCollRef = getCollectionRef('categories');
+    if (!categoriesCollRef) return;
+
+    const batch = writeBatch(db);
+
+    // 1. Update the category document itself
+    const categoryDocRef = doc(categoriesCollRef, id);
+    batch.update(categoryDocRef, { name: newName });
+
+    // 2. Find and update all transactions with the old category name
+    const transactionsCollRef = getCollectionRef('transactions');
+    if (transactionsCollRef) {
+      const q = query(transactionsCollRef, where("category", "==", oldName));
+      const querySnapshot = await getDocs(q);
+      querySnapshot.forEach((transactionDoc) => {
+        batch.update(transactionDoc.ref, { category: newName });
+      });
+    }
+    
+    // Commit the batch
+    await batch.commit();
   }
+
 
   const deleteCategory = async (id: string) => {
     const collRef = getCollectionRef('categories');
@@ -265,11 +283,14 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
      }
   };
   
-  const updateSubCategory = async (categoryId: string, subCategoryId: string, newName: string, parentPath: string[] = []) => {
-      const collRef = getCollectionRef('categories');
-      if (!collRef) return;
-      const docRef = doc(collRef, categoryId);
-      const parentDoc = await getDoc(docRef);
+  const updateSubCategory = async (categoryId: string, subCategoryId: string, oldName: string, newName: string, parentPath: string[] = []) => {
+      const categoriesCollRef = getCollectionRef('categories');
+      if (!categoriesCollRef) return;
+      const batch = writeBatch(db);
+
+      // 1. Update the subcategory name within the parent category document
+      const categoryDocRef = doc(categoriesCollRef, categoryId);
+      const parentDoc = await getDoc(categoryDocRef);
        if(parentDoc.exists()){
          let subCategories = parentDoc.data().subCategories || [];
          
@@ -287,9 +308,22 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
          };
          const fullPath = [...parentPath, subCategoryId];
          const updatedSubCategories = updateNested(subCategories, fullPath);
-         await setDoc(docRef, { subCategories: updatedSubCategories }, { merge: true });
+         batch.update(categoryDocRef, { subCategories: updatedSubCategories });
      }
+
+      // 2. Find and update all transactions with the old subcategory name
+      const transactionsCollRef = getCollectionRef('transactions');
+      if (transactionsCollRef) {
+          const q = query(transactionsCollRef, where("category", "==", oldName));
+          const querySnapshot = await getDocs(q);
+          querySnapshot.forEach((transactionDoc) => {
+              batch.update(transactionDoc.ref, { category: newName });
+          });
+      }
+
+      await batch.commit();
   }
+
 
   const deleteSubCategory = async (categoryId: string, subCategoryId: string, parentPath: string[] = []) => {
       const collRef = getCollectionRef('categories');

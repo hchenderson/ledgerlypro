@@ -45,7 +45,7 @@ function EditCategoryDialog({
     children 
 }: { 
     name: string, 
-    onSave: (newName: string) => void,
+    onSave: (oldName: string, newName: string) => void,
     children: React.ReactNode 
 }) {
     const [newName, setNewName] = useState(name);
@@ -54,8 +54,8 @@ function EditCategoryDialog({
 
     const handleSave = () => {
         if (newName.trim() && newName !== name) {
-            onSave(newName);
-            toast({ title: "Category Updated", description: "The category name has been updated."});
+            onSave(name, newName);
+            toast({ title: "Category Updated", description: "The category name and all associated transactions have been updated."});
         }
         setIsOpen(false);
     }
@@ -66,7 +66,7 @@ function EditCategoryDialog({
             <DialogContent>
                 <DialogHeader>
                     <DialogTitle>Edit Category Name</DialogTitle>
-                    <DialogDescription>Enter a new name for this category.</DialogDescription>
+                    <DialogDescription>Enter a new name for this category. All transactions with the old name will be updated.</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-2">
                     <Label htmlFor="category-name">New Name</Label>
@@ -106,7 +106,7 @@ function SubCategoryList({ items, parentId, parentPath = [] }: { items: SubCateg
                                 <span>{sub.name}</span>
                             </div>
                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <EditCategoryDialog name={sub.name} onSave={(newName) => updateSubCategory(parentId, sub.id, newName, parentPath)}>
+                                <EditCategoryDialog name={sub.name} onSave={(oldName, newName) => updateSubCategory(parentId, sub.id, oldName, newName, parentPath)}>
                                     <Button variant="ghost" size="icon"><Edit className="h-4 w-4"/></Button>
                                 </EditCategoryDialog>
                                 <AlertDialog>
@@ -201,7 +201,7 @@ export default function CategoriesPage() {
                                 </div>
                             </AccordionTrigger>
                             <div className="flex items-center gap-1 mr-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <EditCategoryDialog name={category.name} onSave={(newName) => updateCategory(category.id, newName)}>
+                                <EditCategoryDialog name={category.name} onSave={(oldName, newName) => updateCategory(category.id, oldName, newName)}>
                                     <Button variant="ghost" size="icon"><Edit className="h-4 w-4"/></Button>
                                 </EditCategoryDialog>
                                 <AlertDialog>
