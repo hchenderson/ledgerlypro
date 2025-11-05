@@ -18,6 +18,7 @@ import { GoalProgress } from "@/components/dashboard/goal-progress";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { format, subMonths } from "date-fns";
+import { AdBanner } from "@/components/ad-banner";
 
 
 function DashboardSkeleton() {
@@ -92,6 +93,8 @@ export default function DashboardPage() {
   
   const currentMonthName = new Date().toLocaleString('default', { month: 'long' });
   const previousMonthName = subMonths(new Date(), 1).toLocaleString('default', { month: 'long' });
+
+  const showAds = user?.uid !== process.env.ADSENSE_EXCLUDE_UID;
 
   return (
     <div className="space-y-6">
@@ -238,6 +241,7 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+      <AdBanner showAds={showAds} />
     </div>
   );
 }

@@ -26,6 +26,7 @@ import { UserDataProvider, useUserData } from "@/hooks/use-user-data";
 import type { Transaction } from "@/types";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ThemeProvider } from "next-themes";
+import { AdSenseScript } from "@/components/adsense-script";
 
 
 function AppLayoutSkeleton() {
@@ -57,87 +58,6 @@ function AppLayoutSkeleton() {
     )
 }
 
-function AppLayoutContent({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
-  const [isSheetOpen, setIsSheetOpen] = useState(false);
-  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
-  const { categories, addTransaction } = useUserData();
-
-  const handleTransactionsImported = (importedTransactions: Omit<Transaction, 'id'>[]) => {
-      importedTransactions.forEach(t => {
-        addTransaction(t);
-      })
-  }
-
-  const handleTransactionCreated = (values: Omit<Transaction, 'id' | 'date'> & { date: Date, type: "income" | "expense" }) => {
-     addTransaction({
-      ...values,
-      date: values.date.toISOString()
-    });
-  }
-
-  const getPageTitle = () => {
-    const segment = pathname.split('/').pop();
-    if (!segment || segment === 'dashboard') return 'Dashboard';
-    return segment.charAt(0).toUpperCase() + segment.slice(1);
-  };
-
-  return (
-    <TooltipProvider>
-      <SidebarProvider>
-        <Sidebar>
-          <SidebarHeader>
-            <Link href="/dashboard" className="flex items-center gap-2" prefetch={false}>
-              <LedgerlyLogo className="size-8 text-sidebar-primary" />
-              <span className="font-headline text-lg font-semibold text-sidebar-primary">
-                Ledgerly Pro
-              </span>
-            </Link>
-          </SidebarHeader>
-          <SidebarContent>
-            <MainNav />
-          </SidebarContent>
-        </Sidebar>
-        <SidebarInset className="bg-background">
-          <header className="sticky top-0 z-10 flex h-16 items-center gap-4 border-b bg-background/80 px-4 backdrop-blur-sm md:px-6">
-              <div className="flex items-center gap-2">
-                  <SidebarTrigger className="md:hidden" />
-                  <h1 className="font-headline text-xl font-semibold">{getPageTitle()}</h1>
-              </div>
-              <div className="ml-auto flex items-center gap-2">
-                  <ImportTransactionsDialog
-                      isOpen={isImportDialogOpen}
-                      onOpenChange={setIsImportDialogOpen}
-                      onTransactionsImported={handleTransactionsImported}
-                    >
-                      <Button size="sm" variant="outline" className="gap-2" onClick={() => setIsImportDialogOpen(true)}>
-                          <Download className="size-4" />
-                          <span className="hidden sm:inline">Import</span>
-                      </Button>
-                    </ImportTransactionsDialog>
-                  <NewTransactionSheet 
-                      isOpen={isSheetOpen}
-                      onOpenChange={setIsSheetOpen}
-                      onTransactionCreated={handleTransactionCreated}
-                      categories={categories}
-                    >
-                      <Button size="sm" className="gap-2" onClick={() => setIsSheetOpen(true)}>
-                          <PlusCircle className="size-4"/>
-                          <span className="hidden sm:inline">New Transaction</span>
-                      </Button>
-                  </NewTransactionSheet>
-                  <UserNav />
-              </div>
-          </header>
-          <main className="flex-1 p-4 md:p-6">
-            {children}
-          </main>
-        </SidebarInset>
-      </SidebarProvider>
-    </TooltipProvider>
-  )
-}
-
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { user, loading, onboardingComplete } = useAuth();
@@ -155,11 +75,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     return <AppLayoutSkeleton />;
   }
   
+  const showAds = user?.uid !== process.env.ADSENSE_EXCLUDE_UID;
+
   return (
       <UserDataProvider>
+        <AdSenseScript showAds={showAds} />
         {children}
       </UserDataProvider>
   )
 }
-
-    
