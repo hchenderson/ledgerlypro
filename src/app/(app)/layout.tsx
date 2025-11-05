@@ -13,9 +13,6 @@ import {
 import { LedgerlyLogo } from "@/components/icons";
 import { MainNav } from "@/components/main-nav";
 import { UserNav } from "@/components/user-nav";
-import { Button } from "@/components/ui/button";
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { useEffect, useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -24,9 +21,8 @@ import { PlusCircle, Download } from "lucide-react";
 import { ImportTransactionsDialog } from "@/components/import-transactions-dialog";
 import { UserDataProvider, useUserData } from "@/hooks/use-user-data";
 import type { Transaction } from "@/types";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { ThemeProvider } from "next-themes";
 import { AdSenseScript } from "@/components/adsense-script";
+import { useRouter } from 'next/navigation';
 
 
 function AppLayoutSkeleton() {
@@ -58,6 +54,76 @@ function AppLayoutSkeleton() {
     )
 }
 
+function MainAppShell({ children }: { children: React.ReactNode }) {
+    const { addTransaction, categories, allTransactions } = useUserData();
+    const [isImportSheetOpen, setIsImportSheetOpen] = useState(false);
+    const [isNewTxSheetOpen, setIsNewTxSheetOpen] = useState(false);
+
+    const handleTransactionsImported = (transactions: Omit<Transaction, 'id'>[]) => {
+        transactions.forEach(addTransaction);
+    }
+    
+    return (
+        <SidebarProvider>
+            <Sidebar>
+                <SidebarHeader>
+                    <div className="flex items-center gap-2 p-2">
+                        <LedgerlyLogo className="h-8 w-8" />
+                        <span className="text-lg font-semibold text-sidebar-primary">Ledgerly Pro</span>
+                    </div>
+                </SidebarHeader>
+                <SidebarContent>
+                    <MainNav />
+                </SidebarContent>
+                <SidebarFooter>
+                    {/* Optional Footer Content */}
+                </SidebarFooter>
+            </Sidebar>
+
+            <SidebarInset>
+                 <header className="flex h-16 items-center border-b px-6 gap-4">
+                    <SidebarTrigger className="md:hidden" />
+                    <div className="hidden md:block text-muted-foreground font-medium">
+                        Welcome back!
+                    </div>
+
+                    <div className="ml-auto flex items-center gap-2">
+                        <ImportTransactionsDialog
+                            isOpen={isImportSheetOpen}
+                            onOpenChange={setIsImportSheetOpen}
+                            onTransactionsImported={handleTransactionsImported}
+                        >
+                            <Button variant="outline" size="sm">
+                                <Download className="mr-2 h-4 w-4"/>
+                                Import
+                            </Button>
+                        </ImportTransactionsDialog>
+
+                        <NewTransactionSheet 
+                            isOpen={isNewTxSheetOpen} 
+                            onOpenChange={setIsNewTxSheetOpen} 
+                            onTransactionCreated={(values) => {
+                                addTransaction({...values, date: values.date.toISOString()});
+                            }} 
+                            categories={categories}
+                        >
+                            <Button size="sm">
+                                <PlusCircle className="mr-2 h-4 w-4" />
+                                New Transaction
+                            </Button>
+                        </NewTransactionSheet>
+                        <UserNav />
+                    </div>
+                </header>
+                <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
+                    {children}
+                </main>
+            </SidebarInset>
+        </SidebarProvider>
+    )
+}
+
+
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { user, loading, onboardingComplete } = useAuth();
@@ -75,12 +141,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     return <AppLayoutSkeleton />;
   }
   
-  const showAds = user?.uid !== process.env.ADSENSE_EXCLUDE_UID;
+  const showAds = user?.uid !== process.env.NEXT_PUBLIC_ADSENSE_EXCLUDE_UID;
 
   return (
       <UserDataProvider>
         <AdSenseScript showAds={showAds} />
-        {children}
+        <MainAppShell>
+            {children}
+        </MainAppShell>
       </UserDataProvider>
   )
 }
