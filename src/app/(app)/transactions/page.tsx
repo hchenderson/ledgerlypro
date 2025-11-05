@@ -22,6 +22,8 @@ import { DateRange } from "react-day-picker";
 import { cn } from "@/lib/utils";
 import { Calendar } from "@/components/ui/calendar";
 import { ExportTransactionsDialog } from "@/components/export-transactions-dialog";
+import { Pagination } from "@/components/ui/pagination";
+
 
 const TRANSACTIONS_PAGE_SIZE = 25;
 
@@ -113,8 +115,6 @@ export default function TransactionsPage() {
   }, [page, filteredTransactions]);
 
   const totalPages = Math.ceil(filteredTransactions.length / TRANSACTIONS_PAGE_SIZE);
-  const hasMore = page < totalPages;
-
 
   const allCategoryOptions = useMemo(() => {
     const options: { value: string; label: string }[] = [];
@@ -174,17 +174,6 @@ export default function TransactionsPage() {
       }
   }, [deleteTransaction, toast]);
   
-  const handleLoadMore = useCallback(() => {
-    if (hasMore) {
-      setPage(prev => prev + 1);
-      const newTransactions = filteredTransactions.slice(
-        paginatedTransactions.length, 
-        paginatedTransactions.length + TRANSACTIONS_PAGE_SIZE
-      );
-      setPaginatedTransactions(prev => [...prev, ...newTransactions]);
-    }
-  }, [hasMore, filteredTransactions, paginatedTransactions]);
-
   const formatCurrency = useCallback((amount: number) => {
     return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(amount);
   }, []);
@@ -293,7 +282,7 @@ export default function TransactionsPage() {
              <CardDescription>
               {isFiltering
                 ? `Found ${filteredTransactions.length} transactions matching your filters.`
-                : `Showing ${paginatedTransactions.length} of ${allTransactions.length} total transactions.`
+                : `Showing ${filteredTransactions.length > 0 ? (page - 1) * TRANSACTIONS_PAGE_SIZE + 1 : 0}-${Math.min(page * TRANSACTIONS_PAGE_SIZE, filteredTransactions.length)} of ${allTransactions.length} total transactions.`
               }
             </CardDescription>
           </div>
@@ -405,15 +394,12 @@ export default function TransactionsPage() {
             </TableBody>
           </Table>
           
-          {hasMore && (
-            <div className="flex justify-center mt-4">
-              <Button 
-                onClick={handleLoadMore} 
-                variant="outline"
-              >
-                Load More
-              </Button>
-            </div>
+           {totalPages > 1 && (
+            <Pagination
+              currentPage={page}
+              totalPages={totalPages}
+              onPageChange={setPage}
+            />
           )}
         </CardContent>
       </Card>
@@ -429,5 +415,3 @@ export default function TransactionsPage() {
     </div>
   );
 }
-
-    
