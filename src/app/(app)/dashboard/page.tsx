@@ -94,8 +94,6 @@ export default function DashboardPage() {
   const currentMonthName = new Date().toLocaleString('default', { month: 'long' });
   const previousMonthName = subMonths(new Date(), 1).toLocaleString('default', { month: 'long' });
 
-  const showAds = user?.uid !== process.env.NEXT_PUBLIC_ADSENSE_EXCLUDE_UID;
-
   return (
     <div className="space-y-6">
       {(allTransactions.length === 0 || showInstructions) && <InstructionsGuide />}
@@ -241,7 +239,6 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
-      <AdBanner showAds={showAds} slot="9876543210" />
     </div>
   );
 }

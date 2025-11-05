@@ -24,6 +24,7 @@ import type { Transaction } from "@/types";
 import { AdSenseScript } from "@/components/adsense-script";
 import { useRouter } from 'next/navigation';
 import { Button } from "@/components/ui/button";
+import { AdBanner } from "@/components/ad-banner";
 
 
 function AppLayoutSkeleton() {
@@ -56,13 +57,16 @@ function AppLayoutSkeleton() {
 }
 
 function MainAppShell({ children }: { children: React.ReactNode }) {
-    const { addTransaction, categories, allTransactions } = useUserData();
+    const { addTransaction, categories } = useUserData();
+    const { user } = useAuth();
     const [isImportSheetOpen, setIsImportSheetOpen] = useState(false);
     const [isNewTxSheetOpen, setIsNewTxSheetOpen] = useState(false);
 
     const handleTransactionsImported = (transactions: Omit<Transaction, 'id'>[]) => {
         transactions.forEach(addTransaction);
     }
+
+    const showAds = user?.uid !== process.env.NEXT_PUBLIC_ADSENSE_EXCLUDE_UID;
     
     return (
         <SidebarProvider>
@@ -116,9 +120,14 @@ function MainAppShell({ children }: { children: React.ReactNode }) {
                         <UserNav />
                     </div>
                 </header>
-                <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
+                <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 pb-24">
                     {children}
                 </main>
+                 {showAds && (
+                    <div className="fixed bottom-0 left-0 right-0 z-50 md:left-[var(--sidebar-width)] peer-data-[state=collapsed]:md:left-[var(--sidebar-width-icon)] transition-[left] duration-200">
+                        <AdBanner showAds={showAds} slot="9876543210" className="m-2"/>
+                    </div>
+                )}
             </SidebarInset>
         </SidebarProvider>
     )
