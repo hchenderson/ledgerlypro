@@ -23,6 +23,7 @@ import { UserDataProvider, useUserData } from "@/hooks/use-user-data";
 import type { Transaction } from "@/types";
 import { AdSenseScript } from "@/components/adsense-script";
 import { useRouter } from 'next/navigation';
+import { Button } from "@/components/ui/button";
 
 
 function AppLayoutSkeleton() {
