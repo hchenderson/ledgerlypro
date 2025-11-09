@@ -3,6 +3,7 @@
 
 import { useEffect } from 'react';
 import { Card } from './ui/card';
+import { cn } from '@/lib/utils';
 
 declare global {
     interface Window {
@@ -40,9 +41,9 @@ export function AdBanner({
     }
 
     return (
-        <Card className={className}>
+        <Card className={cn("flex items-center justify-center bg-secondary/50 max-w-lg w-full h-[90px] m-2 p-0 overflow-hidden", className)}>
              <ins className="adsbygoogle"
-                style={{ display: 'block' }}
+                style={{ display: 'block', width: "100%", height: "100%" }}
                 data-ad-client={process.env.NEXT_PUBLIC_ADSENSE_PUBLISHER_ID}
                 data-ad-slot={slot}
                 data-ad-format={format}
