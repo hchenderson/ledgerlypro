@@ -155,6 +155,20 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
     });
   }, [allTransactions, dateRange]);
 
+  const { totalIncome, totalExpenses, netIncome } = useMemo(() => {
+    const income = dateFilteredTransactions
+      .filter(t => t.type === 'income')
+      .reduce((sum, t) => sum + t.amount, 0);
+    const expenses = dateFilteredTransactions
+      .filter(t => t.type === 'expense')
+      .reduce((sum, t) => sum + t.amount, 0);
+    return {
+      totalIncome: income,
+      totalExpenses: expenses,
+      netIncome: income - expenses,
+    };
+  }, [dateFilteredTransactions]);
+
  const findMainCategory = useCallback((subCategoryName: string, allCategories: Category[]): string => {
     for (const mainCat of allCategories) {
         if (mainCat.name === subCategoryName) {
@@ -383,6 +397,20 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
             />
           </CardHeader>
           <CardContent>
+            <div className="grid grid-cols-3 gap-4 mb-6 border-b pb-4">
+              <div className="text-center">
+                <p className="text-sm text-muted-foreground">Total Income</p>
+                <p className="text-2xl font-bold text-emerald-500">{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalIncome)}</p>
+              </div>
+              <div className="text-center">
+                <p className="text-sm text-muted-foreground">Total Expense</p>
+                <p className="text-2xl font-bold text-red-500">{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalExpenses)}</p>
+              </div>
+              <div className="text-center">
+                <p className="text-sm text-muted-foreground">Net Income</p>
+                <p className={cn("text-2xl font-bold", netIncome >= 0 ? "text-foreground" : "text-destructive")}>{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(netIncome)}</p>
+              </div>
+            </div>
             <OverviewChart data={overviewData} />
           </CardContent>
           {overviewData.length > 1 && (
@@ -426,6 +454,10 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
             </div>
           </CardHeader>
           <CardContent>
+            <div className="text-center mb-4 border-b pb-2">
+                <p className="text-sm text-muted-foreground">Total Income</p>
+                <p className="text-xl font-bold text-emerald-500">{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalIncome)}</p>
+            </div>
              <GlobalFilters
                 presetRanges={[]}
                 dateRange={undefined}
@@ -458,6 +490,10 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
             </div>
           </CardHeader>
           <CardContent>
+            <div className="text-center mb-4 border-b pb-2">
+                <p className="text-sm text-muted-foreground">Total Expenses</p>
+                <p className="text-xl font-bold text-red-500">{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalExpenses)}</p>
+            </div>
             <GlobalFilters
                 presetRanges={[]}
                 dateRange={undefined}
@@ -871,3 +907,5 @@ export default function ReportsPage() {
         </Tabs>
     )
 }
+
+    
