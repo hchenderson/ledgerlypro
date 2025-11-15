@@ -2,7 +2,7 @@
 "use client";
 
 import React from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
@@ -43,17 +43,17 @@ export function GlobalFilters({
     }
 
     return (
-        <Card className={cn(!showDateFilter && "border-none shadow-none")}>
+        <Card className={cn(!showDateFilter && "border-none shadow-none bg-transparent")}>
             <CardHeader className={cn(!showDateFilter && "p-0 mb-4")}>
-                <CardTitle className="flex items-center gap-2">
-                    <Filter className="h-5 w-5" />
+                <CardTitle className="flex items-center gap-2 text-base">
+                    <Filter className="h-4 w-4" />
                     {filterTitle}
                 </CardTitle>
             </CardHeader>
             <CardContent className={cn("grid grid-cols-1 md:grid-cols-2 gap-4", !showDateFilter && "p-0")}>
                  {showDateFilter && (
                      <div className="space-y-2">
-                        <Label>Date Range</Label>
+                        <Label className="text-sm">Date Range</Label>
                         <div className="flex gap-2">
                             <Select onValueChange={onPresetChange}>
                                 <SelectTrigger className="w-[180px]">
@@ -92,7 +92,7 @@ export function GlobalFilters({
 
                 {showCategoryFilter && categoryOptions && selectedCategories && onSelectedCategoriesChange && (
                     <div className="space-y-2">
-                        <Label>Categories</Label>
+                        <Label className="text-sm">Categories</Label>
                         <SearchableMultiSelect
                             options={categoryOptions}
                             selected={selectedCategories}

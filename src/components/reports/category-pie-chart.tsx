@@ -16,14 +16,16 @@ interface CategoryPieChartProps {
 const CustomTooltip = ({ active, payload }: any) => {
   if (active && payload && payload.length) {
     const data = payload[0];
+    const formattedAmount = new Intl.NumberFormat('en-US', { 
+      style: 'currency', 
+      currency: 'USD' 
+    }).format(data.value);
+    
     return (
       <div className="bg-background p-3 border rounded-lg shadow-lg">
         <p className="font-medium text-foreground">{data.payload.name}</p>
         <p className="text-sm text-muted-foreground">
-          Amount: {new Intl.NumberFormat('en-US', { 
-            style: 'currency', 
-            currency: 'USD' 
-          }).format(data.value)}
+          Amount: {formattedAmount}
         </p>
         <p className="text-sm text-muted-foreground">
           Percentage: {(data.payload.percent * 100).toFixed(1)}%
@@ -34,45 +36,51 @@ const CustomTooltip = ({ active, payload }: any) => {
   return null;
 };
 
-const CustomLabelWithLine = ({ cx, cy, midAngle, outerRadius, name, percent }: any) => {
+const CustomLabelWithLine = ({ cx, cy, midAngle, outerRadius, name, percent, value }: any) => {
     const RADIAN = Math.PI / 180;
-    const radius = outerRadius + 30;
+    // Adjust label line position to ensure it stays within the card
+    const radius = outerRadius + 25; 
     const x = cx + radius * Math.cos(-midAngle * RADIAN);
     const y = cy + radius * Math.sin(-midAngle * RADIAN);
     
-    const lineRadius = outerRadius + 10;
+    const lineRadius = outerRadius + 8;
     const lineX = cx + lineRadius * Math.cos(-midAngle * RADIAN);
     const lineY = cy + lineRadius * Math.sin(-midAngle * RADIAN);
 
-    if (percent < 0.03) return null;
+    // Don't render labels for very small slices to avoid clutter
+    if (percent < 0.05) return null;
+
+    const formattedValue = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(value);
 
     return (
       <g>
+        {/* The line from the pie to the label */}
         <path
-          d={`M${lineX},${lineY}L${x > cx ? x - 10 : x + 10},${y}`}
+          d={`M${lineX},${lineY}L${x > cx ? x - 5 : x + 5},${y}`}
           stroke="hsl(var(--muted-foreground))"
           strokeWidth={1}
           fill="none"
         />
+        {/* The label text */}
         <text 
           x={x > cx ? x - 5 : x + 5} 
-          y={y - 5} 
+          y={y - 10} 
           fill="hsl(var(--foreground))" 
           textAnchor={x > cx ? 'start' : 'end'} 
           dominantBaseline="central"
-          className="text-xs font-medium"
+          className="text-xs font-semibold"
         >
           {name}
         </text>
         <text 
           x={x > cx ? x - 5 : x + 5} 
-          y={y + 8} 
+          y={y + 5} 
           fill="hsl(var(--muted-foreground))"
           textAnchor={x > cx ? 'start' : 'end'} 
           dominantBaseline="central"
           className="text-xs"
         >
-          {`(${(percent * 100).toFixed(0)}%)`}
+          {formattedValue} ({(percent * 100).toFixed(0)}%)
         </text>
       </g>
     );
@@ -108,7 +116,7 @@ export function CategoryPieChart({ data }: CategoryPieChartProps) {
   if (data.length === 0) {
     return (
         <div className="flex items-center justify-center h-[350px] text-muted-foreground">
-            No expense data to display.
+            No expense data to display for the selected filters.
         </div>
     )
   }
@@ -119,7 +127,7 @@ export function CategoryPieChart({ data }: CategoryPieChartProps) {
       className="mx-auto aspect-square h-[350px]"
     >
       <ResponsiveContainer width="100%" height="100%">
-        <PieChart margin={{ top: 40, right: 40, bottom: 40, left: 40 }}>
+        <PieChart margin={{ top: 20, right: 40, bottom: 20, left: 40 }}>
           <Tooltip content={<CustomTooltip />} />
           <Pie
             data={processedData}
