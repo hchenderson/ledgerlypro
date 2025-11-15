@@ -131,7 +131,7 @@ export function CategoryPieChart({ data }: CategoryPieChartProps) {
       className="mx-auto aspect-square h-[350px]"
     >
       <ResponsiveContainer width="100%" height="100%">
-        <PieChart margin={{ top: 30, right: 50, bottom: 30, left: 50 }}>
+        <PieChart margin={{ top: 40, right: 40, bottom: 40, left: 40 }}>
           <Tooltip content={<CustomTooltip />} />
           <Pie
             data={processedData}
