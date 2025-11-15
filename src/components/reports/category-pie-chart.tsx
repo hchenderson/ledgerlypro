@@ -35,60 +35,37 @@ const CustomTooltip = ({ active, payload }: any) => {
   return null;
 };
 
-const CustomLabelWithLine = ({ cx, cy, midAngle, outerRadius, name, percent, value }: any) => {
+const CustomLabelWithLine = (props: any) => {
+    const { cx, cy, midAngle, outerRadius, value, name, percent } = props;
     const RADIAN = Math.PI / 180;
-    const radius = outerRadius + 30; // Increased radius to move labels further out
-    const x = cx + radius * Math.cos(-midAngle * RADIAN);
-    const y = cy + radius * Math.sin(-midAngle * RADIAN);
     
-    // Starting point of the line on the pie chart
-    const lineStartX = cx + (outerRadius + 5) * Math.cos(-midAngle * RADIAN);
-    const lineStartY = cy + (outerRadius + 5) * Math.sin(-midAngle * RADIAN);
+    // Don't render labels for very small slices
+    if (percent < 0.03) {
+      return null;
+    }
+
+    const radius = outerRadius + 25;
+    const x1 = cx + (outerRadius + 5) * Math.cos(-midAngle * RADIAN);
+    const y1 = cy + (outerRadius + 5) * Math.sin(-midAngle * RADIAN);
+    const x2 = cx + radius * Math.cos(-midAngle * RADIAN);
+    const y2 = cy + radius * Math.sin(-midAngle * RADIAN);
+    const textAnchor = x2 > cx ? 'start' : 'end';
     
-    // Intermediate point for the elbow
-    const lineMidX = cx + (outerRadius + 15) * Math.cos(-midAngle * RADIAN);
-    const lineMidY = cy + (outerRadius + 15) * Math.sin(-midAngle * RADIAN);
-
-    const lineEndX = x > cx ? x - 5 : x + 5;
-    const lineEndY = y;
-
-
-    // Don't render labels for very small slices to avoid clutter
-    if (percent < 0.05) return null;
-
     const formattedValue = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(value);
 
     return (
       <g>
-        <path
-          d={`M${lineStartX},${lineStartY}L${lineMidX},${lineMidY}L${lineEndX},${lineEndY}`}
-          stroke="hsl(var(--muted-foreground))"
-          strokeWidth={1}
-          fill="none"
-        />
-        <text 
-          x={lineEndX} 
-          y={lineEndY - 8} // Position name above value
-          fill="hsl(var(--foreground))" 
-          textAnchor={x > cx ? 'start' : 'end'} 
-          dominantBaseline="central"
-          className="text-xs font-semibold"
-        >
-          {name}
+        <path d={`M${x1},${y1}L${x2},${y2}`} stroke="hsl(var(--muted-foreground))" fill="none" />
+        <circle cx={x2} cy={y2} r={3} fill="hsl(var(--muted-foreground))" />
+        <text x={x2 + (x2 > cx ? 1 : -1) * 8} y={y2} textAnchor={textAnchor} dominantBaseline="central" className="text-xs font-semibold fill-foreground">
+            {name}
         </text>
-        <text 
-          x={lineEndX} 
-          y={lineEndY + 8} // Position value below name
-          fill="hsl(var(--muted-foreground))"
-          textAnchor={x > cx ? 'start' : 'end'} 
-          dominantBaseline="central"
-          className="text-xs"
-        >
-          {formattedValue} ({(percent * 100).toFixed(0)}%)
+        <text x={x2 + (x2 > cx ? 1 : -1) * 8} y={y2 + 14} textAnchor={textAnchor} className="text-xs fill-muted-foreground">
+            {formattedValue} ({(percent * 100).toFixed(0)}%)
         </text>
       </g>
     );
-  };
+};
 
 const COLORS = [
   "hsl(var(--chart-1))",
@@ -131,7 +108,7 @@ export function CategoryPieChart({ data }: CategoryPieChartProps) {
       className="mx-auto aspect-square h-[350px]"
     >
       <ResponsiveContainer width="100%" height="100%">
-        <PieChart margin={{ top: 40, right: 40, bottom: 40, left: 40 }}>
+        <PieChart margin={{ top: 20, right: 50, bottom: 20, left: 50 }}>
           <Tooltip content={<CustomTooltip />} />
           <Pie
             data={processedData}
