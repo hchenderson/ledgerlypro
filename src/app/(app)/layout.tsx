@@ -121,11 +121,13 @@ function MainAppShell({ children }: { children: React.ReactNode }) {
                         <UserNav />
                     </div>
                 </header>
-                <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
-                    {children}
-                </main>
+                <div className={cn("flex-1", showAds && "pb-[90px]")}>
+                    <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
+                        {children}
+                    </main>
+                </div>
                  {showAds && (
-                    <footer className="shrink-0">
+                    <footer className="fixed bottom-0 right-0 z-10 w-full md:w-[calc(100%-16rem)] peer-data-[collapsible=icon]:w-[calc(100%-3rem)] transition-[width]">
                         <AdBanner showAds={showAds} slot="9876543210" className="mx-auto" />
                     </footer>
                 )}
