@@ -5,7 +5,6 @@ import * as React from "react"
 import { Pie, PieChart, ResponsiveContainer, Cell, Tooltip } from "recharts"
 import {
   ChartContainer,
-  ChartTooltipContent,
   type ChartConfig
 } from "@/components/ui/chart"
 
@@ -38,14 +37,21 @@ const CustomTooltip = ({ active, payload }: any) => {
 
 const CustomLabelWithLine = ({ cx, cy, midAngle, outerRadius, name, percent, value }: any) => {
     const RADIAN = Math.PI / 180;
-    // Adjust label line position to ensure it stays within the card
-    const radius = outerRadius + 25; 
+    const radius = outerRadius + 30; // Increased radius to move labels further out
     const x = cx + radius * Math.cos(-midAngle * RADIAN);
     const y = cy + radius * Math.sin(-midAngle * RADIAN);
     
-    const lineRadius = outerRadius + 8;
-    const lineX = cx + lineRadius * Math.cos(-midAngle * RADIAN);
-    const lineY = cy + lineRadius * Math.sin(-midAngle * RADIAN);
+    // Starting point of the line on the pie chart
+    const lineStartX = cx + (outerRadius + 5) * Math.cos(-midAngle * RADIAN);
+    const lineStartY = cy + (outerRadius + 5) * Math.sin(-midAngle * RADIAN);
+    
+    // Intermediate point for the elbow
+    const lineMidX = cx + (outerRadius + 15) * Math.cos(-midAngle * RADIAN);
+    const lineMidY = cy + (outerRadius + 15) * Math.sin(-midAngle * RADIAN);
+
+    const lineEndX = x > cx ? x - 5 : x + 5;
+    const lineEndY = y;
+
 
     // Don't render labels for very small slices to avoid clutter
     if (percent < 0.05) return null;
@@ -54,17 +60,15 @@ const CustomLabelWithLine = ({ cx, cy, midAngle, outerRadius, name, percent, val
 
     return (
       <g>
-        {/* The line from the pie to the label */}
         <path
-          d={`M${lineX},${lineY}L${x > cx ? x - 5 : x + 5},${y}`}
+          d={`M${lineStartX},${lineStartY}L${lineMidX},${lineMidY}L${lineEndX},${lineEndY}`}
           stroke="hsl(var(--muted-foreground))"
           strokeWidth={1}
           fill="none"
         />
-        {/* The label text */}
         <text 
-          x={x > cx ? x - 5 : x + 5} 
-          y={y - 10} 
+          x={lineEndX} 
+          y={lineEndY - 8} // Position name above value
           fill="hsl(var(--foreground))" 
           textAnchor={x > cx ? 'start' : 'end'} 
           dominantBaseline="central"
@@ -73,8 +77,8 @@ const CustomLabelWithLine = ({ cx, cy, midAngle, outerRadius, name, percent, val
           {name}
         </text>
         <text 
-          x={x > cx ? x - 5 : x + 5} 
-          y={y + 5} 
+          x={lineEndX} 
+          y={lineEndY + 8} // Position value below name
           fill="hsl(var(--muted-foreground))"
           textAnchor={x > cx ? 'start' : 'end'} 
           dominantBaseline="central"
@@ -127,7 +131,7 @@ export function CategoryPieChart({ data }: CategoryPieChartProps) {
       className="mx-auto aspect-square h-[350px]"
     >
       <ResponsiveContainer width="100%" height="100%">
-        <PieChart margin={{ top: 20, right: 40, bottom: 20, left: 40 }}>
+        <PieChart margin={{ top: 30, right: 50, bottom: 30, left: 50 }}>
           <Tooltip content={<CustomTooltip />} />
           <Pie
             data={processedData}
@@ -135,7 +139,8 @@ export function CategoryPieChart({ data }: CategoryPieChartProps) {
             nameKey="name"
             cx="50%"
             cy="50%"
-            outerRadius={80}
+            outerRadius={60}
+            innerRadius={40}
             labelLine={false}
             label={<CustomLabelWithLine />}
           >
