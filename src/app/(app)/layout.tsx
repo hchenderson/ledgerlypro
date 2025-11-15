@@ -25,6 +25,7 @@ import { AdSenseScript } from "@/components/adsense-script";
 import { useRouter } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import { AdBanner } from "@/components/ad-banner";
+import { cn } from "@/lib/utils";
 
 
 function AppLayoutSkeleton() {
@@ -85,8 +86,8 @@ function MainAppShell({ children }: { children: React.ReactNode }) {
                 </SidebarFooter>
             </Sidebar>
 
-            <SidebarInset>
-                 <header className="flex h-16 items-center border-b px-6 gap-4">
+            <SidebarInset className="flex flex-col">
+                 <header className="flex h-16 shrink-0 items-center border-b px-6 gap-4">
                     <SidebarTrigger className="md:hidden" />
                     <div className="hidden md:block text-muted-foreground font-medium">
                         Welcome back!
@@ -120,13 +121,13 @@ function MainAppShell({ children }: { children: React.ReactNode }) {
                         <UserNav />
                     </div>
                 </header>
-                <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 pb-32">
+                <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
                     {children}
                 </main>
                  {showAds && (
-                    <div className="fixed bottom-0 left-0 right-0 z-50 md:left-[var(--sidebar-width)] peer-data-[state=collapsed]:md:left-[var(--sidebar-width-icon)] transition-[left] duration-200">
+                    <footer className="shrink-0">
                         <AdBanner showAds={showAds} slot="9876543210" className="mx-auto" />
-                    </div>
+                    </footer>
                 )}
             </SidebarInset>
         </SidebarProvider>
