@@ -35,37 +35,6 @@ const CustomTooltip = ({ active, payload }: any) => {
   return null;
 };
 
-const CustomLabelWithLine = (props: any) => {
-    const { cx, cy, midAngle, outerRadius, value, name, percent } = props;
-    const RADIAN = Math.PI / 180;
-    
-    // Don't render labels for very small slices
-    if (percent < 0.03) {
-      return null;
-    }
-
-    const radius = outerRadius + 25;
-    const x1 = cx + (outerRadius + 5) * Math.cos(-midAngle * RADIAN);
-    const y1 = cy + (outerRadius + 5) * Math.sin(-midAngle * RADIAN);
-    const x2 = cx + radius * Math.cos(-midAngle * RADIAN);
-    const y2 = cy + radius * Math.sin(-midAngle * RADIAN);
-    const textAnchor = x2 > cx ? 'start' : 'end';
-    
-    const formattedValue = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(value);
-
-    return (
-      <g>
-        <path d={`M${x1},${y1}L${x2},${y2}`} stroke="hsl(var(--muted-foreground))" fill="none" />
-        <circle cx={x2} cy={y2} r={3} fill="hsl(var(--muted-foreground))" />
-        <text x={x2 + (x2 > cx ? 1 : -1) * 8} y={y2} textAnchor={textAnchor} dominantBaseline="central" className="text-xs font-semibold fill-foreground">
-            {name}
-        </text>
-        <text x={x2 + (x2 > cx ? 1 : -1) * 8} y={y2 + 14} textAnchor={textAnchor} className="text-xs fill-muted-foreground">
-            {formattedValue} ({(percent * 100).toFixed(0)}%)
-        </text>
-      </g>
-    );
-};
 
 const COLORS = [
   "hsl(var(--chart-1))",
@@ -91,7 +60,7 @@ export function CategoryPieChart({ data }: CategoryPieChartProps) {
     name: item.category,
     value: item.amount,
     fill: COLORS[index % COLORS.length],
-    percent: item.amount / totalAmount
+    percent: totalAmount > 0 ? item.amount / totalAmount : 0
   }));
     
   if (data.length === 0) {
@@ -108,7 +77,7 @@ export function CategoryPieChart({ data }: CategoryPieChartProps) {
       className="mx-auto aspect-square h-[350px]"
     >
       <ResponsiveContainer width="100%" height="100%">
-        <PieChart margin={{ top: 20, right: 50, bottom: 20, left: 50 }}>
+        <PieChart>
           <Tooltip content={<CustomTooltip />} />
           <Pie
             data={processedData}
@@ -116,10 +85,13 @@ export function CategoryPieChart({ data }: CategoryPieChartProps) {
             nameKey="name"
             cx="50%"
             cy="50%"
-            outerRadius={60}
-            innerRadius={40}
-            labelLine={false}
-            label={<CustomLabelWithLine />}
+            innerRadius={60}
+            outerRadius={90}
+            paddingAngle={2}
+            labelLine={true}
+            label={({ name, percent }) =>
+                `${name} ${(percent * 100).toFixed(0)}%`
+            }
           >
              {processedData.map((entry, index) => (
               <Cell key={`cell-${index}`} fill={entry.fill} />
