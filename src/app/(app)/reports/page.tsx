@@ -24,6 +24,7 @@ import {
   ArrowDown,
   BookMarked,
   Loader2,
+  Filter,
 } from 'lucide-react';
 import type { Category, SubCategory, QuarterlyReport } from '@/types';
 import { DateRange } from 'react-day-picker';
@@ -31,7 +32,6 @@ import { subMonths, startOfMonth, endOfMonth, startOfYear, endOfYear, getYear, f
 
 import { OverviewChart } from '@/components/dashboard/overview-chart';
 import { CategoryPieChart } from '@/components/reports/category-pie-chart';
-import { GlobalFilters } from '@/components/reports/global-filters';
 import { cn } from '@/lib/utils';
 import { ExportReportDialog } from '@/components/reports/export-report-dialog';
 import { generateAndSaveQuarterlyReport } from '@/lib/actions';
@@ -62,6 +62,10 @@ import {
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { SearchableMultiSelect } from '@/components/ui/searchable-multi-select';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { Calendar as CalendarIcon } from 'lucide-react';
 
 const PRESET_RANGES = [
   { label: 'This Month', value: 'this-month' },
@@ -375,12 +379,52 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
 
   return (
     <div className="space-y-6">
-       <GlobalFilters
-            presetRanges={PRESET_RANGES}
-            dateRange={dateRange}
-            onDateRangeChange={setDateRange}
-            onPresetChange={handlePresetChange}
-        />
+       <Card>
+            <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                    <Filter className="h-4 w-4" />
+                    Filters
+                </CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                 <div className="space-y-2">
+                    <Label className="text-sm">Date Range</Label>
+                    <div className="flex gap-2">
+                        <Select onValueChange={handlePresetChange}>
+                            <SelectTrigger className="w-[180px]">
+                                <SelectValue placeholder="Select a preset" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {PRESET_RANGES.map(preset => (
+                                    <SelectItem key={preset.value} value={preset.value}>{preset.label}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button
+                                    variant="outline"
+                                    className={cn('flex-1 justify-start text-left font-normal', !dateRange && 'text-muted-foreground')}
+                                >
+                                    <CalendarIcon className="mr-2 h-4 w-4" />
+                                    {dateRange?.from ? (dateRange.to ? (`${format(dateRange.from, 'LLL dd, y')} - ${format(dateRange.to, 'LLL dd, y')}`) : format(dateRange.from, 'LLL dd, y')) : (<span>Pick a date</span>)}
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                                <Calendar
+                                    initialFocus
+                                    mode="range"
+                                    defaultMonth={dateRange?.from}
+                                    selected={dateRange}
+                                    onSelect={setDateRange}
+                                    numberOfMonths={2}
+                                />
+                            </PopoverContent>
+                        </Popover>
+                    </div>
+                </div>
+            </CardContent>
+        </Card>
         <Card id="overview-chart-card">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
@@ -458,17 +502,15 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
                 <p className="text-sm text-muted-foreground">Total Income</p>
                 <p className="text-xl font-bold text-emerald-500">{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalIncome)}</p>
             </div>
-             <GlobalFilters
-                presetRanges={[]}
-                dateRange={undefined}
-                onDateRangeChange={() => {}}
-                onPresetChange={() => {}}
-                categoryOptions={getCategoryOptions('income')}
-                selectedCategories={selectedIncomeCategories}
-                onSelectedCategoriesChange={setSelectedIncomeCategories}
-                showCategoryFilter={true}
-                filterTitle="Filter Income Categories"
-              />
+             <div className="p-4 border rounded-md">
+                 <Label className="text-sm mb-2 block">Filter Categories</Label>
+                 <SearchableMultiSelect
+                    options={getCategoryOptions('income')}
+                    selected={selectedIncomeCategories}
+                    onChange={setSelectedIncomeCategories}
+                    placeholder="All Income Categories"
+                />
+            </div>
             <CategoryPieChart data={incomeByCategory} />
           </CardContent>
         </Card>
@@ -494,17 +536,15 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
                 <p className="text-sm text-muted-foreground">Total Expenses</p>
                 <p className="text-xl font-bold text-red-500">{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalExpenses)}</p>
             </div>
-            <GlobalFilters
-                presetRanges={[]}
-                dateRange={undefined}
-                onDateRangeChange={() => {}}
-                onPresetChange={() => {}}
-                categoryOptions={getCategoryOptions('expense')}
-                selectedCategories={selectedExpenseCategories}
-                onSelectedCategoriesChange={setSelectedExpenseCategories}
-                showCategoryFilter={true}
-                filterTitle="Filter Expense Categories"
-              />
+            <div className="p-4 border rounded-md">
+                <Label className="text-sm mb-2 block">Filter Categories</Label>
+                <SearchableMultiSelect
+                    options={getCategoryOptions('expense')}
+                    selected={selectedExpenseCategories}
+                    onChange={setSelectedExpenseCategories}
+                    placeholder="All Expense Categories"
+                />
+            </div>
             <CategoryPieChart data={expenseByCategory} />
           </CardContent>
         </Card>
@@ -632,7 +672,22 @@ function QuarterlyReportView() {
   }, [user, selectedReport]);
 
   const handleGenerateReport = async (referenceDate: Date, notes?: string) => {
-    if (!user) return;
+    if (!user) {
+      toast({
+        variant: "destructive",
+        title: "Authentication Error",
+        description: "You must be logged in to generate reports."
+      });
+      return;
+    }
+    
+    console.log('Generating report with:', {
+      userId: user.uid,
+      referenceDate: referenceDate.toISOString(),
+      quarter: getQuarter(referenceDate),
+      year: getYear(referenceDate),
+      notes
+    });
     
     try {
       const result = await generateAndSaveQuarterlyReport({ 
@@ -640,6 +695,9 @@ function QuarterlyReportView() {
         referenceDate: referenceDate.toISOString(),
         notes: notes,
       });
+      
+      console.log('Report generation result:', result);
+      
       if (result.success) {
         toast({
           title: "Report Generated",
@@ -649,10 +707,11 @@ function QuarterlyReportView() {
         throw new Error(result.error || "Unknown error occurred.");
       }
     } catch (error: any) {
+      console.error('Report generation error:', error);
       toast({
         variant: "destructive",
         title: "Generation Failed",
-        description: error.message,
+        description: error.message || "An unexpected error occurred.",
       });
     }
   };
@@ -908,3 +967,5 @@ export default function ReportsPage() {
         </Tabs>
     )
 }
+
+    
