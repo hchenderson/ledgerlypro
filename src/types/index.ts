@@ -59,6 +59,7 @@ export type Goal = {
   targetAmount: number;
   savedAmount: number;
   targetDate?: string;
+  linkedCategoryId?: string;
 }
 
 
