@@ -146,7 +146,7 @@ export async function generateAndSaveQuarterlyReport({
       expenseToIncomeRatio: income > 0 ? (expenses / income) * 100 : 0,
     };
 
-    const reportDoc: Omit<QuarterlyReport, 'createdAt'> = {
+    const reportDoc = {
       period,
       startDate: startDate.toISOString(),
       endDate: endDate.toISOString(),
@@ -156,7 +156,7 @@ export async function generateAndSaveQuarterlyReport({
       budgetComparison,
       goalsProgress,
       kpis,
-      notes: notes || undefined,
+      ...(notes && { notes }),
     };
 
     const reportsRef = adminDb.collection('users').doc(userId).collection('reports');
