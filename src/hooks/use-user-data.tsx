@@ -1,8 +1,7 @@
 
-
 "use client";
 
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
 import { collection, doc, getDocs, onSnapshot, writeBatch, getDoc, setDoc, deleteDoc, query, orderBy, limit, startAfter, where, QueryConstraint, getCountFromServer } from 'firebase/firestore';
 import type { Transaction, Category, SubCategory, Budget, RecurringTransaction, Goal } from '@/types';
 import { useAuth } from './use-auth';
