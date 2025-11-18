@@ -6,7 +6,7 @@ import { collection, doc, getDocs, onSnapshot, writeBatch, getDoc, setDoc, delet
 import type { Transaction, Category, SubCategory, Budget, RecurringTransaction, Goal } from '@/types';
 import { useAuth } from './use-auth';
 import { db } from '@/lib/firebase';
-import { addDays, addWeeks, addMonths, addYears, isBefore, startOfDay, parseISO, isToday } from 'date-fns';
+import { addDays, addWeeks, addMonths, addYears, isBefore, startOfDay, parseISO, isToday, differenceInMonths, startOfMonth } from 'date-fns';
 
 interface UserDataContextType {
   allTransactions: Transaction[];
@@ -50,7 +50,8 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [categories, setCategories] = useState<Category[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [recurringTransactions, setRecurringTransactions] = useState<RecurringTransaction[]>([]);
-  const [goals, setGoals] = useState<Goal[]>([]);
+  const [rawGoals, setRawGoals] = useState<Goal[]>([]); // Goals from Firestore
+  const [goals, setGoals] = useState<Goal[]>([]); // Processed goals with calculated savings
   const [loading, setLoading] = useState(true);
 
   const getCollectionRef = useCallback((collectionName: string) => {
@@ -144,6 +145,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setCategories([]);
       setBudgets([]);
       setRecurringTransactions([]);
+      setRawGoals([]);
       setGoals([]);
       return;
     }
@@ -164,7 +166,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           case 'categories': setCategories(data as Category[]); break;
           case 'budgets': setBudgets(data as Budget[]); break;
           case 'recurringTransactions': setRecurringTransactions(data as RecurringTransaction[]); break;
-          case 'goals': setGoals(data as Goal[]); break;
+          case 'goals': setRawGoals(data as Goal[]); break;
         }
         setLoading(false);
       }, (error) => {
@@ -187,6 +189,109 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
       return names;
   }, []);
+
+  const getBudgetDetails = useCallback((forDate: Date = new Date()) => {
+    const findCategoryById = (id: string, cats: (Category | SubCategory)[]): (Category | SubCategory | undefined) => {
+        for (const cat of cats) {
+            if (cat.id === id) return cat;
+            if (cat.subCategories) {
+                const found = findCategoryById(id, cat.subCategories);
+                if (found) return found;
+            }
+        }
+        return undefined;
+    }
+
+    return budgets.map(budget => {
+      const category = findCategoryById(budget.categoryId, categories);
+      
+      let categoryName = "Unknown Category";
+      let allCategoryNamesForBudget: string[] = [];
+
+      if (category) {
+        categoryName = category.name;
+        allCategoryNamesForBudget = getSubCategoryNames(category);
+      }
+      
+      const spent = allTransactions
+        .filter(t => {
+            const transactionDate = new Date(t.date);
+            const isMonthly = budget.period === 'monthly' && transactionDate.getMonth() === forDate.getMonth() && transactionDate.getFullYear() === forDate.getFullYear();
+            const isYearly = budget.period === 'yearly' && transactionDate.getFullYear() === forDate.getFullYear();
+
+            return t.type === 'expense' &&
+                   allCategoryNamesForBudget.includes(t.category) &&
+                   (isMonthly || isYearly);
+        })
+        .reduce((sum, t) => sum + t.amount, 0);
+
+      const remaining = budget.amount - spent;
+      const progress = budget.amount > 0 ? (spent / budget.amount) * 100 : 0;
+
+      return {
+        ...budget,
+        categoryName,
+        spent,
+        remaining,
+        progress,
+      };
+    });
+  }, [budgets, allTransactions, categories, getSubCategoryNames]);
+
+  // Recalculate goal saved amounts when dependencies change
+  useEffect(() => {
+    const findCategoryById = (id: string, cats: (Category | SubCategory)[]): (Category | SubCategory | undefined) => {
+        for (const cat of cats) {
+            if (cat.id === id) return cat;
+            if (cat.subCategories) {
+                const found = findCategoryById(id, cat.subCategories);
+                if (found) return found;
+            }
+        }
+        return undefined;
+    };
+  
+    const processedGoals = rawGoals.map(goal => {
+      if (!goal.linkedCategoryId || !goal.contributionStartDate) {
+        return goal;
+      }
+  
+      const linkedBudget = budgets.find(b => b.categoryId === goal.linkedCategoryId);
+      if (!linkedBudget) {
+        return goal;
+      }
+  
+      const startDate = startOfMonth(parseISO(goal.contributionStartDate));
+      const today = new Date();
+      const months = differenceInMonths(today, startDate);
+      
+      if (months < 0) {
+        return goal;
+      }
+  
+      let totalUnspent = 0;
+      for (let i = 0; i <= months; i++) {
+        const currentDate = addMonths(startDate, i);
+        const budgetDetailsForMonth = getBudgetDetails(currentDate);
+        const relevantBudgetDetail = budgetDetailsForMonth.find(b => b.id === linkedBudget.id);
+        
+        if (relevantBudgetDetail) {
+          // We only count unspent amount if it's a past month
+          if (isBefore(currentDate, startOfMonth(today))) {
+            const unspent = Math.max(0, relevantBudgetDetail.remaining);
+            totalUnspent += unspent;
+          }
+        }
+      }
+  
+      return {
+        ...goal,
+        savedAmount: (goal.savedAmount || 0) + totalUnspent,
+      };
+    });
+  
+    setGoals(processedGoals);
+  }, [rawGoals, budgets, allTransactions, categories, getBudgetDetails]);
 
   const addTransaction = async (transaction: Omit<Transaction, 'id'>) => {
     const collRef = getCollectionRef('transactions');
@@ -404,54 +509,6 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     await deleteDoc(docRef);
   };
   
-  const getBudgetDetails = useCallback((forDate: Date = new Date()) => {
-    const findCategoryById = (id: string, cats: (Category | SubCategory)[]): (Category | SubCategory | undefined) => {
-        for (const cat of cats) {
-            if (cat.id === id) return cat;
-            if (cat.subCategories) {
-                const found = findCategoryById(id, cat.subCategories);
-                if (found) return found;
-            }
-        }
-        return undefined;
-    }
-
-    return budgets.map(budget => {
-      const category = findCategoryById(budget.categoryId, categories);
-      
-      let categoryName = "Unknown Category";
-      let allCategoryNamesForBudget: string[] = [];
-
-      if (category) {
-        categoryName = category.name;
-        allCategoryNamesForBudget = getSubCategoryNames(category);
-      }
-      
-      const spent = allTransactions
-        .filter(t => {
-            const transactionDate = new Date(t.date);
-            const isMonthly = budget.period === 'monthly' && transactionDate.getMonth() === forDate.getMonth() && transactionDate.getFullYear() === forDate.getFullYear();
-            const isYearly = budget.period === 'yearly' && transactionDate.getFullYear() === forDate.getFullYear();
-
-            return t.type === 'expense' &&
-                   allCategoryNamesForBudget.includes(t.category) &&
-                   (isMonthly || isYearly);
-        })
-        .reduce((sum, t) => sum + t.amount, 0);
-
-      const remaining = budget.amount - spent;
-      const progress = budget.amount > 0 ? (spent / budget.amount) * 100 : 0;
-
-      return {
-        ...budget,
-        categoryName,
-        spent,
-        remaining,
-        progress,
-      };
-    });
-  }, [budgets, allTransactions, categories, getSubCategoryNames]);
-
   const addGoal = async (goal: Omit<Goal, 'id'>) => {
     const collRef = getCollectionRef('goals');
     if (!collRef) return;
@@ -463,6 +520,14 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const collRef = getCollectionRef('goals');
     if (!collRef) return;
     const docRef = doc(collRef, id);
+    const existingDoc = await getDoc(docRef);
+    const existingData = existingDoc.data() as Goal;
+  
+    // If unlinking, reset saved amount to base saved amount
+    if ('linkedCategoryId' in values && !values.linkedCategoryId) {
+      values.savedAmount = existingData.savedAmount;
+    }
+  
     await setDoc(docRef, values, { merge: true });
   };
 
@@ -617,3 +682,5 @@ export const useUserData = () => {
   }
   return context;
 };
+
+    

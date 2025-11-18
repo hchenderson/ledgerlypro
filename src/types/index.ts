@@ -60,6 +60,7 @@ export type Goal = {
   savedAmount: number;
   targetDate?: string;
   linkedCategoryId?: string;
+  contributionStartDate?: string;
 }
 
 
@@ -119,3 +120,5 @@ export interface QuarterlyReport {
   };
   notes?: string;
 }
+
+    

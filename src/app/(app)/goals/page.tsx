@@ -56,6 +56,7 @@ const goalFormSchema = z.object({
   savedAmount: z.coerce.number().min(0, "Saved amount can't be negative.").optional(),
   targetDate: z.date().optional(),
   linkedCategoryId: z.string().optional(),
+  contributionStartDate: z.date().optional(),
 });
 
 type GoalFormValues = z.infer<typeof goalFormSchema>;
@@ -73,6 +74,7 @@ function GoalDialog({ goal, onSave, children }: { goal?: Goal, onSave: (values: 
       savedAmount: 0,
       targetDate: undefined,
       linkedCategoryId: '',
+      contributionStartDate: undefined,
     }
   });
   
@@ -98,12 +100,14 @@ function GoalDialog({ goal, onSave, children }: { goal?: Goal, onSave: (values: 
         savedAmount: goal.savedAmount,
         targetDate: goal.targetDate ? new Date(goal.targetDate) : undefined,
         linkedCategoryId: goal.linkedCategoryId || '',
+        contributionStartDate: goal.contributionStartDate ? new Date(goal.contributionStartDate) : undefined,
       } : {
         name: '',
         targetAmount: 0,
         savedAmount: 0,
         targetDate: undefined,
         linkedCategoryId: '',
+        contributionStartDate: undefined,
       });
     }
   }, [isOpen, goal, form]);
@@ -117,6 +121,8 @@ function GoalDialog({ goal, onSave, children }: { goal?: Goal, onSave: (values: 
     setIsOpen(false);
     form.reset();
   };
+
+  const linkedCategoryId = form.watch('linkedCategoryId');
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -148,22 +154,54 @@ function GoalDialog({ goal, onSave, children }: { goal?: Goal, onSave: (values: 
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Link to Budget Category (Optional)</FormLabel>
-                   <Select onValueChange={field.onChange} defaultValue={field.value}>
+                   <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="Select a category to track..." />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {expenseCategories.map(cat => (
-                        <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
-                      ))}
+                        <SelectItem value="none">None</SelectItem>
+                        {expenseCategories.map(cat => (
+                            <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
                   <FormMessage />
                 </FormItem>
               )}
             />
+
+            {linkedCategoryId && linkedCategoryId !== 'none' && (
+                <FormField
+                    control={form.control}
+                    name="contributionStartDate"
+                    render={({ field }) => (
+                        <FormItem className="flex flex-col">
+                            <FormLabel>Auto-Contribution Start Date</FormLabel>
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                    <FormControl>
+                                        <Button variant="outline" className={cn("pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
+                                            {field.value ? (format(field.value, "PPP")) : (<span>Pick a start date</span>)}
+                                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                        </Button>
+                                    </FormControl>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-0" align="start">
+                                    <Calendar
+                                        mode="single"
+                                        selected={field.value}
+                                        onSelect={field.onChange}
+                                        initialFocus
+                                    />
+                                </PopoverContent>
+                            </Popover>
+                             <FormMessage />
+                        </FormItem>
+                    )}
+                />
+            )}
             
             <DialogFooter>
               <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
@@ -203,7 +241,7 @@ function AddContributionDialog({ goal, onContribute }: { goal: Goal, onContribut
     return (
          <Dialog open={isOpen} onOpenChange={setIsOpen}>
             <DialogTrigger asChild>
-                <Button size="sm" variant="outline">
+                <Button size="sm" variant="outline" disabled={!!goal.linkedCategoryId}>
                   <Banknote className="mr-2 h-4 w-4" /> Add Funds
                 </Button>
             </DialogTrigger>
@@ -251,7 +289,8 @@ function GoalsPageContent() {
         targetAmount: values.targetAmount,
         savedAmount: values.savedAmount || 0,
         targetDate: values.targetDate ? values.targetDate.toISOString() : undefined,
-        linkedCategoryId: values.linkedCategoryId || undefined,
+        linkedCategoryId: values.linkedCategoryId === 'none' ? undefined : values.linkedCategoryId,
+        contributionStartDate: values.contributionStartDate ? values.contributionStartDate.toISOString() : undefined,
       };
       
       if (id) {
@@ -478,3 +517,5 @@ export default function GoalsPage() {
         </FeatureGate>
     );
 }
+
+    
