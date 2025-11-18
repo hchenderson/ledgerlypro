@@ -4,6 +4,7 @@
 import { getQuarter, startOfQuarter, endOfQuarter } from 'date-fns';
 import type { Transaction, Category, Budget, Goal, SubCategory, QuarterlyReport } from '@/types';
 import { adminDb } from '@/lib/firebaseAdmin';
+import * as admin from 'firebase-admin';
 
 
 async function getUserData(userId: string, collectionName: string) {
@@ -158,7 +159,7 @@ export async function generateAndSaveQuarterlyReport({
     const reportsRef = adminDb.collection('users').doc(userId).collection('reports');
     const reportRef = reportsRef.doc(period);
 
-    await reportRef.set({ ...reportDoc, createdAt: new Date() });
+    await reportRef.set({ ...reportDoc, createdAt: admin.firestore.Timestamp.now() });
     
     const finalReportData = (await reportRef.get()).data();
     if (!finalReportData) throw new Error("Could not retrieve the saved report.");
