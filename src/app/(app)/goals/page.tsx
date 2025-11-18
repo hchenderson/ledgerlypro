@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, useMemo } from 'react';
@@ -138,7 +139,29 @@ function GoalDialog({ goal, onSave, children }: { goal?: Goal, onSave: (values: 
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <FormField control={form.control} name="name" render={({ field }) => (<FormItem><FormLabel>Goal Name</FormLabel><FormControl><Input placeholder="e.g., Down Payment" {...field} /></FormControl><FormMessage /></FormItem>)} />
             <FormField control={form.control} name="targetAmount" render={({ field }) => (<FormItem><FormLabel>Target Amount</FormLabel><FormControl><Input type="number" step="0.01" placeholder="e.g., 10000" {...field} /></FormControl><FormMessage /></FormItem>)} />
-            {!goal && (<FormField control={form.control} name="savedAmount" render={({ field }) => (<FormItem><FormLabel>Starting Amount</FormLabel><FormControl><Input type="number" step="0.01" placeholder="e.g., 500" {...field} /></FormControl><FormMessage /></FormItem>)} />)}
+            
+            {/* Hide starting amount if a category is linked, as it will be calculated */}
+            {!linkedCategoryId && (
+              <FormField
+                control={form.control}
+                name="savedAmount"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Starting Amount</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        placeholder="e.g., 500"
+                        {...field}
+                        disabled={!!goal || !!linkedCategoryId}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
             
             <FormField control={form.control} name="targetDate" render={({ field }) => (
                 <FormItem className="flex flex-col">
@@ -153,7 +176,7 @@ function GoalDialog({ goal, onSave, children }: { goal?: Goal, onSave: (values: 
               name="linkedCategoryId"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Link to Budget Category (Optional)</FormLabel>
+                  <FormLabel>Link to Expense Category (Optional)</FormLabel>
                    <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
                       <SelectTrigger>
@@ -287,7 +310,7 @@ function GoalsPageContent() {
       const goalData = {
         name: values.name,
         targetAmount: values.targetAmount,
-        savedAmount: values.savedAmount || 0,
+        savedAmount: values.linkedCategoryId && values.linkedCategoryId !== 'none' ? 0 : (values.savedAmount || 0),
         targetDate: values.targetDate ? values.targetDate.toISOString() : undefined,
         linkedCategoryId: values.linkedCategoryId === 'none' ? undefined : values.linkedCategoryId,
         contributionStartDate: values.contributionStartDate ? values.contributionStartDate.toISOString() : undefined,

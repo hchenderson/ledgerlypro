@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
@@ -57,6 +58,39 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!user) return null;
     return collection(db, 'users', user.uid, collectionName);
   }, [user]);
+
+  const getSubCategoryNames = useCallback((category: Category | SubCategory): string[] => {
+      let names = [category.name];
+      if (category.subCategories) {
+          category.subCategories.forEach(sub => {
+              names = [...names, ...getSubCategoryNames(sub)];
+          });
+      }
+      return names;
+  }, []);
+
+  const processedGoals = useMemo(() => {
+    return goals.map(goal => {
+      if (goal.linkedCategoryId) {
+        const category = categories.find(c => c.id === goal.linkedCategoryId);
+        if (category) {
+          const allCategoryNames = getSubCategoryNames(category);
+          const contributionStartDate = goal.contributionStartDate ? new Date(goal.contributionStartDate) : new Date(0);
+          
+          const autoSavedAmount = allTransactions
+            .filter(t => 
+              t.type === 'expense' &&
+              allCategoryNames.includes(t.category) &&
+              new Date(t.date) >= contributionStartDate
+            )
+            .reduce((sum, t) => sum + t.amount, 0);
+
+          return { ...goal, savedAmount: autoSavedAmount };
+        }
+      }
+      return goal;
+    });
+  }, [goals, allTransactions, categories, getSubCategoryNames]);
 
   const processRecurringTransactions = useCallback(async () => {
     if (!user || recurringTransactions.length === 0) return;
@@ -177,16 +211,6 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       unsubscribers.forEach(unsub => unsub());
     };
   }, [user, getCollectionRef]);
-  
-  const getSubCategoryNames = useCallback((category: Category | SubCategory): string[] => {
-      let names = [category.name];
-      if (category.subCategories) {
-          category.subCategories.forEach(sub => {
-              names = [...names, ...getSubCategoryNames(sub)];
-          });
-      }
-      return names;
-  }, []);
 
   const getBudgetDetails = useCallback((forDate: Date = new Date()) => {
     const findCategoryById = (id: string, cats: (Category | SubCategory)[]): (Category | SubCategory | undefined) => {
@@ -574,7 +598,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         categories, 
         budgets,
         recurringTransactions,
-        goals,
+        goals: processedGoals,
         loading, 
         addTransaction, 
         updateTransaction,
