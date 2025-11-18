@@ -656,20 +656,43 @@ function QuarterlyReportView() {
   const [selectedReport, setSelectedReport] = useState<QuarterlyReport | null>(null);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+    
     setLoading(true);
     const reportsRef = collection(db, 'users', user.uid, 'reports');
     const q = query(reportsRef, orderBy('period', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const fetchedReports = snapshot.docs.map(doc => doc.data() as QuarterlyReport);
-      setReports(fetchedReports);
-      if (fetchedReports.length > 0 && !selectedReport) {
-        setSelectedReport(fetchedReports[0]);
+    
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        console.log(`Received ${snapshot.docs.length} reports`);
+        const fetchedReports = snapshot.docs.map(doc => {
+          const data = doc.data();
+          console.log('Report data:', data);
+          return data as QuarterlyReport;
+        });
+        setReports(fetchedReports);
+        if (fetchedReports.length > 0 && !selectedReport) {
+          setSelectedReport(fetchedReports[0]);
+        }
+        setLoading(false);
+      },
+      (error) => {
+        console.error('Error listening to reports:', error);
+        toast({
+          variant: "destructive",
+          title: "Error Loading Reports",
+          description: error.message,
+        });
+        setLoading(false);
       }
-      setLoading(false);
-    });
+    );
+    
     return () => unsubscribe();
-  }, [user, selectedReport]);
+  }, [user, toast, selectedReport]);
 
   const handleGenerateReport = async (referenceDate: Date, notes?: string) => {
     if (!user) {
@@ -967,5 +990,3 @@ export default function ReportsPage() {
         </Tabs>
     )
 }
-
-    
