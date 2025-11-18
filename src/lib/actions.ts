@@ -121,7 +121,12 @@ export async function generateAndSaveQuarterlyReport({
         const categoryName = category?.name || 'Unknown Category';
         const allCategoryNamesForBudget = category ? getSubCategoryNames(category) : [];
 
-        const budgetAmountForPeriod = budget.period === 'monthly' ? budget.amount * 3 : budget.amount;
+        let budgetAmountForPeriod: number;
+        if (budget.period === 'monthly') {
+            budgetAmountForPeriod = budget.amount * 3;
+        } else { // yearly
+            budgetAmountForPeriod = budget.amount / 4;
+        }
 
         const actual = transactionsInQuarter
             .filter(t => t.type === 'expense' && allCategoryNamesForBudget.includes(t.category))
@@ -157,12 +162,13 @@ export async function generateAndSaveQuarterlyReport({
       goalsProgress,
       kpis,
       ...(notes && { notes }),
+      createdAt: admin.firestore.Timestamp.now(),
     };
 
     const reportsRef = adminDb.collection('users').doc(userId).collection('reports');
     const reportRef = reportsRef.doc(period);
 
-    await reportRef.set({ ...reportDoc, createdAt: admin.firestore.Timestamp.now() });
+    await reportRef.set(reportDoc);
     
     const finalReportData = (await reportRef.get()).data();
     if (!finalReportData) throw new Error("Could not retrieve the saved report.");
