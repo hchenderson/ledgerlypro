@@ -529,8 +529,9 @@ function GenerateReportDialog({
 
   const handleGenerate = async () => {
     setIsGenerating(true);
+    // More precise quarter calculation
     const quarterMonth = (parseInt(quarter) - 1) * 3;
-    const referenceDate = new Date(parseInt(year), quarterMonth, 1);
+    const referenceDate = startOfQuarter(new Date(parseInt(year), quarterMonth, 1));
     
     await onGenerate(referenceDate, notes);
 
