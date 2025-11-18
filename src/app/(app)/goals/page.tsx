@@ -155,7 +155,6 @@ function GoalDialog({ goal, onSave, children }: { goal?: Goal, onSave: (values: 
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="">None</SelectItem>
                       {expenseCategories.map(cat => (
                         <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
                       ))}
