@@ -1,7 +1,7 @@
 
 'use server';
 
-import { getQuarter, startOfQuarter, endOfQuarter } from 'date-fns';
+import { getQuarter, startOfQuarter, endOfQuarter, getYear } from 'date-fns';
 import type { Transaction, Category, Budget, Goal, SubCategory, QuarterlyReport } from '@/types';
 import { adminDb } from '@/lib/firebaseAdmin';
 import * as admin from 'firebase-admin';
@@ -73,19 +73,24 @@ export async function generateAndSaveQuarterlyReport({
     }
     
     const referenceDate = new Date(referenceDateString);
+    const quarter = getQuarter(referenceDate);
+    const year = getYear(referenceDate);
+    const period = `Q${quarter} ${year}`;
     const startDate = startOfQuarter(referenceDate);
     const endDate = endOfQuarter(referenceDate);
+    
+    // Fetch data concurrently
+    const [transactionsDocs, categories, budgets, goals] = await Promise.all([
+        adminDb.collection('users').doc(userId).collection('transactions')
+            .where('date', '>=', startDate.toISOString())
+            .where('date', '<=', endDate.toISOString())
+            .get(),
+        getUserData(userId, 'categories') as Promise<Category[]>,
+        getUserData(userId, 'budgets') as Promise<Budget[]>,
+        getUserData(userId, 'goals') as Promise<Goal[]>
+    ]);
 
-    const transactions = await getUserData(userId, 'transactions') as Transaction[];
-    const categories = await getUserData(userId, 'categories') as Category[];
-    const budgets = await getUserData(userId, 'budgets') as Budget[];
-    const goals = await getUserData(userId, 'goals') as Goal[];
-
-
-    const transactionsInQuarter = transactions.filter(t => {
-        const transactionDate = new Date(t.date);
-        return transactionDate >= startDate && transactionDate <= endDate;
-    });
+    const transactionsInQuarter = transactionsDocs.docs.map(doc => doc.data() as Transaction);
 
     const income = transactionsInQuarter
       .filter(t => t.type === 'income')
@@ -141,8 +146,6 @@ export async function generateAndSaveQuarterlyReport({
       expenseToIncomeRatio: income > 0 ? (expenses / income) * 100 : 0,
     };
 
-    const period = `${startDate.getFullYear()}-Q${getQuarter(startDate)}`;
-    
     const reportDoc: Omit<QuarterlyReport, 'createdAt'> = {
       period,
       startDate: startDate.toISOString(),
@@ -167,7 +170,7 @@ export async function generateAndSaveQuarterlyReport({
     // The `createdAt` field from Firestore is a Timestamp object, which is not serializable
     // for the client. We need to convert it to an object that can be serialized.
     const serializableReport = {
-        ...finalReportDara,
+        ...finalReportData,
         createdAt: {
             seconds: finalReportData.createdAt.seconds,
             nanoseconds: finalReportData.createdAt.nanoseconds,
