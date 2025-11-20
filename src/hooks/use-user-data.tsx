@@ -369,7 +369,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     run().catch((e) => console.error('Error migrating categoryId for transactions:', e));
   }, [user, loading, categories, allTransactions, getCollectionRef]);
 
-    const updateGoal = useCallback(
+  const updateGoal = useCallback(
     async (id: string, values: Partial<Omit<Goal, 'id'>>) => {
       const collRef = getCollectionRef('goals');
       if (!collRef) return;
@@ -378,9 +378,9 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     },
     [getCollectionRef]
   );
-  
+
   useEffect(() => {
-    if (!user || loading || goals.length === 0 || allTransactions.length === 0) return;
+    if (!user || loading || goals.length === 0) return;
   
     goals.forEach(goal => {
       if (!goal.linkedCategoryId) return;
@@ -466,7 +466,14 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const spent = allTransactions
           .filter((t) => {
             if (t.type !== 'expense') return false;
-            if (!t.categoryId || !allCategoryIdsForBudget.includes(t.categoryId)) return false;
+            
+            // This is the part that needs normalization.
+            // A transaction's `category` field can be "Parent > Child".
+            // A budget might be on "Parent". We need to check if the transaction
+            // belongs under that parent tree.
+            if (!t.categoryId || !allCategoryIdsForBudget.includes(t.categoryId)) {
+                return false;
+            }
 
             const transactionDate = new Date(t.date);
             const isMonthly =
