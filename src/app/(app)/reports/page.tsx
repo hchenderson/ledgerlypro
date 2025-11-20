@@ -851,8 +851,8 @@ function QuarterlyReportView() {
                                 <TableCell className="text-right">
                                     <div className="flex items-center justify-end gap-2">
                                         <span>{item.percentUsed.toFixed(0)}%</span>
-                                        <Progress 
-                                            value={item.percentUsed} 
+                                        <Progress
+                                            value={Math.min(item.percentUsed, 100)}
                                             className={cn("w-20 h-2", {
                                                 '[&>div]:bg-destructive': item.percentUsed > 100,
                                             })}
