@@ -9,6 +9,7 @@ export type Transaction = {
   amount: number;
   type: "income" | "expense";
   category: string;
+  categoryId?: string;
 };
 
 export type NavItem = {
@@ -48,6 +49,7 @@ export type RecurringTransaction = {
   amount: number;
   type: "income" | "expense";
   category: string;
+  categoryId?: string;
   frequency: "daily" | "weekly" | "monthly" | "yearly";
   startDate: string;
   lastAddedDate?: string;
@@ -62,6 +64,12 @@ export type Goal = {
   linkedCategoryId?: string;
   contributionStartDate?: string;
 }
+
+export type ProcessedGoal = Goal & {
+  autoTrackingActive: boolean;
+  autoSavedAmount: number;
+  contributingTransactions: Transaction[];
+};
 
 
 export interface Widget {
@@ -120,5 +128,3 @@ export interface QuarterlyReport {
   };
   notes?: string;
 }
-
-    
