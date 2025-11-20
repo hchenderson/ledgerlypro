@@ -159,20 +159,6 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
     });
   }, [allTransactions, dateRange]);
 
-  const { totalIncome, totalExpenses, netIncome } = useMemo(() => {
-    const income = dateFilteredTransactions
-      .filter(t => t.type === 'income')
-      .reduce((sum, t) => sum + t.amount, 0);
-    const expenses = dateFilteredTransactions
-      .filter(t => t.type === 'expense')
-      .reduce((sum, t) => sum + t.amount, 0);
-    return {
-      totalIncome: income,
-      totalExpenses: expenses,
-      netIncome: income - expenses,
-    };
-  }, [dateFilteredTransactions]);
-
  const findMainCategory = useCallback((subCategoryName: string, allCategories: Category[]): string => {
     for (const mainCat of allCategories) {
         if (mainCat.name === subCategoryName) {
@@ -195,6 +181,33 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
     }
     return 'Uncategorized';
   }, []);
+
+  const { totalIncome, totalExpenses, netIncome } = useMemo(() => {
+    const income = dateFilteredTransactions
+      .filter(t => t.type === 'income')
+      .filter(t => {
+        if (selectedIncomeCategories.length === 0) return true;
+        const main = findMainCategory(t.category, categories);
+        return selectedIncomeCategories.includes(main);
+      })
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    const expenses = dateFilteredTransactions
+      .filter(t => t.type === 'expense')
+      .filter(t => {
+        if (selectedExpenseCategories.length === 0) return true;
+        const main = findMainCategory(t.category, categories);
+        return selectedExpenseCategories.includes(main);
+      })
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    return {
+      totalIncome: income,
+      totalExpenses: expenses,
+      netIncome: income - expenses,
+    };
+  }, [dateFilteredTransactions, selectedIncomeCategories, selectedExpenseCategories, categories, findMainCategory]);
+
   
   const getCategoryOptions = useCallback((type: 'income' | 'expense') => {
     const mainCategories = categories.filter(c => c.type === type);
