@@ -115,9 +115,34 @@ export async function generateAndSaveQuarterlyReport({
         }
         return undefined;
     }
+    
+    const findMainCategoryForSub = (subCatId: string, allCategories: Category[]): Category | undefined => {
+        for(const cat of allCategories) {
+            if (cat.id === subCatId) return cat;
+            const findInChildren = (current: Category | SubCategory): boolean => {
+                if (current.id === subCatId) return true;
+                if (current.subCategories) {
+                    return current.subCategories.some(findInChildren);
+                }
+                return false;
+            }
+            if(cat.subCategories?.some(findInChildren)) {
+                return cat;
+            }
+        }
+        return undefined;
+    }
 
-    const budgetComparison = budgets.map(budget => {
+    const budgetComparison = budgets
+      .map(budget => {
         const category = findCategoryById(budget.categoryId, categories);
+        const mainCategory = findMainCategoryForSub(budget.categoryId, categories);
+        
+        // Only include budgets for expense categories
+        if (!mainCategory || mainCategory.type !== 'expense') {
+          return null;
+        }
+
         const categoryName = category?.name || 'Unknown Category';
         const allCategoryNamesForBudget = category ? getSubCategoryNames(category) : [];
 
@@ -136,7 +161,9 @@ export async function generateAndSaveQuarterlyReport({
         const percentUsed = budgetAmountForPeriod > 0 ? (actual / budgetAmountForPeriod) * 100 : 0;
 
         return { categoryName, budget: budgetAmountForPeriod, actual, variance, percentUsed };
-    });
+      })
+      .filter(item => item !== null) as { categoryName: string; budget: number; actual: number; variance: number; percentUsed: number; }[];
+
 
     const goalsProgress = goals.map(goal => ({
         name: goal.name,
