@@ -400,73 +400,98 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   useEffect(() => {
     if (!user || loading || goals.length === 0) return;
-
+  
     goals.forEach(goal => {
-        if (!goal.linkedCategoryId) return;
-
-        const category = findCategoryByIdRecursive(goal.linkedCategoryId, categories);
-        if (!category) return;
-
-        const categoryIds = collectSubCategoryIds(category);
-
-        const startDate = goal.contributionStartDate
-            ? new Date(goal.contributionStartDate)
-            : new Date(0);
-
-        const linkedTransactions = allTransactions.filter(t =>
-            t.type === 'expense' &&
-            t.categoryId &&
-            categoryIds.includes(t.categoryId) &&
-            new Date(t.date) >= startDate
-        );
-
-        const total = linkedTransactions.reduce((sum, t) => sum + t.amount, 0);
-
-        if (total !== goal.savedAmount) {
-            updateGoal(goal.id, { savedAmount: total });
-        }
+      if (!goal.linkedCategoryId) return;
+  
+      const category = findCategoryByIdRecursive(goal.linkedCategoryId, categories);
+      if (!category) return;
+  
+      const { ids: subtreeIds } = getCategorySubtreeIdsAndNames(category);
+  
+      const startDate = goal.contributionStartDate
+        ? new Date(goal.contributionStartDate)
+        : new Date(0);
+  
+      const linkedTransactions = allTransactions.filter(t =>
+        t.type === 'expense' &&
+        t.categoryId &&
+        subtreeIds.includes(t.categoryId) &&
+        new Date(t.date) >= startDate
+      );
+  
+      const total = linkedTransactions.reduce((sum, t) => sum + t.amount, 0);
+  
+      if (total !== goal.savedAmount) {
+        updateGoal(goal.id, { savedAmount: total });
+      }
     });
-  }, [allTransactions, goals, categories, loading, user, updateGoal]);
+  }, [allTransactions, goals, categories, loading, user, updateGoal, getCategorySubtreeIdsAndNames]);
 
 
   // Provide processed goals with extra UI metadata
-  const processedGoals: ProcessedGoal[] = useMemo(() => {
-    return goals.map((goal) => {
-      if (goal.linkedCategoryId) {
-        const category = findCategoryByIdRecursive(goal.linkedCategoryId, categories);
-        if (category) {
-          const categoryIds = collectSubCategoryIds(category);
-          const contributionStartDate = goal.contributionStartDate
-            ? new Date(goal.contributionStartDate)
-            : new Date(0);
+const processedGoals: ProcessedGoal[] = useMemo(() => {
+  return goals.map(goal => {
+    if (!goal.linkedCategoryId) {
+      // Manual goal – keep savedAmount as stored
+      return { ...goal, autoTrackingActive: false, contributingTransactions: [], autoSavedAmount: goal.savedAmount };
+    }
 
-          const contributingTransactions = allTransactions.filter((t) => {
-            if (t.type !== 'expense') return false;
-            if (!t.categoryId) return false;
-            if (!categoryIds.includes(t.categoryId)) return false;
-            return new Date(t.date) >= contributionStartDate;
-          });
+    const category = findCategoryByIdRecursive(goal.linkedCategoryId, categories);
+    if (!category) {
+      // Linked to a category that no longer exists
+      return { ...goal, autoTrackingActive: false, contributingTransactions: [], autoSavedAmount: goal.savedAmount };
+    }
 
-          const autoSavedAmount = contributingTransactions.reduce((sum, t) => sum + t.amount, 0);
+    const { ids: subtreeIds, names: subtreeNames } = getCategorySubtreeIdsAndNames(category);
+    const contributionStartDate = goal.contributionStartDate
+      ? new Date(goal.contributionStartDate)
+      : new Date(0);
 
-          return {
-            ...goal,
-            savedAmount: autoSavedAmount,
-            autoTrackingActive: true,
-            autoSavedAmount,
-            contributingTransactions,
-          };
-        }
-      }
+    const contributions = allTransactions.filter(t => {
+      if (t.type !== "expense") return false;
 
-      return {
-        ...goal,
-        autoTrackingActive: false,
-        autoSavedAmount: goal.savedAmount ?? 0,
-        contributingTransactions: [],
-      };
+      const tDate = new Date(t.date);
+      if (tDate < contributionStartDate) return false;
+
+      // 1) If you later add t.categoryId, use it first
+      const matchesById =
+        (t as any).categoryId &&
+        subtreeIds.includes((t as any).categoryId as string);
+
+      // 2) Fallback: match by category name exactly
+      const matchesByName = subtreeNames.includes(t.category);
+
+      // 3) Extra forgiving: if you ever stored full paths like "Parent > Child",
+      // treat a transaction as matching if it ends with "> Name" or equals Name
+      const matchesByPath =
+        !matchesById &&
+        !matchesByName &&
+        typeof t.category === "string" &&
+        subtreeNames.some(name =>
+          t.category === name ||
+          t.category.endsWith(`> ${name}`)
+        );
+
+      return matchesById || matchesByName || matchesByPath;
     });
-  }, [goals, allTransactions, categories]);
+
+    const autoSavedAmount = contributions.reduce((sum, t) => sum + t.amount, 0);
+
+    return {
+      ...goal,
+      savedAmount: autoSavedAmount,
+      autoTrackingActive: true,
+      autoSavedAmount,
+      contributingTransactions: contributions,
+    };
+  });
+}, [
+  goals,
+  allTransactions,
+  categories,
+  getCategorySubtreeIdsAndNames,
+]);
 
   // ---------- Budgets: use categoryId tree instead of names ----------
 

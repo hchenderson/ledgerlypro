@@ -69,6 +69,13 @@ export type ProcessedGoal = Goal & {
   autoTrackingActive: boolean;
   autoSavedAmount: number;
   contributingTransactions: Transaction[];
+  contributionLedger?: {
+    transactionId: string;
+    date: string;
+    amount: number;
+    description: string;
+    category: string;
+  }[];
 };
 
 
