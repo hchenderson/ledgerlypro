@@ -115,54 +115,41 @@ export async function generateAndSaveQuarterlyReport({
         }
         return undefined;
     }
-    
-    const findMainCategoryForSub = (subCatId: string, allCategories: Category[]): Category | undefined => {
-        for(const cat of allCategories) {
-            if (cat.id === subCatId) return cat;
-            const findInChildren = (current: Category | SubCategory): boolean => {
-                if (current.id === subCatId) return true;
-                if (current.subCategories) {
-                    return current.subCategories.some(findInChildren);
-                }
-                return false;
-            }
-            if(cat.subCategories?.some(findInChildren)) {
-                return cat;
-            }
-        }
-        return undefined;
-    }
 
-    const budgetComparison = budgets
-      .map(budget => {
-        const category = findCategoryById(budget.categoryId, categories);
-        const mainCategory = findMainCategoryForSub(budget.categoryId, categories);
-        
-        // Only include budgets for expense categories
-        if (!mainCategory || mainCategory.type !== 'expense') {
-          return null;
-        }
+    const actualsByCategory: Record<string, number> = {};
+    transactionsInQuarter.forEach(t => {
+      if (t.type !== "expense") return;
+      actualsByCategory[t.category] = (actualsByCategory[t.category] || 0) + t.amount;
+    });
 
-        const categoryName = category?.name || 'Unknown Category';
-        const allCategoryNamesForBudget = category ? getSubCategoryNames(category) : [];
+    const budgetComparison = budgets.map(budget => {
+      const category = findCategoryById(budget.categoryId, categories);
+      if (!category) return null;
 
-        let budgetAmountForPeriod: number;
-        if (budget.period === 'monthly') {
-            budgetAmountForPeriod = budget.amount * 3;
-        } else { // yearly
-            budgetAmountForPeriod = budget.amount / 4;
-        }
+      const mainCategory = (categories.find(c => c.id === category.id || c.subCategories?.some(sc => sc.id === category.id)) || {type: 'expense'});
+      if(mainCategory.type !== 'expense') return null;
 
-        const actual = transactionsInQuarter
-            .filter(t => t.type === 'expense' && allCategoryNamesForBudget.includes(t.category))
-            .reduce((sum, t) => sum + t.amount, 0);
-        
-        const variance = budgetAmountForPeriod - actual;
-        const percentUsed = budgetAmountForPeriod > 0 ? (actual / budgetAmountForPeriod) * 100 : 0;
+      let budgetAmountForPeriod: number;
+      if (budget.period === 'monthly') {
+          budgetAmountForPeriod = budget.amount * 3;
+      } else { // yearly
+          budgetAmountForPeriod = budget.amount / 4;
+      }
 
-        return { categoryName, budget: budgetAmountForPeriod, actual, variance, percentUsed };
-      })
-      .filter(item => item !== null) as { categoryName: string; budget: number; actual: number; variance: number; percentUsed: number; }[];
+      const allSubCategoryNames = getSubCategoryNames(category);
+      const actual = allSubCategoryNames.reduce((sum, catName) => sum + (actualsByCategory[catName] || 0), 0);
+      
+      const variance = budgetAmountForPeriod - actual;
+      const percentUsed = budgetAmountForPeriod > 0 ? (actual / budgetAmountForPeriod) * 100 : 0;
+
+      return {
+        categoryName: category.name,
+        budget: budgetAmountForPeriod,
+        actual,
+        variance,
+        percentUsed
+      };
+    }).filter((item): item is NonNullable<typeof item> => item !== null);
 
 
     const goalsProgress = goals.map(goal => ({
