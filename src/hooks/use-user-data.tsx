@@ -68,10 +68,21 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return names;
   }, []);
 
+  const findCategoryByIdRecursive = useCallback((id: string, cats: (Category | SubCategory)[]): Category | SubCategory | undefined => {
+    for (const cat of cats) {
+        if (cat.id === id) return cat;
+        if (cat.subCategories) {
+            const found = findCategoryByIdRecursive(id, cat.subCategories);
+            if (found) return found;
+        }
+    }
+    return undefined;
+  }, []);
+
   const processedGoals = useMemo(() => {
     return goals.map(goal => {
       if (goal.linkedCategoryId) {
-        const category = categories.find(c => c.id === goal.linkedCategoryId);
+        const category = findCategoryByIdRecursive(goal.linkedCategoryId, categories);
         if (category) {
           const allCategoryNames = getSubCategoryNames(category);
           const contributionStartDate = goal.contributionStartDate ? new Date(goal.contributionStartDate) : new Date(0);
@@ -89,7 +100,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
       return goal;
     });
-  }, [goals, allTransactions, categories, getSubCategoryNames]);
+  }, [goals, allTransactions, categories, getSubCategoryNames, findCategoryByIdRecursive]);
 
   const processRecurringTransactions = useCallback(async () => {
     if (!user || recurringTransactions.length === 0) return;
