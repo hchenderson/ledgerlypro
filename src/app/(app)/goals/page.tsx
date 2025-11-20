@@ -50,6 +50,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from "@/components/ui/badge";
 
 const goalFormSchema = z.object({
   name: z.string().min(2, 'Goal name must be at least 2 characters.'),
@@ -438,10 +439,14 @@ function GoalsPageContent() {
                 <CardHeader>
                   <div className="flex justify-between items-start">
                       <div className="flex-1 min-w-0 pr-2">
-                          <CardTitle className="flex items-center gap-2">
+                          <CardTitle className="flex items-center gap-2 flex-wrap">
                             {isCompleted && <Award className="h-5 w-5 text-primary flex-shrink-0"/>}
-                            {goal.linkedCategoryId && <Link2 className="h-4 w-4 text-muted-foreground flex-shrink-0"/>}
                             <span className="truncate">{goal.name}</span>
+                            {goal.autoTrackingActive && (
+                                <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
+                                Auto-tracking active
+                                </Badge>
+                            )}
                           </CardTitle>
                           <CardDescription>
                             {goal.targetDate 
