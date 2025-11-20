@@ -188,32 +188,32 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [getCollectionRef]);
 
   useEffect(() => {
-    if (loading) return;
-
+    if (loading || !user) return;
+  
     goals.forEach(goal => {
       if (!goal.linkedCategoryId) return;
-
+  
       const category = findCategoryByIdRecursive(goal.linkedCategoryId, categories);
       if (!category) return;
-
-      const categoryNames = getSubCategoryNames(category);
+  
+      const allCategoryNames = getSubCategoryNames(category);
       const contributionStartDate = goal.contributionStartDate ? new Date(goal.contributionStartDate) : new Date(0);
       
       const linkedTransactions = allTransactions.filter(t => 
         t.type === 'expense' && 
-        categoryNames.includes(t.category) &&
+        allCategoryNames.includes(t.category) &&
         new Date(t.date) >= contributionStartDate
       );
       
       const total = linkedTransactions.reduce((sum, t) => sum + t.amount, 0);
       
-      // We check against the raw savedAmount from Firestore, not the processed one.
+      // Get the original goal from the state before it's processed by useMemo
       const originalGoal = goals.find(g => g.id === goal.id);
       if (originalGoal && total !== originalGoal.savedAmount) {
         updateGoal(goal.id, { savedAmount: total });
       }
     });
-  }, [allTransactions, categories, goals, loading, findCategoryByIdRecursive, getSubCategoryNames, updateGoal]);
+  }, [allTransactions, categories, goals, loading, user, findCategoryByIdRecursive, getSubCategoryNames, updateGoal]);
 
 
   useEffect(() => {
@@ -679,5 +679,3 @@ export const useUserData = () => {
   }
   return context;
 };
-
-    
