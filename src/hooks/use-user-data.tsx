@@ -83,6 +83,25 @@ const collectSubCategoryNames = (category: Category | SubCategory): string[] => 
   return names;
 };
 
+const getCategorySubtreeIdsAndNames = (
+  category: Category | SubCategory
+): { ids: string[]; names: string[] } => {
+  const ids: string[] = [];
+  const names: string[] = [];
+
+  const walk = (cat: Category | SubCategory) => {
+    if (cat.id) ids.push(cat.id);
+    if (cat.name) names.push(cat.name);
+    if (cat.subCategories) {
+      cat.subCategories.forEach(walk);
+    }
+  };
+
+  walk(category);
+  return { ids, names };
+};
+
+
 // Recursively collect *all* IDs for a category and its descendants
 const collectSubCategoryIds = (category: Category | SubCategory): string[] => {
   let ids = [category.id];
@@ -381,31 +400,31 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   useEffect(() => {
     if (!user || loading || goals.length === 0) return;
-  
+
     goals.forEach(goal => {
-      if (!goal.linkedCategoryId) return;
-  
-      const category = findCategoryByIdRecursive(goal.linkedCategoryId, categories);
-      if (!category) return;
-  
-      const categoryIds = collectSubCategoryIds(category);
-  
-      const startDate = goal.contributionStartDate
-        ? new Date(goal.contributionStartDate)
-        : new Date(0);
-  
-      const linkedTransactions = allTransactions.filter(t =>
-        t.type === 'expense' &&
-        t.categoryId &&
-        categoryIds.includes(t.categoryId) &&
-        new Date(t.date) >= startDate
-      );
-  
-      const total = linkedTransactions.reduce((sum, t) => sum + t.amount, 0);
-  
-      if (total !== goal.savedAmount) {
-        updateGoal(goal.id, { savedAmount: total });
-      }
+        if (!goal.linkedCategoryId) return;
+
+        const category = findCategoryByIdRecursive(goal.linkedCategoryId, categories);
+        if (!category) return;
+
+        const categoryIds = collectSubCategoryIds(category);
+
+        const startDate = goal.contributionStartDate
+            ? new Date(goal.contributionStartDate)
+            : new Date(0);
+
+        const linkedTransactions = allTransactions.filter(t =>
+            t.type === 'expense' &&
+            t.categoryId &&
+            categoryIds.includes(t.categoryId) &&
+            new Date(t.date) >= startDate
+        );
+
+        const total = linkedTransactions.reduce((sum, t) => sum + t.amount, 0);
+
+        if (total !== goal.savedAmount) {
+            updateGoal(goal.id, { savedAmount: total });
+        }
     });
   }, [allTransactions, goals, categories, loading, user, updateGoal]);
 
