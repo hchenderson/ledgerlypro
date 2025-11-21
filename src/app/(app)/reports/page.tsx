@@ -49,6 +49,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  TableFooter,
 } from "@/components/ui/table"
 import { Progress } from '@/components/ui/progress';
 import {
@@ -894,6 +895,29 @@ function QuarterlyReportView() {
                             </TableRow>
                         ))}
                     </TableBody>
+                    {selectedReport.budgetComparisonTotals && (
+                       <TableFooter>
+                            <TableRow>
+                                <TableCell className="font-bold">Total</TableCell>
+                                <TableCell className="text-right font-bold">{formatCurrency(selectedReport.budgetComparisonTotals.budget)}</TableCell>
+                                <TableCell className="text-right font-bold">{formatCurrency(selectedReport.budgetComparisonTotals.actual)}</TableCell>
+                                <TableCell className={cn("text-right font-bold", selectedReport.budgetComparisonTotals.variance >= 0 ? 'text-emerald-600' : 'text-destructive')}>
+                                    {formatCurrency(selectedReport.budgetComparisonTotals.variance)}
+                                </TableCell>
+                                <TableCell className="text-right font-bold">
+                                     <div className="flex items-center justify-end gap-2">
+                                        <span>{selectedReport.budgetComparisonTotals.percentUsed.toFixed(0)}%</span>
+                                        <Progress
+                                            value={Math.min(selectedReport.budgetComparisonTotals.percentUsed, 100)}
+                                            className={cn("w-20 h-2", {
+                                                '[&>div]:bg-destructive': selectedReport.budgetComparisonTotals.percentUsed > 100,
+                                            })}
+                                        />
+                                    </div>
+                                </TableCell>
+                            </TableRow>
+                        </TableFooter>
+                    )}
                 </Table>
             </div>
           )}

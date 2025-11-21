@@ -171,6 +171,17 @@ export async function generateAndSaveQuarterlyReport({
         };
     }).filter((item): item is NonNullable<typeof item> => item !== null);
 
+    const budgetComparisonTotals = budgetComparison.reduce(
+        (acc, item) => {
+            acc.budget += item.budget;
+            acc.actual += item.actual;
+            return acc;
+        },
+        { budget: 0, actual: 0, variance: 0, percentUsed: 0 }
+    );
+    budgetComparisonTotals.variance = budgetComparisonTotals.budget - budgetComparisonTotals.actual;
+    budgetComparisonTotals.percentUsed = budgetComparisonTotals.budget > 0 ? (budgetComparisonTotals.actual / budgetComparisonTotals.budget) * 100 : 0;
+
 
     const goalsProgress = goals.map(goal => ({
         name: goal.name,
@@ -194,6 +205,7 @@ export async function generateAndSaveQuarterlyReport({
       expenseSummary,
       netIncome,
       budgetComparison,
+      budgetComparisonTotals,
       goalsProgress,
       kpis,
       ...(notes && { notes }),

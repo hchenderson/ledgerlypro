@@ -123,6 +123,12 @@ export interface QuarterlyReport {
     variance: number;
     percentUsed: number;
   }[];
+  budgetComparisonTotals?: {
+    budget: number;
+    actual: number;
+    variance: number;
+    percentUsed: number;
+  };
   goalsProgress: {
     name: string;
     targetAmount: number;
