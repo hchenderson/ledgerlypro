@@ -67,22 +67,6 @@ interface UserDataContextType {
 const UserDataContext = createContext<UserDataContextType | undefined>(undefined);
 
 // ---------- Category Helpers ----------
-const normalizeCategoryName = (name: string): string => {
-  if (!name) return '';
-  return name.split(">").map(n => n.trim()).pop()!;
-};
-
-// Recursively collect *all* subcategory names (for legacy path matching if needed)
-const collectSubCategoryNames = (category: Category | SubCategory): string[] => {
-  let names = [category.name];
-  if (category.subCategories) {
-    for (const sub of category.subCategories) {
-      names = names.concat(collectSubCategoryNames(sub));
-    }
-  }
-  return names;
-};
-
 const getCategorySubtreeIdsAndNames = (
   category: Category | SubCategory
 ): { ids: string[]; names: string[] } => {
@@ -388,17 +372,19 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     run().catch((e) => console.error('Error migrating categoryId for transactions:', e));
   }, [user, loading, categories, allTransactions, getCollectionRef]);
 
-  const processedGoals = useMemo(() => {
+  const processedGoals = useMemo((): ProcessedGoal[] => {
+    if (loading) {
+      return goals.map(g => ({ ...g, autoTrackingActive: false, autoSavedAmount: 0, contributingTransactions: [] }));
+    }
+  
     return goals.map(goal => {
       if (!goal.linkedCategoryId) {
-        // Manual goal – keep savedAmount as stored
-        return { ...goal, autoTrackingActive: false, contributingTransactions: [], autoSavedAmount: goal.savedAmount };
+        return { ...goal, autoTrackingActive: false, autoSavedAmount: 0, contributingTransactions: [] };
       }
   
       const category = findCategoryByIdRecursive(goal.linkedCategoryId, categories);
       if (!category) {
-        // Linked to a category that no longer exists
-        return { ...goal, autoTrackingActive: false, contributingTransactions: [], autoSavedAmount: goal.savedAmount };
+        return { ...goal, autoTrackingActive: false, autoSavedAmount: 0, contributingTransactions: [] };
       }
   
       const { ids: subtreeIds, names: subtreeNames } = getCategorySubtreeIdsAndNames(category);
@@ -412,16 +398,12 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const tDate = new Date(t.date);
         if (tDate < contributionStartDate) return false;
   
-        // 1) If you later add t.categoryId, use it first
         const matchesById =
           t.categoryId &&
           subtreeIds.includes(t.categoryId as string);
   
-        // 2) Fallback: match by category name exactly
         const matchesByName = subtreeNames.includes(t.category);
   
-        // 3) Extra forgiving: if you ever stored full paths like "Parent > Child",
-        // treat a transaction as matching if it ends with "> Name" or equals Name
         const matchesByPath =
           !matchesById &&
           !matchesByName &&
@@ -440,7 +422,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         ...goal,
         savedAmount: autoSavedAmount,
         autoTrackingActive: true,
-        autoSavedAmount: autoSavedAmount,
+        autoSavedAmount,
         contributingTransactions: contributions,
         contributionLedger: contributions.map(t => ({
           transactionId: t.id,
@@ -455,32 +437,34 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     goals,
     allTransactions,
     categories,
+    loading
   ]);
   
-
-  // ---------- Budgets: use categoryId tree instead of names ----------
-
   const getBudgetDetails = useCallback(
     (forDate: Date = new Date()) => {
+      if (loading) return [];
+      
+      const normalizeCategoryName = (name: string): string => {
+        if (!name) return '';
+        return name.split(">").map(n => n.trim()).pop()!;
+      };
+
       return budgets.map((budget) => {
         const result = findCategoryWithPathById(budget.categoryId, categories);
         let categoryName = 'Unknown Category';
-        let allCategoryIdsForBudget: string[] = [];
+        let allCategoryNamesForBudget: string[] = [];
 
         if (result) {
           categoryName = result.path.map((c) => c.name).join(' > ');
-          allCategoryIdsForBudget = collectSubCategoryIds(result.category);
+          allCategoryNamesForBudget = getCategorySubtreeIdsAndNames(result.category).names;
         }
 
         const spent = allTransactions
           .filter((t) => {
             if (t.type !== 'expense') return false;
             
-            // This is the part that needs normalization.
-            // A transaction's `category` field can be "Parent > Child".
-            // A budget might be on "Parent". We need to check if the transaction
-            // belongs under that parent tree.
-            if (!t.categoryId || !allCategoryIdsForBudget.includes(t.categoryId)) {
+            const transactionCategoryName = normalizeCategoryName(t.category);
+            if (!allCategoryNamesForBudget.includes(transactionCategoryName)) {
                 return false;
             }
 
@@ -508,7 +492,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         };
       });
     },
-    [budgets, allTransactions, categories]
+    [budgets, allTransactions, categories, loading]
   );
 
   // ---------- CRUD helpers ----------
@@ -918,3 +902,5 @@ export const useUserData = () => {
   }
   return context;
 };
+
+    
