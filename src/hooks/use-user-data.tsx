@@ -388,47 +388,6 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     run().catch((e) => console.error('Error migrating categoryId for transactions:', e));
   }, [user, loading, categories, allTransactions, getCollectionRef]);
 
-  const updateGoal = useCallback(
-    async (id: string, values: Partial<Omit<Goal, 'id'>>) => {
-      const collRef = getCollectionRef('goals');
-      if (!collRef) return;
-      const docRef = doc(collRef, id);
-      await setDoc(docRef, values, { merge: true });
-    },
-    [getCollectionRef]
-  );
-
-  useEffect(() => {
-    if (!user || loading || goals.length === 0) return;
-  
-    goals.forEach(goal => {
-      if (!goal.linkedCategoryId) return;
-  
-      const category = findCategoryByIdRecursive(goal.linkedCategoryId, categories);
-      if (!category) return;
-  
-      const { ids: subtreeIds } = getCategorySubtreeIdsAndNames(category);
-  
-      const startDate = goal.contributionStartDate
-        ? new Date(goal.contributionStartDate)
-        : new Date(0);
-  
-      const linkedTransactions = allTransactions.filter(t =>
-        t.type === 'expense' &&
-        t.categoryId &&
-        subtreeIds.includes(t.categoryId) &&
-        new Date(t.date) >= startDate
-      );
-  
-      const total = linkedTransactions.reduce((sum, t) => sum + t.amount, 0);
-  
-      if (total !== goal.savedAmount) {
-        updateGoal(goal.id, { savedAmount: total });
-      }
-    });
-  }, [allTransactions, goals, categories, loading, user, updateGoal, getCategorySubtreeIdsAndNames]);
-
-
   // Provide processed goals with extra UI metadata
 const processedGoals: ProcessedGoal[] = useMemo(() => {
   return goals.map(goal => {
@@ -482,15 +441,21 @@ const processedGoals: ProcessedGoal[] = useMemo(() => {
       ...goal,
       savedAmount: autoSavedAmount,
       autoTrackingActive: true,
-      autoSavedAmount,
+      autoSavedAmount: autoSavedAmount,
       contributingTransactions: contributions,
+      contributionLedger: contributions.map(t => ({
+        transactionId: t.id,
+        date: t.date,
+        amount: t.amount,
+        description: t.description,
+        category: t.category,
+      })),
     };
   });
 }, [
   goals,
   allTransactions,
   categories,
-  getCategorySubtreeIdsAndNames,
 ]);
 
   // ---------- Budgets: use categoryId tree instead of names ----------
@@ -800,6 +765,13 @@ const processedGoals: ProcessedGoal[] = useMemo(() => {
     if (!collRef) return;
     const newDocRef = doc(collRef);
     await setDoc(newDocRef, { ...goal, id: newDocRef.id });
+  };
+
+  const updateGoal = async (id: string, values: Partial<Omit<Goal, 'id'>>) => {
+    const collRef = getCollectionRef('goals');
+    if (!collRef) return;
+    const docRef = doc(collRef, id);
+    await setDoc(docRef, values, { merge: true });
   };
 
   const deleteGoal = async (id: string) => {
