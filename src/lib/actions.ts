@@ -29,7 +29,7 @@ function summarizeByCategory(transactions: Transaction[], type: 'income' | 'expe
                 return null;
             };
             if (mainCat.subCategories) {
-                const found = findInSubs(main.subCategories, mainCat.name);
+                const found = findInSubs(mainCat.subCategories, mainCat.name);
                 if (found) return found;
             }
         }
@@ -189,6 +189,7 @@ export async function generateAndSaveQuarterlyReport({
       period,
       startDate: startDate.toISOString(),
       endDate: endDate.toISOString(),
+      createdAt: admin.firestore.Timestamp.now(),
       incomeSummary,
       expenseSummary,
       netIncome,
@@ -196,7 +197,6 @@ export async function generateAndSaveQuarterlyReport({
       goalsProgress,
       kpis,
       ...(notes && { notes }),
-      createdAt: admin.firestore.Timestamp.now(),
     };
 
     const reportsRef = adminDb.collection('users').doc(userId).collection('reports');
