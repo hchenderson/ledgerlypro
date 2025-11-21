@@ -32,7 +32,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import type { Goal, Category, SubCategory } from '@/types';
+import type { Goal, Category, SubCategory, ProcessedGoal } from '@/types';
 import { FeatureGate } from '@/components/feature-gate';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -430,32 +430,33 @@ function GoalsPageContent() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {goals.map(goal => {
-            const progress = Math.min((goal.savedAmount / goal.targetAmount) * 100, 100);
+            const processedGoal = goal as ProcessedGoal;
+            const progress = Math.min((processedGoal.savedAmount / processedGoal.targetAmount) * 100, 100);
             const isCompleted = progress >= 100;
-            const remaining = Math.max(goal.targetAmount - goal.savedAmount, 0);
+            const remaining = Math.max(processedGoal.targetAmount - processedGoal.savedAmount, 0);
             
             return (
-              <Card key={goal.id} className={cn(isCompleted && "bg-primary/5 border-primary/20")}>
+              <Card key={processedGoal.id} className={cn(isCompleted && "bg-primary/5 border-primary/20")}>
                 <CardHeader>
                   <div className="flex justify-between items-start">
                       <div className="flex-1 min-w-0 pr-2">
                           <CardTitle className="flex items-center gap-2 flex-wrap">
                             {isCompleted && <Award className="h-5 w-5 text-primary flex-shrink-0"/>}
-                            <span className="truncate">{goal.name}</span>
-                            {goal.autoTrackingActive && (
+                            {processedGoal.autoTrackingActive && (
                                 <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
                                 Auto-tracking active
                                 </Badge>
                             )}
+                            <span className="truncate">{processedGoal.name}</span>
                           </CardTitle>
                           <CardDescription>
-                            {goal.targetDate 
-                              ? `Target: ${format(new Date(goal.targetDate), 'MMM d, yyyy')}` 
+                            {processedGoal.targetDate 
+                              ? `Target: ${format(new Date(processedGoal.targetDate), 'MMM d, yyyy')}` 
                               : 'No target date'}
                           </CardDescription>
                       </div>
                       <div className="flex gap-1 flex-shrink-0">
-                          <GoalDialog goal={goal} onSave={handleSaveGoal}>
+                          <GoalDialog goal={processedGoal} onSave={handleSaveGoal}>
                                <Button variant="ghost" size="icon">
                                  <Edit className="h-4 w-4"/>
                                </Button>
@@ -470,13 +471,13 @@ function GoalsPageContent() {
                               <AlertDialogHeader>
                                 <AlertDialogTitle>Delete Goal?</AlertDialogTitle>
                                 <AlertDialogDescription>
-                                  Are you sure you want to delete "{goal.name}"? This action cannot be undone.
+                                  Are you sure you want to delete "{processedGoal.name}"? This action cannot be undone.
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
                               <AlertDialogFooter>
                                 <AlertDialogCancel>Cancel</AlertDialogCancel>
                                 <AlertDialogAction
-                                  onClick={() => handleDeleteGoal(goal.id, goal.name)}
+                                  onClick={() => handleDeleteGoal(processedGoal.id, processedGoal.name)}
                                   className="bg-red-600 hover:bg-red-700"
                                 >
                                   Delete
@@ -497,7 +498,7 @@ function GoalsPageContent() {
                             style: "currency", 
                             currency: "USD", 
                             maximumFractionDigits: 0 
-                          }).format(goal.savedAmount)}
+                          }).format(processedGoal.savedAmount)}
                         </span>
                         <span className="text-muted-foreground">
                           {' of '}
@@ -505,7 +506,7 @@ function GoalsPageContent() {
                             style: "currency", 
                             currency: "USD", 
                             maximumFractionDigits: 0 
-                          }).format(goal.targetAmount)}
+                          }).format(processedGoal.targetAmount)}
                         </span>
                       </p>
                       <p className="text-muted-foreground">
@@ -524,8 +525,8 @@ function GoalsPageContent() {
                 <CardFooter>
                   {!isCompleted && (
                     <AddContributionDialog 
-                      goal={goal} 
-                      onContribute={(amount) => handleContribute(goal.id, amount)} 
+                      goal={processedGoal} 
+                      onContribute={(amount) => handleContribute(processedGoal.id, amount)} 
                     />
                   )}
                 </CardFooter>
@@ -545,3 +546,4 @@ export default function GoalsPage() {
         </FeatureGate>
     );
 }
+
