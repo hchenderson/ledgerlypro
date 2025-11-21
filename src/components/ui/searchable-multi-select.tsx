@@ -101,8 +101,8 @@ function SearchableMultiSelect({
           <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent 
-        className="w-[var(--radix-popover-trigger-width)] p-0" 
+      <PopoverContent
+        className="w-[var(--radix-popover-trigger-width)] p-0 max-h-[min(var(--radix-popover-content-available-height),32rem)] overflow-y-auto"
         align="start"
       >
         {/* Action Buttons */}
@@ -128,7 +128,6 @@ function SearchableMultiSelect({
         </div>
 
         {/* Options List */}
-        <div className="max-h-64 overflow-y-auto">
         {options.length === 0 ? (
           <div className="py-6 text-center text-sm text-muted-foreground">
             No options available.
@@ -167,7 +166,6 @@ function SearchableMultiSelect({
             })}
           </div>
         )}
-        </div>
 
         {/* Footer */}
         {selected.length > 0 && (
