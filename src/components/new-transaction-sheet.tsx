@@ -69,9 +69,10 @@ const formSchema = z.object({
   amount: z.coerce.number().positive({
     message: "Amount must be a positive number.",
   }),
-  category: z.string({
+  categoryId: z.string({
     required_error: "Please select a category.",
   }),
+  category: z.string().optional(),
 })
 
 type FormValues = z.infer<typeof formSchema>
@@ -93,7 +94,7 @@ const AddCategoryDialog = ({
 }: { 
     type: 'income' | 'expense', 
     categories: Category[],
-    onCategoryAdded: (newCategoryName: string) => void
+    onCategoryAdded: (newCategoryName: string, newCategoryId: string) => void
 }) => {
     const [name, setName] = useState('');
     const [parent, setParent] = useState('');
@@ -105,17 +106,20 @@ const AddCategoryDialog = ({
     const handleSubmit = async () => {
         if (!name) return;
         
+        let newId: string;
         if(parent) {
             const parentId = parent.split(':')[0];
             const parentPath = parent.split(':').slice(1);
             const newSubCategory: Omit<SubCategory, 'id'> = { name, icon: 'Sparkles' };
-            await addSubCategory(parentId, newSubCategory, parentPath);
+            const addedSubCategory = await addSubCategory(parentId, newSubCategory, parentPath);
+            newId = addedSubCategory.id;
         } else {
             const newCategory: Omit<Category, 'id'> = { name, type, icon: 'Sparkles', subCategories: [] };
-            await addCategory(newCategory);
+            const addedCategory = await addCategory(newCategory);
+            newId = addedCategory.id;
         }
 
-        onCategoryAdded(name);
+        onCategoryAdded(name, newId);
         setIsOpen(false);
         setName('');
         setParent('');
@@ -207,7 +211,7 @@ export function NewTransactionSheet({
           ...transaction,
           date: transactionDate,
           amount: transaction.amount || ('' as any),
-          category: transaction.category || undefined,
+          categoryId: transaction.categoryId || undefined,
         });
         setDateInput(format(transactionDate, "MM/dd/yyyy"));
       } else {
@@ -216,7 +220,7 @@ export function NewTransactionSheet({
           type: 'expense',
           description: '',
           amount: '' as any,
-          category: undefined,
+          categoryId: undefined,
           date: today,
         });
         setDateInput(format(today, "MM/dd/yyyy"));
@@ -227,13 +231,32 @@ export function NewTransactionSheet({
   const transactionType = useWatch({ control: form.control, name: 'type' });
 
   async function onSubmit(values: FormValues) {
+    // Find the category name from the ID for display purposes
+    const findCategoryName = (id: string, cats: Category[]): string | undefined => {
+      for (const cat of cats) {
+        if (cat.id === id) return cat.name;
+        if (cat.subCategories) {
+          const found = findCategoryName(id, cat.subCategories as any);
+          if (found) return found;
+        }
+      }
+      return undefined;
+    };
+    
+    const categoryName = findCategoryName(values.categoryId, categories);
+
+    const submissionValues = {
+      ...values,
+      category: categoryName || 'Uncategorized'
+    };
+
     if (transaction && transaction.id) {
         if(onTransactionUpdated) {
-            onTransactionUpdated(transaction.id, values);
+            onTransactionUpdated(transaction.id, submissionValues);
         }
     } else {
         if (onTransactionCreated) {
-            onTransactionCreated(values);
+            onTransactionCreated(submissionValues);
         }
     }
 
@@ -241,8 +264,8 @@ export function NewTransactionSheet({
     form.reset()
   }
 
-  const handleCategoryAdded = (newCategoryName: string) => {
-    form.setValue('category', newCategoryName, { shouldValidate: true });
+  const handleCategoryAdded = (newCategoryName: string, newCategoryId: string) => {
+    form.setValue('categoryId', newCategoryId, { shouldValidate: true });
     toast({
       title: "Category Added",
       description: `Successfully added and selected "${newCategoryName}".`,
@@ -256,7 +279,7 @@ export function NewTransactionSheet({
   const buttonText = isEditing ? "Save Changes" : "Create Transaction";
 
   const availableCategories = useMemo(() => {
-    const typeToFilter = isEditing ? transaction?.type : transactionType;
+    const typeToFilter = transactionType || 'expense';
     const filtered = categories.filter(c => c.type === typeToFilter);
 
     const getCategoryOptions = (cats: (Category | SubCategory)[], indent = 0): { label: string; value: string; disabled: boolean, indent: number }[] => {
@@ -264,12 +287,11 @@ export function NewTransactionSheet({
       
       cats.forEach(cat => {
         const hasSubCategories = cat.subCategories && cat.subCategories.length > 0;
-        const isLeaf = !hasSubCategories;
-
+        
         options.push({
           label: cat.name,
-          value: cat.name,
-          disabled: !isLeaf,
+          value: cat.id,
+          disabled: false, // All categories are selectable
           indent,
         });
         
@@ -281,7 +303,7 @@ export function NewTransactionSheet({
     };
     
     return getCategoryOptions(filtered);
-  }, [categories, transactionType, isEditing, transaction?.type]);
+  }, [categories, transactionType]);
 
 
   return (
@@ -304,7 +326,7 @@ export function NewTransactionSheet({
                     <RadioGroup
                       onValueChange={(value) => {
                         field.onChange(value);
-                        form.resetField('category');
+                        form.resetField('categoryId');
                       }}
                       defaultValue={field.value}
                       className="flex items-center space-x-4"
@@ -356,7 +378,7 @@ export function NewTransactionSheet({
             />
             <FormField
               control={form.control}
-              name="category"
+              name="categoryId"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Category</FormLabel>

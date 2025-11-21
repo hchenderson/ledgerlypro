@@ -40,8 +40,8 @@ interface UserDataContextType {
   addTransaction: (transaction: Omit<Transaction, 'id'>) => Promise<void>;
   updateTransaction: (id: string, values: Partial<Omit<Transaction, 'id'>>) => Promise<void>;
   deleteTransaction: (id: string) => Promise<void>;
-  addCategory: (category: Omit<Category, 'id'>) => Promise<void>;
-  addSubCategory: (parentId: string, subCategory: Omit<SubCategory, 'id'>, parentPath?: string[]) => Promise<void>;
+  addCategory: (category: Omit<Category, 'id'>) => Promise<Category>;
+  addSubCategory: (parentId: string, subCategory: Omit<SubCategory, 'id'>, parentPath?: string[]) => Promise<SubCategory>;
   updateCategory: (id: string, oldName: string, newName: string) => Promise<void>;
   deleteCategory: (id: string) => Promise<void>;
   updateSubCategory: (categoryId: string, subCategoryId: string, oldName: string, newName: string, parentPath?: string[]) => Promise<void>;
@@ -388,75 +388,75 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     run().catch((e) => console.error('Error migrating categoryId for transactions:', e));
   }, [user, loading, categories, allTransactions, getCollectionRef]);
 
-  // Provide processed goals with extra UI metadata
-const processedGoals: ProcessedGoal[] = useMemo(() => {
-  return goals.map(goal => {
-    if (!goal.linkedCategoryId) {
-      // Manual goal – keep savedAmount as stored
-      return { ...goal, autoTrackingActive: false, contributingTransactions: [], autoSavedAmount: goal.savedAmount };
-    }
-
-    const category = findCategoryByIdRecursive(goal.linkedCategoryId, categories);
-    if (!category) {
-      // Linked to a category that no longer exists
-      return { ...goal, autoTrackingActive: false, contributingTransactions: [], autoSavedAmount: goal.savedAmount };
-    }
-
-    const { ids: subtreeIds, names: subtreeNames } = getCategorySubtreeIdsAndNames(category);
-    const contributionStartDate = goal.contributionStartDate
-      ? new Date(goal.contributionStartDate)
-      : new Date(0);
-
-    const contributions = allTransactions.filter(t => {
-      if (t.type !== "expense") return false;
-
-      const tDate = new Date(t.date);
-      if (tDate < contributionStartDate) return false;
-
-      // 1) If you later add t.categoryId, use it first
-      const matchesById =
-        (t as any).categoryId &&
-        subtreeIds.includes((t as any).categoryId as string);
-
-      // 2) Fallback: match by category name exactly
-      const matchesByName = subtreeNames.includes(t.category);
-
-      // 3) Extra forgiving: if you ever stored full paths like "Parent > Child",
-      // treat a transaction as matching if it ends with "> Name" or equals Name
-      const matchesByPath =
-        !matchesById &&
-        !matchesByName &&
-        typeof t.category === "string" &&
-        subtreeNames.some(name =>
-          t.category === name ||
-          t.category.endsWith(`> ${name}`)
-        );
-
-      return matchesById || matchesByName || matchesByPath;
+  const processedGoals = useMemo(() => {
+    return goals.map(goal => {
+      if (!goal.linkedCategoryId) {
+        // Manual goal – keep savedAmount as stored
+        return { ...goal, autoTrackingActive: false, contributingTransactions: [], autoSavedAmount: goal.savedAmount };
+      }
+  
+      const category = findCategoryByIdRecursive(goal.linkedCategoryId, categories);
+      if (!category) {
+        // Linked to a category that no longer exists
+        return { ...goal, autoTrackingActive: false, contributingTransactions: [], autoSavedAmount: goal.savedAmount };
+      }
+  
+      const { ids: subtreeIds, names: subtreeNames } = getCategorySubtreeIdsAndNames(category);
+      const contributionStartDate = goal.contributionStartDate
+        ? new Date(goal.contributionStartDate)
+        : new Date(0);
+  
+      const contributions = allTransactions.filter(t => {
+        if (t.type !== "expense") return false;
+  
+        const tDate = new Date(t.date);
+        if (tDate < contributionStartDate) return false;
+  
+        // 1) If you later add t.categoryId, use it first
+        const matchesById =
+          t.categoryId &&
+          subtreeIds.includes(t.categoryId as string);
+  
+        // 2) Fallback: match by category name exactly
+        const matchesByName = subtreeNames.includes(t.category);
+  
+        // 3) Extra forgiving: if you ever stored full paths like "Parent > Child",
+        // treat a transaction as matching if it ends with "> Name" or equals Name
+        const matchesByPath =
+          !matchesById &&
+          !matchesByName &&
+          typeof t.category === "string" &&
+          subtreeNames.some(name =>
+            t.category === name ||
+            t.category.endsWith(`> ${name}`)
+          );
+  
+        return !!(matchesById || matchesByName || matchesByPath);
+      });
+  
+      const autoSavedAmount = contributions.reduce((sum, t) => sum + t.amount, 0);
+  
+      return {
+        ...goal,
+        savedAmount: autoSavedAmount,
+        autoTrackingActive: true,
+        autoSavedAmount: autoSavedAmount,
+        contributingTransactions: contributions,
+        contributionLedger: contributions.map(t => ({
+          transactionId: t.id,
+          date: t.date,
+          amount: t.amount,
+          description: t.description,
+          category: t.category,
+        })),
+      };
     });
-
-    const autoSavedAmount = contributions.reduce((sum, t) => sum + t.amount, 0);
-
-    return {
-      ...goal,
-      savedAmount: autoSavedAmount,
-      autoTrackingActive: true,
-      autoSavedAmount: autoSavedAmount,
-      contributingTransactions: contributions,
-      contributionLedger: contributions.map(t => ({
-        transactionId: t.id,
-        date: t.date,
-        amount: t.amount,
-        description: t.description,
-        category: t.category,
-      })),
-    };
-  });
-}, [
-  goals,
-  allTransactions,
-  categories,
-]);
+  }, [
+    goals,
+    allTransactions,
+    categories,
+  ]);
+  
 
   // ---------- Budgets: use categoryId tree instead of names ----------
 
@@ -517,20 +517,10 @@ const processedGoals: ProcessedGoal[] = useMemo(() => {
     const collRef = getCollectionRef('transactions');
     if (!collRef) return;
     const newDocRef = doc(collRef);
-
-    // If a categoryId is provided, build/refresh the category path label
-    let categoryLabel = transaction.category;
-    if ((transaction as any).categoryId) {
-      const label = buildCategoryPathLabel((transaction as any).categoryId, categories);
-      if (label) {
-        categoryLabel = label;
-      }
-    }
-
+    
     await setDoc(newDocRef, {
       ...transaction,
       id: newDocRef.id,
-      category: categoryLabel,
     });
   };
 
@@ -548,11 +538,13 @@ const processedGoals: ProcessedGoal[] = useMemo(() => {
     await deleteDoc(docRef);
   };
 
-  const addCategory = async (category: Omit<Category, 'id'>) => {
+  const addCategory = async (category: Omit<Category, 'id'>): Promise<Category> => {
     const collRef = getCollectionRef('categories');
-    if (!collRef) return;
+    if (!collRef) throw new Error("User not authenticated");
     const newDocRef = doc(collRef);
-    await setDoc(newDocRef, { ...category, id: newDocRef.id });
+    const newCategory = { ...category, id: newDocRef.id };
+    await setDoc(newDocRef, newCategory);
+    return newCategory;
   };
 
   // Auto-update category *path string* for all transactions that reference this categoryId
@@ -594,11 +586,11 @@ const processedGoals: ProcessedGoal[] = useMemo(() => {
     parentId: string,
     subCategory: Omit<SubCategory, 'id'>,
     parentPath: string[] = []
-  ) => {
+  ): Promise<SubCategory> => {
     const collRef = getCollectionRef('categories');
-    if (!collRef) return;
+    if (!collRef) throw new Error("User not authenticated");
     const docRef = doc(collRef, parentId);
-    const newId = `sub_${Date.now()}`;
+    const newId = `sub_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const newSubCategory = { ...subCategory, id: newId, subCategories: [] };
 
     const parentDoc = await getDoc(docRef);
@@ -627,6 +619,7 @@ const processedGoals: ProcessedGoal[] = useMemo(() => {
       }
       await setDoc(docRef, data, { merge: true });
     }
+    return newSubCategory;
   };
 
   const updateSubCategory = async (
