@@ -26,6 +26,7 @@ import {
   BookMarked,
   Loader2,
   Filter,
+  Trash2,
 } from 'lucide-react';
 import type { Category, SubCategory, QuarterlyReport } from '@/types';
 import { DateRange } from 'react-day-picker';
@@ -35,7 +36,7 @@ import { OverviewChart } from '@/components/dashboard/overview-chart';
 import { CategoryPieChart } from '@/components/reports/category-pie-chart';
 import { cn } from '@/lib/utils';
 import { ExportReportDialog } from '@/components/reports/export-report-dialog';
-import { generateAndSaveQuarterlyReport } from '@/lib/actions';
+import { generateAndSaveQuarterlyReport, deleteReport } from '@/lib/actions';
 import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
@@ -60,6 +61,17 @@ import {
   DialogClose,
   DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
@@ -753,6 +765,26 @@ function QuarterlyReportView() {
     }
   };
 
+  const handleDeleteReport = async (reportId: string) => {
+    if (!user) return;
+    const result = await deleteReport({ userId: user.uid, reportId });
+    if (result.success) {
+      toast({
+        title: "Report Deleted",
+        description: `Report "${reportId}" has been deleted.`
+      });
+      if (selectedReport?.period === reportId) {
+        setSelectedReport(null);
+      }
+    } else {
+      toast({
+        variant: "destructive",
+        title: "Deletion Failed",
+        description: result.error || "An unexpected error occurred."
+      });
+    }
+  }
+
   const formatCurrency = (value: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
 
   const renderReportDetail = () => {
@@ -960,14 +992,39 @@ function QuarterlyReportView() {
             ) : (
               <div className="space-y-2">
                 {reports.map(report => (
-                  <Button
-                    key={report.period}
-                    variant={selectedReport?.period === report.period ? "secondary" : "ghost"}
-                    className="w-full justify-start"
-                    onClick={() => setSelectedReport(report)}
-                  >
-                    {report.period}
-                  </Button>
+                  <div key={report.period} className="flex items-center gap-1 group">
+                    <Button
+                      variant={selectedReport?.period === report.period ? "secondary" : "ghost"}
+                      className="w-full justify-start flex-1"
+                      onClick={() => setSelectedReport(report)}
+                    >
+                      {report.period}
+                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This action cannot be undone. This will permanently delete the report for <strong>{report.period}</strong>.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => handleDeleteReport(report.period)}
+                            className="bg-red-600 hover:bg-red-700"
+                          >
+                            Delete Report
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
                 ))}
               </div>
             )}

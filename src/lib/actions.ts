@@ -29,7 +29,7 @@ function summarizeByCategory(transactions: Transaction[], type: 'income' | 'expe
                 return null;
             };
             if (mainCat.subCategories) {
-                const found = findInSubs(mainCat.subCategories, mainCat.name);
+                const found = findInSubs(main.subCategories, mainCat.name);
                 if (found) return found;
             }
         }
@@ -54,6 +54,25 @@ const getSubCategoryNames = (category: Category | SubCategory): string[] => {
     }
     return names;
 };
+
+export async function deleteReport({ userId, reportId }: { userId: string, reportId: string }): Promise<{ success: boolean; error?: string }> {
+    try {
+        if (!userId) {
+            throw new Error("User not authenticated.");
+        }
+        if (!adminDb) {
+            throw new Error("Firebase Admin SDK is not initialized.");
+        }
+
+        const reportRef = adminDb.collection('users').doc(userId).collection('reports').doc(reportId);
+        await reportRef.delete();
+
+        return { success: true };
+    } catch (error: any) {
+        console.error("Failed to delete report:", error);
+        return { success: false, error: error.message };
+    }
+}
 
 export async function generateAndSaveQuarterlyReport({ 
     userId, 
@@ -122,33 +141,34 @@ export async function generateAndSaveQuarterlyReport({
       actualsByCategory[t.category] = (actualsByCategory[t.category] || 0) + t.amount;
     });
 
-    const budgetComparison = budgets.map(budget => {
-      const category = findCategoryById(budget.categoryId, categories);
-      if (!category) return null;
+    const budgetComparison = budgets
+      .map(budget => {
+        const category = findCategoryById(budget.categoryId, categories);
+        if (!category) return null;
 
-      const mainCategory = (categories.find(c => c.id === category.id || c.subCategories?.some(sc => sc.id === category.id)) || {type: 'expense'});
-      if(mainCategory.type !== 'expense') return null;
+        const mainCategory = (categories.find(c => c.id === category.id || c.subCategories?.some(sc => sc.id === category.id)) || {type: 'expense'});
+        if(mainCategory.type !== 'expense') return null;
+        
+        let budgetAmountForPeriod: number;
+        if (budget.period === 'monthly') {
+            budgetAmountForPeriod = budget.amount * 3;
+        } else { // yearly
+            budgetAmountForPeriod = budget.amount / 4;
+        }
 
-      let budgetAmountForPeriod: number;
-      if (budget.period === 'monthly') {
-          budgetAmountForPeriod = budget.amount * 3;
-      } else { // yearly
-          budgetAmountForPeriod = budget.amount / 4;
-      }
+        const allSubCategoryNames = getSubCategoryNames(category);
+        const actual = allSubCategoryNames.reduce((sum, catName) => sum + (actualsByCategory[catName] || 0), 0);
+        
+        const variance = budgetAmountForPeriod - actual;
+        const percentUsed = budgetAmountForPeriod > 0 ? (actual / budgetAmountForPeriod) * 100 : 0;
 
-      const allSubCategoryNames = getSubCategoryNames(category);
-      const actual = allSubCategoryNames.reduce((sum, catName) => sum + (actualsByCategory[catName] || 0), 0);
-      
-      const variance = budgetAmountForPeriod - actual;
-      const percentUsed = budgetAmountForPeriod > 0 ? (actual / budgetAmountForPeriod) * 100 : 0;
-
-      return {
-        categoryName: category.name,
-        budget: budgetAmountForPeriod,
-        actual,
-        variance,
-        percentUsed
-      };
+        return {
+          categoryName: category.name,
+          budget: budgetAmountForPeriod,
+          actual,
+          variance,
+          percentUsed
+        };
     }).filter((item): item is NonNullable<typeof item> => item !== null);
 
 
