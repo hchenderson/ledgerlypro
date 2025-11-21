@@ -101,9 +101,12 @@ function SearchableMultiSelect({
           <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+      <PopoverContent 
+        className="w-[var(--radix-popover-trigger-width)] p-0 max-h-64 overflow-y-auto" 
+        align="start"
+      >
         {/* Action Buttons */}
-        <div className="flex items-center justify-between p-2 border-b bg-muted/50">
+        <div className="flex items-center justify-between p-2 border-b bg-muted/50 sticky top-0 z-10">
           <Button
             variant="ghost"
             size="sm"
@@ -125,50 +128,48 @@ function SearchableMultiSelect({
         </div>
 
         {/* Options List */}
-        <div className="max-h-64 overflow-y-auto">
-          {options.length === 0 ? (
-            <div className="py-6 text-center text-sm text-muted-foreground">
-              No options available.
-            </div>
-          ) : (
-            <div className="p-1">
-              {options.map((option) => {
-                const isSelected = selected.includes(option.value);
-                return (
+        {options.length === 0 ? (
+          <div className="py-6 text-center text-sm text-muted-foreground">
+            No options available.
+          </div>
+        ) : (
+          <div className="p-1">
+            {options.map((option) => {
+              const isSelected = selected.includes(option.value);
+              return (
+                <div
+                  key={option.value}
+                  className={cn(
+                    "flex items-center px-2 py-2 text-sm cursor-pointer rounded-sm hover:bg-accent hover:text-accent-foreground",
+                    isSelected && "bg-accent/50"
+                  )}
+                  onClick={() => handleToggleOption(option.value)}
+                >
                   <div
-                    key={option.value}
                     className={cn(
-                      "flex items-center px-2 py-2 text-sm cursor-pointer rounded-sm hover:bg-accent hover:text-accent-foreground",
-                      isSelected && "bg-accent/50"
+                      "flex h-4 w-4 items-center justify-center rounded-sm border border-primary mr-2",
+                      isSelected
+                        ? "bg-primary text-primary-foreground"
+                        : "opacity-50"
                     )}
-                    onClick={() => handleToggleOption(option.value)}
                   >
-                    <div
-                      className={cn(
-                        "flex h-4 w-4 items-center justify-center rounded-sm border border-primary mr-2",
-                        isSelected
-                          ? "bg-primary text-primary-foreground"
-                          : "opacity-50"
-                      )}
-                    >
-                      <Check className={cn("h-3 w-3", isSelected ? "opacity-100" : "opacity-0")} />
-                    </div>
-                    <span className="flex-1">{option.label}</span>
-                    {isSelected && (
-                      <Badge variant="outline" className="text-xs ml-2">
-                        Selected
-                      </Badge>
-                    )}
+                    <Check className={cn("h-3 w-3", isSelected ? "opacity-100" : "opacity-0")} />
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+                  <span className="flex-1">{option.label}</span>
+                  {isSelected && (
+                    <Badge variant="outline" className="text-xs ml-2">
+                      Selected
+                    </Badge>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* Footer */}
         {selected.length > 0 && (
-          <div className="border-t p-2 bg-muted/30">
+          <div className="border-t p-2 bg-muted/30 sticky bottom-0 z-10">
             <div className="text-xs text-muted-foreground text-center">
               {selected.length} of {options.length} selected
             </div>
