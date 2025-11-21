@@ -80,6 +80,7 @@ import { SearchableMultiSelect } from '@/components/ui/searchable-multi-select';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Calendar as CalendarIcon } from 'lucide-react';
+import { ExportQuarterlyReportDialog } from '@/components/reports/export-quarterly-report-dialog';
 
 const PRESET_RANGES = [
   { label: 'This Month', value: 'this-month' },
@@ -828,10 +829,16 @@ function QuarterlyReportView() {
     }
 
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Financial Report - {selectedReport.period}</CardTitle>
-          <CardDescription>Generated on {format(new Date(selectedReport.createdAt.seconds * 1000), 'PPP')}</CardDescription>
+      <Card id={`report-${selectedReport.period}`}>
+        <CardHeader className="flex flex-row justify-between items-start">
+          <div>
+            <CardTitle>Financial Report - {selectedReport.period}</CardTitle>
+            <CardDescription>Generated on {format(new Date(selectedReport.createdAt.seconds * 1000), 'PPP')}</CardDescription>
+          </div>
+           <ExportQuarterlyReportDialog
+              reportId={`report-${selectedReport.period}`}
+              reportTitle={`Financial Report - ${selectedReport.period}`}
+            />
         </CardHeader>
         <CardContent className="space-y-8">
            {/* Executive Summary */}
