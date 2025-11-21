@@ -442,19 +442,42 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   useEffect(() => {
     if (loading) return;
-  
-    processedGoals.forEach(goal => {
-      // Only auto-update if auto-tracking is enabled:
-      if (!goal.linkedCategoryId) return;
-  
-      const firestoreGoal = goals.find(g => g.id === goal.id);
-      
-      // Check if the calculated amount is different from what's in Firestore
-      if (firestoreGoal && firestoreGoal.savedAmount !== goal.savedAmount) {
-        updateGoal(goal.id, { savedAmount: goal.savedAmount });
-      }
+    if (categories.length === 0 || allTransactions.length === 0) return;
+
+    goals.forEach(goal => {
+        if (!goal.linkedCategoryId) return;
+
+        const category = findCategoryByIdRecursive(goal.linkedCategoryId, categories);
+        if (!category) return;
+        
+        const getSubCategoryNames = (category: Category | SubCategory): string[] => {
+            let names = [category.name];
+            if (category.subCategories) {
+                category.subCategories.forEach(sub => {
+                    names = [...names, ...getSubCategoryNames(sub)];
+                });
+            }
+            return names;
+        };
+        const categoryNames = getSubCategoryNames(category);
+
+        const contributionStartDate = goal.contributionStartDate ? new Date(goal.contributionStartDate) : new Date(0);
+
+        const linkedTransactions = allTransactions.filter(t =>
+            t.type === 'expense' &&
+            categoryNames.includes(t.category) &&
+            new Date(t.date) >= contributionStartDate
+        );
+
+        const total = linkedTransactions.reduce((sum, t) => sum + t.amount, 0);
+        
+        const originalGoal = goals.find(g => g.id === goal.id);
+
+        if (originalGoal && total !== originalGoal.savedAmount) {
+            updateGoal(goal.id, { savedAmount: total });
+        }
     });
-  }, [processedGoals, goals, loading]);
+}, [allTransactions, categories, goals, loading]);
   
   const getBudgetDetails = useCallback(
     (forDate: Date = new Date()) => {
