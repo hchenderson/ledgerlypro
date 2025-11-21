@@ -125,7 +125,7 @@ function SearchableMultiSelect({
         </div>
 
         {/* Options List */}
-        <div className="max-h-48 overflow-y-auto">
+        <div className="max-h-64 overflow-y-auto">
           {options.length === 0 ? (
             <div className="py-6 text-center text-sm text-muted-foreground">
               No options available.
