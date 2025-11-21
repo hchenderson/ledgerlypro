@@ -374,7 +374,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const processedGoals = useMemo((): ProcessedGoal[] => {
     if (loading) {
-      return goals.map(g => ({ ...g, autoTrackingActive: false, autoSavedAmount: 0, contributingTransactions: [] }));
+        return goals.map(g => ({ ...g, autoTrackingActive: false, autoSavedAmount: 0, contributingTransactions: [] }));
     }
   
     return goals.map(goal => {
@@ -439,6 +439,22 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     categories,
     loading
   ]);
+
+  useEffect(() => {
+    if (loading) return;
+  
+    processedGoals.forEach(goal => {
+      // Only auto-update if auto-tracking is enabled:
+      if (!goal.linkedCategoryId) return;
+  
+      const firestoreGoal = goals.find(g => g.id === goal.id);
+      
+      // Check if the calculated amount is different from what's in Firestore
+      if (firestoreGoal && firestoreGoal.savedAmount !== goal.savedAmount) {
+        updateGoal(goal.id, { savedAmount: goal.savedAmount });
+      }
+    });
+  }, [processedGoals, goals, loading]);
   
   const getBudgetDetails = useCallback(
     (forDate: Date = new Date()) => {
@@ -902,5 +918,3 @@ export const useUserData = () => {
   }
   return context;
 };
-
-    
