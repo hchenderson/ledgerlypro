@@ -28,7 +28,7 @@ import {
   Filter,
   Trash2,
 } from 'lucide-react';
-import type { Category, SubCategory, QuarterlyReport } from '@/types';
+import type { Category, SubCategory, QuarterlyReport, Budget } from '@/types';
 import { DateRange } from 'react-day-picker';
 import { subMonths, startOfMonth, endOfMonth, startOfYear, endOfYear, getYear, format, startOfQuarter, endOfQuarter, subQuarters, getQuarter } from 'date-fns';
 
@@ -583,24 +583,50 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
 function GenerateReportDialog({
   onGenerate,
 }: {
-  onGenerate: (referenceDate: Date, notes?: string) => void;
+  onGenerate: (referenceDate: Date, notes: string | undefined, budgetIds: string[]) => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const { budgets, categories } = useUserData();
   const currentYear = getYear(new Date());
   const currentQuarter = getQuarter(new Date());
 
   const [year, setYear] = useState(currentYear.toString());
   const [quarter, setQuarter] = useState(currentQuarter.toString());
   const [notes, setNotes] = useState("");
+  const [selectedBudgets, setSelectedBudgets] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+
+  const budgetOptions = useMemo(() => {
+    const findCategoryName = (id: string, cats: (Category | SubCategory)[]): string | undefined => {
+      for (const cat of cats) {
+        if (cat.id === id) return cat.name;
+        if (cat.subCategories) {
+          const found = findCategoryName(id, cat.subCategories);
+          if (found) return found;
+        }
+      }
+      return undefined;
+    };
+    
+    return budgets.map(b => ({
+      value: b.id,
+      label: findCategoryName(b.categoryId, categories) || 'Unknown Category',
+    }))
+  }, [budgets, categories]);
+
+  useEffect(() => {
+    if (isOpen) {
+      // Default to all budgets selected when dialog opens
+      setSelectedBudgets(budgets.map(b => b.id));
+    }
+  }, [isOpen, budgets]);
 
   const handleGenerate = async () => {
     setIsGenerating(true);
-    // More precise quarter calculation
     const quarterMonth = (parseInt(quarter) - 1) * 3;
     const referenceDate = startOfQuarter(new Date(parseInt(year), quarterMonth, 1));
     
-    await onGenerate(referenceDate, notes);
+    await onGenerate(referenceDate, notes, selectedBudgets);
 
     setIsGenerating(false);
     setIsOpen(false);
@@ -614,11 +640,11 @@ function GenerateReportDialog({
       <DialogTrigger asChild>
         <Button>Generate New Report</Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Generate Quarterly Report</DialogTitle>
           <DialogDescription>
-            Select the period and add any notes for the report. It will be saved for future reference.
+            Select the period and budgets to include. The report will be saved for future reference.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
@@ -649,6 +675,18 @@ function GenerateReportDialog({
               </Select>
             </div>
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="budgets">Budgets to Include</Label>
+            <SearchableMultiSelect
+                options={budgetOptions}
+                selected={selectedBudgets}
+                onChange={setSelectedBudgets}
+                placeholder="Select budgets for analysis..."
+            />
+             <p className="text-xs text-muted-foreground pt-1">
+                Select which budgets to include in the 'Budget vs. Actual' section.
+            </p>
+          </div>
            <div className="space-y-2">
               <Label htmlFor="notes">Notes (Optional)</Label>
               <Textarea
@@ -656,7 +694,7 @@ function GenerateReportDialog({
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Add any commentary or summary notes for this report..."
-                rows={4}
+                rows={3}
               />
             </div>
         </div>
@@ -695,10 +733,8 @@ function QuarterlyReportView() {
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
-        console.log(`Received ${snapshot.docs.length} reports`);
         const fetchedReports = snapshot.docs.map(doc => {
           const data = doc.data();
-          console.log('Report data:', data);
           return data as QuarterlyReport;
         });
         setReports(fetchedReports);
@@ -721,7 +757,7 @@ function QuarterlyReportView() {
     return () => unsubscribe();
   }, [user, toast, selectedReport]);
 
-  const handleGenerateReport = async (referenceDate: Date, notes?: string) => {
+  const handleGenerateReport = async (referenceDate: Date, notes: string | undefined, budgetIds: string[]) => {
     if (!user) {
       toast({
         variant: "destructive",
@@ -731,28 +767,20 @@ function QuarterlyReportView() {
       return;
     }
     
-    console.log('Generating report with:', {
-      userId: user.uid,
-      referenceDate: referenceDate.toISOString(),
-      quarter: getQuarter(referenceDate),
-      year: getYear(referenceDate),
-      notes
-    });
-    
     try {
       const result = await generateAndSaveQuarterlyReport({ 
         userId: user.uid, 
         referenceDate: referenceDate.toISOString(),
-        notes: notes,
+        notes,
+        budgetIds,
       });
       
-      console.log('Report generation result:', result);
-      
-      if (result.success) {
+      if (result.success && result.report) {
         toast({
           title: "Report Generated",
-          description: `Successfully generated report for ${result.report?.period}.`
+          description: `Successfully generated report for ${result.report.period}.`
         });
+        // This will be picked up by the onSnapshot listener, which will update the UI
       } else {
         throw new Error(result.error || "Unknown error occurred.");
       }
@@ -926,7 +954,7 @@ function QuarterlyReportView() {
           {selectedReport.goalsProgress && selectedReport.goalsProgress.length > 0 && (
             <div>
                 <h3 className="text-lg font-semibold mb-2 border-b pb-2">Goals Progress</h3>
-                <Table>
+                 <Table>
                     <TableHeader>
                         <TableRow>
                             <TableHead>Goal</TableHead>
@@ -989,7 +1017,7 @@ function QuarterlyReportView() {
         </CardContent>
       </Card>
     );
-  }
+  };
 
   return (
     <div className="space-y-6">
@@ -1059,7 +1087,7 @@ function QuarterlyReportView() {
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 export default function ReportsPage() {

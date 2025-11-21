@@ -78,10 +78,12 @@ export async function generateAndSaveQuarterlyReport({
     userId, 
     referenceDate: referenceDateString,
     notes,
+    budgetIds,
 }: { 
     userId: string, 
     referenceDate: string,
     notes?: string;
+    budgetIds?: string[];
 }): Promise<{ success: boolean; error?: string; report?: Partial<QuarterlyReport> }> {
   try {
     if (!userId) {
@@ -99,7 +101,7 @@ export async function generateAndSaveQuarterlyReport({
     const endDate = endOfQuarter(referenceDate);
     
     // Fetch data concurrently
-    const [transactionsDocs, categories, budgets, goals] = await Promise.all([
+    const [transactionsDocs, categories, allBudgets, goals] = await Promise.all([
         adminDb.collection('users').doc(userId).collection('transactions')
             .where('date', '>=', startDate.toISOString())
             .where('date', '<=', endDate.toISOString())
@@ -108,6 +110,8 @@ export async function generateAndSaveQuarterlyReport({
         getUserData(userId, 'budgets') as Promise<Budget[]>,
         getUserData(userId, 'goals') as Promise<Goal[]>
     ]);
+    
+    const budgets = budgetIds ? allBudgets.filter(b => budgetIds.includes(b.id)) : allBudgets;
 
     const transactionsInQuarter = transactionsDocs.docs.map(doc => doc.data() as Transaction);
 
