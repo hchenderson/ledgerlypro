@@ -49,10 +49,10 @@ export default function LandingPage() {
           <div className="grid gap-8 md:grid-cols-2 md:gap-16">
             <div className="flex flex-col justify-center space-y-6">
               <h1 className="font-headline text-4xl font-extrabold tracking-tighter sm:text-5xl md:text-6xl lg:text-7xl">
-                Modern Bookkeeping, <span className="text-primary">Simplified.</span>
+                Financial Confidence, <span className="text-primary">At a Glance.</span>
               </h1>
               <p className="max-w-[600px] text-lg text-muted-foreground md:text-xl">
-                Ledgerly Pro offers a clean, ad-free experience to manage your finances with confidence. Secure, private, and powerful—it's the tool you need to achieve financial clarity.
+                Your Money, Your Clarity. Ledgerly Pro is designed for people who want elegant structure in their financial lives. Manage your finances with a tool that is secure, private, and powerful.
               </p>
               <div className="flex flex-col gap-4 sm:flex-row">
                 <Button asChild size="lg">
