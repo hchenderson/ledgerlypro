@@ -28,6 +28,7 @@ interface EOYReportProps {
   categories: Category[];
   goals: Goal[];
   initialYear?: number;
+  startingBalance?: number;
 }
 
 const pieColors = [
@@ -106,6 +107,7 @@ export const EOYReport: React.FC<EOYReportProps> = ({
   categories,
   goals,
   initialYear,
+  startingBalance = 0,
 }) => {
   const now = new Date();
   const [year, setYear] = useState(initialYear ?? now.getFullYear());
@@ -119,7 +121,7 @@ export const EOYReport: React.FC<EOYReportProps> = ({
   );
 
   const monthlyChartData = useMemo(() => {
-    let runningBalance = 0;
+    let runningBalance = startingBalance;
   
     return data.monthly.map((m) => {
       const income = Number(m.income);
@@ -136,7 +138,7 @@ export const EOYReport: React.FC<EOYReportProps> = ({
         runningBalance,
       };
     });
-  }, [data]);
+  }, [data, startingBalance]);
 
   const categoryPieData = useMemo(
     () =>

@@ -1,3 +1,4 @@
+
 // /app/reports/eoy/page.tsx
 "use client";
 
@@ -5,7 +6,7 @@ import { useUserData } from "@/hooks/use-user-data";
 import { EOYReport } from "@/components/reports/EOYReport";
 
 export default function EOYReportPage() {
-  const { allTransactions, categories, goals, loading } = useUserData();
+  const { allTransactions, categories, goals, loading, startingBalance } = useUserData();
 
   if (loading) {
     return <div className="p-6">Loading your data…</div>;
@@ -29,6 +30,7 @@ export default function EOYReportPage() {
         allTransactions={allTransactions}
         categories={categories}
         goals={goals}
+        startingBalance={startingBalance}
       />
     </div>
   );

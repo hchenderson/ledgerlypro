@@ -36,6 +36,7 @@ interface UserDataContextType {
   budgets: Budget[];
   recurringTransactions: RecurringTransaction[];
   goals: ProcessedGoal[];
+  startingBalance: number;
   loading: boolean;
   addTransaction: (transaction: Omit<Transaction, 'id'>) => Promise<void>;
   updateTransaction: (id: string, values: Partial<Omit<Transaction, 'id'>>) => Promise<void>;
@@ -173,6 +174,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [recurringTransactions, setRecurringTransactions] = useState<RecurringTransaction[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [startingBalance, setStartingBalance] = useState(0);
   const [loading, setLoading] = useState(true);
 
   const getCollectionRef = useCallback(
@@ -288,10 +290,18 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setBudgets([]);
       setRecurringTransactions([]);
       setGoals([]);
+      setStartingBalance(0);
       return;
     }
 
     setLoading(true);
+
+    const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'main');
+    const unsubSettings = onSnapshot(settingsDocRef, (docSnap) => {
+      if (docSnap.exists()) {
+        setStartingBalance(docSnap.data().startingBalance || 0);
+      }
+    });
 
     const collectionsToSync = ['categories', 'budgets', 'recurringTransactions', 'goals', 'transactions'] as const;
 
@@ -332,6 +342,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     });
 
     return () => {
+      unsubSettings();
       unsubscribers.forEach((unsub) => unsub());
     };
   }, [user, getCollectionRef]);
@@ -903,6 +914,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     budgets,
     recurringTransactions,
     goals: processedGoals,
+    startingBalance,
     loading,
     addTransaction,
     updateTransaction,
