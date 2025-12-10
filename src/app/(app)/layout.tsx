@@ -10,7 +10,7 @@ import {
   SidebarTrigger,
   SidebarInset,
 } from "@/components/ui/sidebar"
-import { LedgerlyLogo } from "@/components/icons";
+import Image from "next/image";
 import { MainNav } from "@/components/main-nav";
 import { UserNav } from "@/components/user-nav";
 import { useAuth } from "@/hooks/use-auth";
@@ -74,7 +74,7 @@ function MainAppShell({ children }: { children: React.ReactNode }) {
             <Sidebar>
                 <SidebarHeader>
                     <div className="flex items-center gap-2 p-2">
-                        <LedgerlyLogo className="h-8 w-8" />
+                        <Image src="/logo.png" alt="Ledgerly Pro Logo" width={32} height={32} className="h-8 w-8" />
                         <span className="text-lg font-semibold text-sidebar-primary">Ledgerly Pro</span>
                     </div>
                 </SidebarHeader>
