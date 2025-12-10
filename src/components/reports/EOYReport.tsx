@@ -21,6 +21,7 @@ import {
 } from "recharts";
 import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
+import type { PieLabelRenderProps } from "recharts";
 
 interface EOYReportProps {
   allTransactions: Transaction[];
@@ -74,6 +75,29 @@ const CustomPieTooltip = ({ active, payload }: any) => {
     );
   }
   return null;
+};
+
+const renderCategoryLabel = (props: PieLabelRenderProps) => {
+  const { cx, cy, midAngle, innerRadius, outerRadius, percent, name } = props;
+  const RADIAN = Math.PI / 180;
+  const radius = innerRadius + (outerRadius - innerRadius) * 0.6;
+  const x = cx + radius * Math.cos(-midAngle * RADIAN);
+  const y = cy + radius * Math.sin(-midAngle * RADIAN);
+
+  if (typeof percent !== 'number' || percent < 0.05) return null; // Don't render label for small slices
+
+  return (
+    <text
+      x={x}
+      y={y}
+      fill="#ffffff"
+      textAnchor={x > cx ? "start" : "end"}
+      dominantBaseline="central"
+      style={{ fontSize: 10, fontWeight: 'bold' }}
+    >
+      {`${(percent * 100).toFixed(0)}%`}
+    </text>
+  );
 };
 
 
@@ -320,7 +344,8 @@ export const EOYReport: React.FC<EOYReportProps> = ({
                       dataKey="value"
                       nameKey="name"
                       outerRadius={100}
-                      label
+                      label={renderCategoryLabel}
+                      labelLine={false}
                     >
                       {categoryPieData.map((entry, index) => (
                         <Cell
