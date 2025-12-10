@@ -79,11 +79,14 @@ const CustomPieTooltip = ({ active, payload }: any) => {
 };
 
 const renderCategoryLabel = (props: PieLabelRenderProps) => {
-  const { cx, cy, midAngle, innerRadius, outerRadius, percent, name } = props;
+  const { cx, cy, midAngle, innerRadius, outerRadius, percent, name, value } = props;
   const RADIAN = Math.PI / 180;
-  const radius = innerRadius! + (outerRadius! - innerRadius!) * 0.6;
-  const x = cx! + radius * Math.cos(-midAngle * RADIAN);
-  const y = cy! + radius * Math.sin(-midAngle * RADIAN);
+  // @ts-ignore
+  const radius = innerRadius + (outerRadius - innerRadius) * 0.6;
+  // @ts-ignore
+  const x = cx + radius * Math.cos(-midAngle * RADIAN);
+  // @ts-ignore
+  const y = cy + radius * Math.sin(-midAngle * RADIAN);
 
   if (typeof percent !== 'number' || percent < 0.05) return null; // Don't render label for small slices
 
@@ -92,7 +95,8 @@ const renderCategoryLabel = (props: PieLabelRenderProps) => {
       x={x}
       y={y}
       fill="#ffffff"
-      textAnchor={x > cx! ? "start" : "end"}
+      // @ts-ignore
+      textAnchor={x > cx ? "start" : "end"}
       dominantBaseline="central"
       style={{ fontSize: 10, fontWeight: 'bold' }}
     >
@@ -189,42 +193,63 @@ export const EOYReport: React.FC<EOYReportProps> = ({
     if (!reportRef.current) return;
     const element = reportRef.current;
 
-    const canvas = await html2canvas(element, {
-      scale: 2,
-      useCORS: true,
-    });
+    // Temporarily turn off scrolling for Category Details so all rows render
+    const categoryEl = categoryDetailsRef.current;
+    let previousMaxHeight: string | null = null;
+    let previousOverflowY: string | null = null;
 
-    const imgData = canvas.toDataURL("image/png");
-    const pdf = new jsPDF("p", "mm", "a4");
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
+    if (categoryEl) {
+      previousMaxHeight = categoryEl.style.maxHeight;
+      previousOverflowY = categoryEl.style.overflowY;
 
-    const imgProps = {
-      width: pageWidth,
-      height: (canvas.height * pageWidth) / canvas.width,
-    };
-
-    let position = 0;
-    let heightLeft = imgProps.height;
-
-    pdf.addImage(imgData, "PNG", 0, position, imgProps.width, imgProps.height);
-    heightLeft -= pageHeight;
-
-    while (heightLeft > 0) {
-      position = heightLeft - imgProps.height;
-      pdf.addPage();
-      pdf.addImage(
-        imgData,
-        "PNG",
-        0,
-        position,
-        imgProps.width,
-        imgProps.height
-      );
-      heightLeft -= pageHeight;
+      categoryEl.style.maxHeight = "none";
+      categoryEl.style.overflowY = "visible";
     }
 
-    pdf.save(`ledgerly-eoy-${data.year}.pdf`);
+    try {
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+      });
+
+      const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF("p", "mm", "a4");
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+
+      const imgProps = {
+        width: pageWidth,
+        height: (canvas.height * pageWidth) / canvas.width,
+      };
+
+      let position = 0;
+      let heightLeft = imgProps.height;
+
+      pdf.addImage(imgData, "PNG", 0, position, imgProps.width, imgProps.height);
+      heightLeft -= pageHeight;
+
+      while (heightLeft > 0) {
+        position = heightLeft - imgProps.height;
+        pdf.addPage();
+        pdf.addImage(
+          imgData,
+          "PNG",
+          0,
+          position,
+          imgProps.width,
+          imgProps.height
+        );
+        heightLeft -= pageHeight;
+      }
+
+      pdf.save(`ledgerly-eoy-${data.year}.pdf`);
+    } finally {
+      // Restore original scrolling behaviour
+      if (categoryEl) {
+        categoryEl.style.maxHeight = previousMaxHeight ?? "";
+        categoryEl.style.overflowY = previousOverflowY ?? "";
+      }
+    }
   };
 
   const possibleYears = useMemo(() => {
