@@ -49,6 +49,34 @@ const formatCurrency = (value: number) => {
     }).format(value);
 }
 
+const CustomTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+        return (
+            <div className="bg-background p-3 border rounded-lg shadow-lg">
+                <p className="font-bold">{label}</p>
+                {payload.map((p: any) => (
+                    <p key={p.name} style={{ color: p.color }}>{`${p.name}: ${formatCurrency(p.value)}`}</p>
+                ))}
+            </div>
+        );
+    }
+    return null;
+};
+
+const CustomPieTooltip = ({ active, payload }: any) => {
+  if (active && payload && payload.length) {
+    const data = payload[0];
+    return (
+      <div className="bg-background p-3 border rounded-lg shadow-lg">
+        <p className="font-bold">{data.name}</p>
+        <p>{formatCurrency(data.value)}</p>
+      </div>
+    );
+  }
+  return null;
+};
+
+
 export const EOYReport: React.FC<EOYReportProps> = ({
   allTransactions,
   categories,
@@ -253,8 +281,8 @@ export const EOYReport: React.FC<EOYReportProps> = ({
               <LineChart data={monthlyChartData}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="month" />
-                <YAxis />
-                <Tooltip />
+                <YAxis tickFormatter={(value) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(value as number)} />
+                <Tooltip content={<CustomTooltip />} />
                 <Legend />
                 <Line
                   type="monotone"
@@ -298,7 +326,7 @@ export const EOYReport: React.FC<EOYReportProps> = ({
                         />
                       ))}
                     </Pie>
-                    <Tooltip />
+                    <Tooltip content={<CustomPieTooltip />} />
                   </PieChart>
                 </ResponsiveContainer>
               ) : (
