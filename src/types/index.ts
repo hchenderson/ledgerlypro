@@ -1,4 +1,5 @@
 
+
 import type { LucideIcon } from "lucide-react";
 import { Timestamp } from "firebase/firestore";
 
@@ -140,4 +141,14 @@ export interface QuarterlyReport {
     expenseToIncomeRatio: number;
   };
   notes?: string;
+}
+
+export interface EOYReportData {
+  year: number;
+  totalIncome: number;
+  totalExpenses: number;
+  net: number;
+  monthly: any[]; // Adjust if you have a specific type
+  categories: any[]; // Adjust if you have a specific type
+  mainCategories: any[]; // Add this line
 }

@@ -107,7 +107,7 @@ export const EOYReport: React.FC<EOYReportProps> = ({
 
   const categoryPieData = useMemo(
     () =>
-      data.categories.map((c) => ({
+      data.mainCategories.map((c) => ({
         name: c.name,
         value: c.total,
       })),

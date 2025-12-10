@@ -7,7 +7,7 @@ import {
   getMonth,
   format,
 } from "date-fns";
-import type { Transaction, Category } from "@/types";
+import type { Transaction, Category, SubCategory } from "@/types";
 
 export interface EOYMonthlyPoint {
   monthIndex: number;
@@ -30,7 +30,31 @@ export interface EOYReportData {
   net: number;
   monthly: EOYMonthlyPoint[];
   categories: EOYCategorySummary[];
+  mainCategories: EOYCategorySummary[];
 }
+
+function findMainCategoryForSub(
+  subCategoryName: string,
+  categories: Category[]
+): Category | undefined {
+  for (const mainCat of categories) {
+    if (mainCat.name === subCategoryName) return mainCat;
+    
+    const findInSubs = (subs: SubCategory[]): boolean => {
+      for (const sub of subs) {
+        if (sub.name === subCategoryName) return true;
+        if (sub.subCategories && findInSubs(sub.subCategories)) return true;
+      }
+      return false;
+    }
+
+    if (mainCat.subCategories && findInSubs(mainCat.subCategories)) {
+      return mainCat;
+    }
+  }
+  return undefined;
+}
+
 
 function flattenCategoryNames(cats: Category[]): string[] {
   let list: string[] = [];
@@ -70,6 +94,8 @@ export function computeEOYReport(
     categoryTotals[name] = 0;
   });
 
+  const mainCategoryTotals: Record<string, number> = {};
+
   yearTx.forEach((tx) => {
     const m = getMonth(parseISO(tx.date));
     if (tx.type === "income") {
@@ -78,6 +104,13 @@ export function computeEOYReport(
       monthly[m].expenses += tx.amount;
       if (categoryTotals[tx.category] !== undefined) {
         categoryTotals[tx.category] += tx.amount;
+      }
+      
+      const mainCat = findMainCategoryForSub(tx.category, categories);
+      if (mainCat) {
+        mainCategoryTotals[mainCat.name] = (mainCategoryTotals[mainCat.name] || 0) + tx.amount;
+      } else {
+        mainCategoryTotals['Uncategorized'] = (mainCategoryTotals['Uncategorized'] || 0) + tx.amount;
       }
     }
   });
@@ -109,6 +142,19 @@ export function computeEOYReport(
     });
 
   categoriesSummaries.sort((a, b) => b.total - a.total);
+  
+  const mainCategoriesSummaries: EOYCategorySummary[] = [];
+   Object.entries(mainCategoryTotals)
+    .filter(([, total]) => total > 0)
+    .forEach(([name, total]) => {
+        const percentageOfTotal = totalExpenses > 0 ? (total / totalExpenses) * 100 : 0;
+        mainCategoriesSummaries.push({
+            name,
+            total,
+            percentageOfTotal,
+        });
+    });
+  mainCategoriesSummaries.sort((a, b) => b.total - a.total);
 
   return {
     year,
@@ -117,5 +163,6 @@ export function computeEOYReport(
     net,
     monthly,
     categories: categoriesSummaries,
+    mainCategories: mainCategoriesSummaries,
   };
 }
