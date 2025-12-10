@@ -281,7 +281,10 @@ export const EOYReport: React.FC<EOYReportProps> = ({
               <LineChart data={monthlyChartData}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="month" />
-                <YAxis tickFormatter={(value) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(value as number)} />
+                <YAxis
+                  type="number"
+                  tickFormatter={(value: number) => formatCurrency(Number(value))}
+                />
                 <Tooltip content={<CustomTooltip />} />
                 <Legend />
                 <Line
