@@ -80,9 +80,9 @@ const CustomPieTooltip = ({ active, payload }: any) => {
 const renderCategoryLabel = (props: PieLabelRenderProps) => {
   const { cx, cy, midAngle, innerRadius, outerRadius, percent, name } = props;
   const RADIAN = Math.PI / 180;
-  const radius = innerRadius + (outerRadius - innerRadius) * 0.6;
-  const x = cx + radius * Math.cos(-midAngle * RADIAN);
-  const y = cy + radius * Math.sin(-midAngle * RADIAN);
+  const radius = innerRadius! + (outerRadius! - innerRadius!) * 0.6;
+  const x = cx! + radius * Math.cos(-midAngle * RADIAN);
+  const y = cy! + radius * Math.sin(-midAngle * RADIAN);
 
   if (typeof percent !== 'number' || percent < 0.05) return null; // Don't render label for small slices
 
@@ -91,7 +91,7 @@ const renderCategoryLabel = (props: PieLabelRenderProps) => {
       x={x}
       y={y}
       fill="#ffffff"
-      textAnchor={x > cx ? "start" : "end"}
+      textAnchor={x > cx! ? "start" : "end"}
       dominantBaseline="central"
       style={{ fontSize: 10, fontWeight: 'bold' }}
     >
@@ -332,7 +332,19 @@ export const EOYReport: React.FC<EOYReportProps> = ({
                   stroke="#e74c3c"
                   name="Expenses"
                 />
-                <Line type="monotone" dataKey="net" stroke="#3498db" name="Net" />
+                <Line
+                  type="monotone"
+                  dataKey="net"
+                  stroke="#3498db"
+                  name="Net"
+                />
+                <Line
+                  type="monotone"
+                  dataKey="runningBalance"
+                  stroke="#8e44ad"
+                  name="Running Balance"
+                />
+      
               </LineChart>
             </ResponsiveContainer>
           </CardContent>
