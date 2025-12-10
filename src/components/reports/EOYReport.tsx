@@ -118,16 +118,25 @@ export const EOYReport: React.FC<EOYReportProps> = ({
     [allTransactions, categories, year]
   );
 
-  const monthlyChartData = useMemo(
-    () =>
-      data.monthly.map((m) => ({
+  const monthlyChartData = useMemo(() => {
+    let runningBalance = 0;
+  
+    return data.monthly.map((m) => {
+      const income = Number(m.income);
+      const expenses = Number(m.expenses);
+      const net = income - expenses; // or Number(m.net), they should match
+  
+      runningBalance += net;
+  
+      return {
         month: m.label,
-        income: m.income,
-        expenses: m.expenses,
-        net: m.net,
-      })),
-    [data]
-  );
+        income,
+        expenses,
+        net,
+        runningBalance,
+      };
+    });
+  }, [data]);
 
   const categoryPieData = useMemo(
     () =>
