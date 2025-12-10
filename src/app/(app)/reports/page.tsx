@@ -27,10 +27,13 @@ import {
   Loader2,
   Filter,
   Trash2,
+  CalendarCheck,
+  ArrowRight,
 } from 'lucide-react';
 import type { Category, SubCategory, QuarterlyReport, Budget } from '@/types';
 import { DateRange } from 'react-day-picker';
 import { subMonths, startOfMonth, endOfMonth, startOfYear, endOfYear, getYear, format, startOfQuarter, endOfQuarter, subQuarters, getQuarter } from 'date-fns';
+import Link from 'next/link';
 
 import { OverviewChart } from '@/components/dashboard/overview-chart';
 import { CategoryPieChart } from '@/components/reports/category-pie-chart';
@@ -714,7 +717,7 @@ function GenerateReportDialog({
 }
 
 
-function QuarterlyReportView() {
+function AdvancedReportView() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [reports, setReports] = useState<QuarterlyReport[]>([]);
@@ -1028,15 +1031,31 @@ function QuarterlyReportView() {
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
-            <CardTitle>Generate Report</CardTitle>
-            <CardDescription>Create a financial snapshot for a specific quarter.</CardDescription>
-          </div>
-          <GenerateReportDialog onGenerate={handleGenerateReport} />
-        </CardHeader>
-      </Card>
+        <Card>
+            <CardHeader className="flex-row justify-between items-center">
+                <div>
+                    <CardTitle className="flex items-center gap-2"><CalendarCheck/> End of Year Report</CardTitle>
+                    <CardDescription>A comprehensive summary of your financial activity over a full year.</CardDescription>
+                </div>
+                <Button asChild>
+                    <Link href="/reports/eoy">View Report <ArrowRight className="ml-2 h-4 w-4"/></Link>
+                </Button>
+            </CardHeader>
+        </Card>
+        
+        <div>
+            <h3 className="text-lg font-semibold mb-4">Quarterly Reports</h3>
+            <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                    <CardTitle>Generate Report</CardTitle>
+                    <CardDescription>Create a financial snapshot for a specific quarter.</CardDescription>
+                </div>
+                <GenerateReportDialog onGenerate={handleGenerateReport} />
+                </CardHeader>
+            </Card>
+        </div>
+
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-start">
         <Card className="md:col-span-1">
@@ -1110,7 +1129,7 @@ export default function ReportsPage() {
                 <TabsList>
                     <TabsTrigger value="monthly">Monthly</TabsTrigger>
                     <TabsTrigger value="yearly">Yearly</TabsTrigger>
-                    <TabsTrigger value="quarterly">Quarterly</TabsTrigger>
+                    <TabsTrigger value="advanced">Advanced</TabsTrigger>
                 </TabsList>
             </div>
             <TabsContent value="monthly" className="pt-6">
@@ -1119,8 +1138,8 @@ export default function ReportsPage() {
             <TabsContent value="yearly" className="pt-6">
                 <ReportView period="yearly" />
             </TabsContent>
-            <TabsContent value="quarterly" className="pt-6">
-                <QuarterlyReportView />
+            <TabsContent value="advanced" className="pt-6">
+                <AdvancedReportView />
             </TabsContent>
         </Tabs>
     )
