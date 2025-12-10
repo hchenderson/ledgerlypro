@@ -40,6 +40,15 @@ const pieColors = [
   "#E74C3C",
 ];
 
+const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    }).format(value);
+}
+
 export const EOYReport: React.FC<EOYReportProps> = ({
   allTransactions,
   categories,
@@ -212,13 +221,13 @@ export const EOYReport: React.FC<EOYReportProps> = ({
             <div>
               <p className="text-sm text-muted-foreground">Total Income</p>
               <p className="text-2xl font-semibold">
-                ${data.totalIncome.toFixed(2)}
+                {formatCurrency(data.totalIncome)}
               </p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Total Expenses</p>
               <p className="text-2xl font-semibold">
-                ${data.totalExpenses.toFixed(2)}
+                {formatCurrency(data.totalExpenses)}
               </p>
             </div>
             <div>
@@ -228,7 +237,7 @@ export const EOYReport: React.FC<EOYReportProps> = ({
                   data.net >= 0 ? "text-emerald-600" : "text-red-600"
                 }`}
               >
-                ${data.net.toFixed(2)}
+                {formatCurrency(data.net)}
               </p>
             </div>
           </CardContent>
@@ -316,7 +325,7 @@ export const EOYReport: React.FC<EOYReportProps> = ({
                       {c.percentageOfTotal.toFixed(1)}% of expenses
                     </span>
                   </div>
-                  <span>${c.total.toFixed(2)}</span>
+                  <span>{formatCurrency(c.total)}</span>
                 </div>
               ))}
               {!data.categories.length && (
