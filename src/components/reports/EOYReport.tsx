@@ -114,6 +114,7 @@ export const EOYReport: React.FC<EOYReportProps> = ({
   const [isGenerating, setIsGenerating] = useState(false);
   const [aiSummary, setAiSummary] = useState<string | null>(null);
   const reportRef = useRef<HTMLDivElement | null>(null);
+  const categoryDetailsRef = useRef<HTMLDivElement | null>(null);
 
   const data = useMemo(
     () => computeEOYReport(allTransactions, categories, year),
@@ -392,7 +393,10 @@ export const EOYReport: React.FC<EOYReportProps> = ({
             <CardHeader>
               <CardTitle>Category Details</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2 max-h-80 overflow-y-auto">
+            <CardContent
+              ref={categoryDetailsRef}
+              className="space-y-2 max-h-80 overflow-y-auto"
+            >
               {data.categories.map((c) => (
                 <div
                   key={c.name}
