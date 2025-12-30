@@ -34,8 +34,9 @@ import { useToast } from '@/hooks/use-toast';
 import type { Budget, Category, SubCategory } from '@/types';
 import { FeatureGate } from '@/components/feature-gate';
 import { cn } from '@/lib/utils';
-import { addMonths, subMonths, format } from 'date-fns';
+import { addMonths, subMonths, format, setYear, getYear } from 'date-fns';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { useAuth } from '@/hooks/use-auth';
 
 const budgetFormSchema = z.object({
   categoryId: z.string().min(1, 'Please select a category.'),
@@ -207,7 +208,13 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
 
 function BudgetsPageContent() {
   const { addBudget, updateBudget, deleteBudget, toggleFavoriteBudget, loading, getBudgetDetails } = useUserData();
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const { activeYear } = useAuth();
+  
+  const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
+
+  const selectedDate = useMemo(() => {
+    return new Date(activeYear, currentMonth, 1);
+  }, [activeYear, currentMonth]);
   
   const initialBudgetDetails = useMemo(() => {
     return getBudgetDetails(selectedDate);
@@ -234,11 +241,11 @@ function BudgetsPageContent() {
 
 
   const handlePrevMonth = () => {
-    setSelectedDate(prev => subMonths(prev, 1));
+    setCurrentMonth(prev => prev === 0 ? 11 : prev - 1);
   }
   
   const handleNextMonth = () => {
-    setSelectedDate(prev => addMonths(prev, 1));
+    setCurrentMonth(prev => prev === 11 ? 0 : prev + 1);
   }
 
   const handleDragStart = (e: React.DragEvent<HTMLDivElement>, item: any, index: number) => {
@@ -381,5 +388,3 @@ export default function BudgetsPage() {
         </FeatureGate>
     )
 }
-
-    

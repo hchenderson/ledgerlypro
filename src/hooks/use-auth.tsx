@@ -14,6 +14,9 @@ interface AuthContextType {
   setOnboardingComplete: (complete: boolean) => void;
   showInstructions: boolean;
   setShowInstructions: (show: boolean) => void;
+  activeYear: number;
+  setActiveYear: (year: number) => void;
+  firstYear: number;
 }
 
 const AuthContext = createContext<AuthContextType>({ 
@@ -22,7 +25,10 @@ const AuthContext = createContext<AuthContextType>({
   onboardingComplete: false,
   setOnboardingComplete: () => {},
   showInstructions: false,
-  setShowInstructions: () => {}
+  setShowInstructions: () => {},
+  activeYear: new Date().getFullYear(),
+  setActiveYear: () => {},
+  firstYear: new Date().getFullYear(),
 });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -30,6 +36,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const [onboardingComplete, setOnboardingCompleteState] = useState(false);
   const [showInstructions, setShowInstructionsState] = useState(false);
+  const [activeYear, setActiveYearState] = useState(new Date().getFullYear());
+  const [firstYear, setFirstYearState] = useState(new Date().getFullYear());
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -37,19 +45,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (user) {
         const userDocRef = doc(db, 'users', user.uid, 'settings', 'main');
         const userDoc = await getDoc(userDocRef);
+        
+        let settingsData = {
+          onboardingComplete: false,
+          showInstructions: false,
+          activeYear: new Date().getFullYear(),
+          firstYear: new Date().getFullYear(),
+        };
+
         if (userDoc.exists()) {
-          const data = userDoc.data();
-          setOnboardingCompleteState(data.onboardingComplete || false);
-          setShowInstructionsState(data.showInstructions || false);
+          const existingData = userDoc.data();
+          settingsData = { ...settingsData, ...existingData };
         } else {
-          // New user, set defaults
-          setOnboardingCompleteState(false);
-          setShowInstructionsState(false);
+          // If the doc doesn't exist, we will create it with defaults.
+          await setDoc(userDocRef, settingsData, { merge: true });
         }
+        
+        setOnboardingCompleteState(settingsData.onboardingComplete);
+        setShowInstructionsState(settingsData.showInstructions);
+        setActiveYearState(settingsData.activeYear);
+        setFirstYearState(settingsData.firstYear);
+
       } else {
-        // No user
+        // No user, reset to defaults
         setOnboardingCompleteState(false);
         setShowInstructionsState(false);
+        setActiveYearState(new Date().getFullYear());
+        setFirstYearState(new Date().getFullYear());
       }
       setLoading(false);
     });
@@ -72,9 +94,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await setDoc(userDocRef, { showInstructions: show }, { merge: true });
     }
   }, [user]);
+  
+  const setActiveYear = useCallback(async (year: number) => {
+    setActiveYearState(year);
+    if (user) {
+      const userDocRef = doc(db, 'users', user.uid, 'settings', 'main');
+      await setDoc(userDocRef, { activeYear: year }, { merge: true });
+    }
+  }, [user]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, onboardingComplete, setOnboardingComplete, showInstructions, setShowInstructions }}>
+    <AuthContext.Provider value={{ user, loading, onboardingComplete, setOnboardingComplete, showInstructions, setShowInstructions, activeYear, setActiveYear, firstYear }}>
       {children}
     </AuthContext.Provider>
   );
