@@ -60,9 +60,11 @@ function AppLayoutSkeleton() {
 
 function MainAppShell({ children }: { children: React.ReactNode }) {
     const { addTransaction, categories } = useUserData();
-    const { user } = useAuth();
+    const { user, activeYear } = useAuth();
     const [isImportSheetOpen, setIsImportSheetOpen] = useState(false);
     const [isNewTxSheetOpen, setIsNewTxSheetOpen] = useState(false);
+    
+    const isReadOnly = activeYear < new Date().getFullYear();
 
     const handleTransactionsImported = (transactions: Omit<Transaction, 'id'>[]) => {
         transactions.forEach(addTransaction);
@@ -98,7 +100,7 @@ function MainAppShell({ children }: { children: React.ReactNode }) {
                             onOpenChange={setIsImportSheetOpen}
                             onTransactionsImported={handleTransactionsImported}
                         >
-                            <Button variant="outline" size="sm">
+                            <Button variant="outline" size="sm" disabled={isReadOnly} title={isReadOnly ? "You cannot import transactions into a past year." : "Import transactions"}>
                                 <Download className="mr-2 h-4 w-4"/>
                                 Import
                             </Button>
@@ -112,7 +114,7 @@ function MainAppShell({ children }: { children: React.ReactNode }) {
                             }} 
                             categories={categories}
                         >
-                            <Button size="sm">
+                            <Button size="sm" disabled={isReadOnly} title={isReadOnly ? "You cannot add transactions to a past year." : "Add new transaction"}>
                                 <PlusCircle className="mr-2 h-4 w-4" />
                                 New Transaction
                             </Button>

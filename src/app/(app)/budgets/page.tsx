@@ -3,7 +3,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { useUserData } from '@/hooks/use-user-data';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { PlusCircle, Target, Trash2, Edit, Star, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -46,7 +46,7 @@ const budgetFormSchema = z.object({
 
 type BudgetFormValues = z.infer<typeof budgetFormSchema>;
 
-function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (values: BudgetFormValues, id?: string) => void, children: React.ReactNode }) {
+function BudgetDialog({ budget, onSave, children, isReadOnly }: { budget?: Budget, onSave: (values: BudgetFormValues, id?: string) => void, children: React.ReactNode, isReadOnly: boolean }) {
   const [isOpen, setIsOpen] = useState(false);
   const { categories, budgets } = useUserData();
   const { activeYear } = useAuth();
@@ -136,7 +136,7 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Category</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value} disabled={!!budget}>
+                  <Select onValueChange={field.onChange} defaultValue={field.value} disabled={!!budget || isReadOnly}>
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="Select an expense category" />
@@ -152,7 +152,7 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
                 </FormItem>
               )}
             />
-            <FormField control={form.control} name="amount" render={({ field }) => (<FormItem><FormLabel>Budget Amount</FormLabel><FormControl><Input type="number" placeholder="e.g., 500" {...field} /></FormControl><FormMessage /></FormItem>)} />
+            <FormField control={form.control} name="amount" render={({ field }) => (<FormItem><FormLabel>Budget Amount</FormLabel><FormControl><Input type="number" placeholder="e.g., 500" {...field} disabled={isReadOnly} /></FormControl><FormMessage /></FormItem>)} />
             
             <FormField
               control={form.control}
@@ -165,7 +165,7 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
                       onValueChange={field.onChange}
                       defaultValue={field.value}
                       className="flex space-x-4"
-                      disabled={!!budget}
+                      disabled={!!budget || isReadOnly}
                     >
                       <FormItem className="flex items-center space-x-2">
                         <FormControl>
@@ -188,7 +188,7 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
 
             <DialogFooter>
               <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
-              <Button type="submit">Save Budget</Button>
+              <Button type="submit" disabled={isReadOnly}>Save Budget</Button>
             </DialogFooter>
           </form>
         </Form>
@@ -203,6 +203,7 @@ function BudgetsPageContent() {
   const { activeYear } = useAuth();
   
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
+  const isReadOnly = activeYear < new Date().getFullYear();
 
   const selectedDate = useMemo(() => {
     return new Date(activeYear, currentMonth, 1);
@@ -223,6 +224,7 @@ function BudgetsPageContent() {
 
 
   const handleSaveBudget = (values: BudgetFormValues, id?: string) => {
+    if (isReadOnly) return;
     if (id) {
         updateBudget(id, values);
     } else {
@@ -240,16 +242,18 @@ function BudgetsPageContent() {
   }
   
   const handleNextMonth = () => {
-    setCurrentMonth(prev => prev === 11 ? 0 : prev + 1);
+    setCurrentMonth(prev => prev === 11 ? 0 : prev - 1);
   }
 
   const handleDragStart = (e: React.DragEvent<HTMLDivElement>, item: any, index: number) => {
+    if (isReadOnly) return;
     setDraggedItem({ item, index });
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/html', e.currentTarget.outerHTML);
   };
   
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>, index: number) => {
+    if (isReadOnly) return;
     e.preventDefault();
     const draggedOverItem = budgetDetails[index];
     if (draggedItem && draggedOverItem.id === draggedItem.item.id) return;
@@ -261,6 +265,7 @@ function BudgetsPageContent() {
   };
 
   const handleDragEnd = () => {
+    if (isReadOnly) return;
     setDraggedItem(null);
     // Here you would typically save the new order to a database
   };
@@ -278,8 +283,8 @@ function BudgetsPageContent() {
             Track your spending against your goals for {activeYear}. You can drag and drop cards to reorder them.
           </p>
         </div>
-        <BudgetDialog onSave={handleSaveBudget}>
-             <Button>
+        <BudgetDialog onSave={handleSaveBudget} isReadOnly={isReadOnly}>
+             <Button disabled={isReadOnly} title={isReadOnly ? "You cannot add a budget to a past year." : "Create new budget"}>
                 <PlusCircle className="mr-2 h-4 w-4" />
                 New Budget
             </Button>
@@ -309,8 +314,8 @@ function BudgetsPageContent() {
                 <CardDescription>Get started by creating your first budget for this year.</CardDescription>
             </CardHeader>
             <CardContent>
-                <BudgetDialog onSave={handleSaveBudget}>
-                    <Button>
+                <BudgetDialog onSave={handleSaveBudget} isReadOnly={isReadOnly}>
+                    <Button disabled={isReadOnly} title={isReadOnly ? "You cannot add a budget to a past year." : "Create a budget"}>
                         <PlusCircle className="mr-2 h-4 w-4" />
                         Create a Budget
                     </Button>
@@ -322,11 +327,11 @@ function BudgetsPageContent() {
           {budgetDetails.map((budget, index) => (
             <div
                 key={budget.id}
-                draggable
+                draggable={!isReadOnly}
                 onDragStart={(e) => handleDragStart(e, budget, index)}
                 onDragOver={(e) => handleDragOver(e, index)}
                 onDragEnd={handleDragEnd}
-                className={cn("cursor-move", draggedItem?.item.id === budget.id && "opacity-50")}
+                className={cn(isReadOnly ? "cursor-default" : "cursor-move", draggedItem?.item.id === budget.id && "opacity-50")}
             >
                 <Card>
                 <CardHeader>
@@ -338,13 +343,13 @@ function BudgetsPageContent() {
                             </CardDescription>
                         </div>
                         <div className="flex gap-1">
-                            <Button variant="ghost" size="icon" onClick={() => toggleFavoriteBudget(budget.id)}>
+                            <Button variant="ghost" size="icon" onClick={() => !isReadOnly && toggleFavoriteBudget(budget.id)} disabled={isReadOnly}>
                                 <Star className={cn("h-4 w-4", budget.isFavorite ? "text-yellow-400 fill-yellow-400" : "text-muted-foreground")}/>
                             </Button>
-                            <BudgetDialog budget={budget} onSave={handleSaveBudget}>
-                                <Button variant="ghost" size="icon"><Edit className="h-4 w-4"/></Button>
+                            <BudgetDialog budget={budget} onSave={handleSaveBudget} isReadOnly={isReadOnly}>
+                                <Button variant="ghost" size="icon" disabled={isReadOnly}><Edit className="h-4 w-4"/></Button>
                             </BudgetDialog>
-                            <Button variant="ghost" size="icon" onClick={() => deleteBudget(budget.id)}>
+                            <Button variant="ghost" size="icon" onClick={() => !isReadOnly && deleteBudget(budget.id)} disabled={isReadOnly}>
                                 <Trash2 className="h-4 w-4 text-red-500"/>
                             </Button>
                         </div>

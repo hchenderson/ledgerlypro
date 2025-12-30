@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { Calendar } from "@/components/ui/calendar";
 import { ExportTransactionsDialog } from "@/components/export-transactions-dialog";
 import { Pagination } from "@/components/ui/pagination";
+import { useAuth } from "@/hooks/use-auth";
 
 
 const TRANSACTIONS_PAGE_SIZE = 25;
@@ -54,6 +55,7 @@ export default function TransactionsPage() {
     categories = [],
     loading: userDataLoading,
   } = useUserData();
+  const { activeYear } = useAuth();
   
   const [paginatedTransactions, setPaginatedTransactions] = useState<Transaction[]>([]);
   const [page, setPage] = useState(1);
@@ -68,6 +70,8 @@ export default function TransactionsPage() {
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [minAmount, setMinAmount] = useState('');
   const [maxAmount, setMaxAmount] = useState('');
+
+  const isReadOnly = activeYear < new Date().getFullYear();
 
   const filteredTransactions = useMemo(() => {
     let transactions = [...allTransactions];
@@ -137,9 +141,10 @@ export default function TransactionsPage() {
   }, []);
 
   const handleEdit = useCallback((transaction: Transaction) => {
+    if (isReadOnly) return;
     setSelectedTransaction(transaction);
     setIsSheetOpen(true);
-  }, []);
+  }, [isReadOnly]);
   
   const handleSheetClose = useCallback((open: boolean) => {
     if (!open) {
@@ -323,7 +328,7 @@ export default function TransactionsPage() {
                 </TableRow>
               ) : paginatedTransactions.length > 0 ? (
                 paginatedTransactions.map((transaction) => (
-                  <TableRow key={transaction.id} className="cursor-pointer" onClick={() => handleEdit(transaction)}>
+                  <TableRow key={transaction.id} className={cn(isReadOnly ? "cursor-default" : "cursor-pointer")} onClick={() => handleEdit(transaction)}>
                     <TableCell className="font-medium">
                       {transaction.description}
                     </TableCell>
@@ -343,7 +348,7 @@ export default function TransactionsPage() {
                       <AlertDialog>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button aria-haspopup="true" size="icon" variant="ghost" onClick={(e) => e.stopPropagation()}>
+                            <Button aria-haspopup="true" size="icon" variant="ghost" onClick={(e) => e.stopPropagation()} disabled={isReadOnly}>
                               <MoreHorizontal className="h-4 w-4" />
                               <span className="sr-only">Toggle menu</span>
                             </Button>

@@ -37,16 +37,18 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { ExportCategoriesDialog } from "@/components/export-categories-dialog";
 import { ImportCategoriesDialog } from "@/components/import-categories-dialog";
-
+import { useAuth } from "@/hooks/use-auth";
 
 function EditCategoryDialog({ 
     name, 
     onSave,
-    children 
+    children,
+    isReadOnly,
 }: { 
     name: string, 
     onSave: (oldName: string, newName: string) => void,
-    children: React.ReactNode 
+    children: React.ReactNode,
+    isReadOnly: boolean,
 }) {
     const [newName, setNewName] = useState(name);
     const [isOpen, setIsOpen] = useState(false);
@@ -70,11 +72,11 @@ function EditCategoryDialog({
                 </DialogHeader>
                 <div className="space-y-2">
                     <Label htmlFor="category-name">New Name</Label>
-                    <Input id="category-name" value={newName} onChange={(e) => setNewName(e.target.value)} />
+                    <Input id="category-name" value={newName} onChange={(e) => setNewName(e.target.value)} disabled={isReadOnly} />
                 </div>
                 <DialogFooter>
                     <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                    <Button onClick={handleSave}>Save Changes</Button>
+                    <Button onClick={handleSave} disabled={isReadOnly}>Save Changes</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
@@ -83,6 +85,8 @@ function EditCategoryDialog({
 
 function SubCategoryList({ items, parentId, parentPath = [] }: { items: SubCategory[], parentId: string, parentPath?: string[] }) {
     const { addSubCategory, updateSubCategory, deleteSubCategory } = useUserData();
+    const { activeYear } = useAuth();
+    const isReadOnly = activeYear < new Date().getFullYear();
 
     const handleAddSubCategory = (parentId: string, subCategoryName: string, path: string[]) => {
         const newSubCategory: Omit<SubCategory, 'id'> = {
@@ -106,12 +110,12 @@ function SubCategoryList({ items, parentId, parentPath = [] }: { items: SubCateg
                                 <span>{sub.name}</span>
                             </div>
                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <EditCategoryDialog name={sub.name} onSave={(oldName, newName) => updateSubCategory(parentId, sub.id, oldName, newName, parentPath)}>
-                                    <Button variant="ghost" size="icon"><Edit className="h-4 w-4"/></Button>
+                                <EditCategoryDialog name={sub.name} onSave={(oldName, newName) => updateSubCategory(parentId, sub.id, oldName, newName, parentPath)} isReadOnly={isReadOnly}>
+                                    <Button variant="ghost" size="icon" disabled={isReadOnly}><Edit className="h-4 w-4"/></Button>
                                 </EditCategoryDialog>
                                 <AlertDialog>
                                     <AlertDialogTrigger asChild>
-                                        <Button variant="ghost" size="icon"><Trash2 className="h-4 w-4 text-red-500"/></Button>
+                                        <Button variant="ghost" size="icon" disabled={isReadOnly}><Trash2 className="h-4 w-4 text-red-500"/></Button>
                                     </AlertDialogTrigger>
                                     <AlertDialogContent>
                                         <AlertDialogHeader>
@@ -135,8 +139,9 @@ function SubCategoryList({ items, parentId, parentPath = [] }: { items: SubCateg
                                 onAddCategory={(name) => handleAddSubCategory(parentId, name, [...parentPath, sub.id])} 
                                 isSubCategory={true}
                                 parentCategoryName={sub.name}
+                                isReadOnly={isReadOnly}
                             >
-                                <button className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors ml-9 mt-2">
+                                <button className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors ml-9 mt-2" disabled={isReadOnly}>
                                     <PlusCircle className="h-4 w-4"/>
                                     Add Sub-category
                                 </button>
@@ -152,6 +157,8 @@ function SubCategoryList({ items, parentId, parentPath = [] }: { items: SubCateg
 export default function CategoriesPage() {
     const { categories, addCategory, addSubCategory, updateCategory, deleteCategory, importCategories, loading } = useUserData();
     const { toast } = useToast();
+    const { activeYear } = useAuth();
+    const isReadOnly = activeYear < new Date().getFullYear();
 
     const handleAddCategory = (categoryName: string, type: 'income' | 'expense') => {
         const newCategory: Omit<Category, 'id'> = { 
@@ -201,12 +208,12 @@ export default function CategoriesPage() {
                                 </div>
                             </AccordionTrigger>
                             <div className="flex items-center gap-1 mr-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <EditCategoryDialog name={category.name} onSave={(oldName, newName) => updateCategory(category.id, oldName, newName)}>
-                                    <Button variant="ghost" size="icon"><Edit className="h-4 w-4"/></Button>
+                                <EditCategoryDialog name={category.name} onSave={(oldName, newName) => updateCategory(category.id, oldName, newName)} isReadOnly={isReadOnly}>
+                                    <Button variant="ghost" size="icon" disabled={isReadOnly}><Edit className="h-4 w-4"/></Button>
                                 </EditCategoryDialog>
                                 <AlertDialog>
                                     <AlertDialogTrigger asChild>
-                                        <Button variant="ghost" size="icon"><Trash2 className="h-4 w-4 text-red-500"/></Button>
+                                        <Button variant="ghost" size="icon" disabled={isReadOnly}><Trash2 className="h-4 w-4 text-red-500"/></Button>
                                     </AlertDialogTrigger>
                                     <AlertDialogContent>
                                         <AlertDialogHeader>
@@ -230,8 +237,9 @@ export default function CategoriesPage() {
                                     onAddCategory={(name) => handleAddSubCategory(category.id, name)} 
                                     isSubCategory={true}
                                     parentCategoryName={category.name}
+                                    isReadOnly={isReadOnly}
                                 >
-                                    <button className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors">
+                                    <button className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors" disabled={isReadOnly}>
                                         <PlusCircle className="h-4 w-4"/>
                                         Add Sub-category
                                     </button>
@@ -265,7 +273,7 @@ export default function CategoriesPage() {
                 <div className="flex gap-2">
                     <ImportCategoriesDialog onImport={handleImport}/>
                     <ExportCategoriesDialog categories={categories} />
-                    <NewCategorySheet onAddCategory={handleAddCategory} />
+                    <NewCategorySheet onAddCategory={handleAddCategory} isReadOnly={isReadOnly} />
                 </div>
             </div>
 
@@ -284,8 +292,8 @@ export default function CategoriesPage() {
                 </CardHeader>
                 <CardContent className="space-y-2">
                     {renderCategoryList(categories.filter(c => c.type === 'expense'))}
-                     <NewCategorySheet onAddCategory={handleAddCategory}>
-                        <Button variant="ghost" className="w-full mt-2">
+                     <NewCategorySheet onAddCategory={handleAddCategory} isReadOnly={isReadOnly}>
+                        <Button variant="ghost" className="w-full mt-2" disabled={isReadOnly}>
                             <PlusCircle className="mr-2 h-4 w-4" />
                             Add New Main Category
                         </Button>
