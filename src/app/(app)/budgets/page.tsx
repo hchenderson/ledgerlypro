@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useMemo, useEffect } from 'react';
@@ -37,6 +38,7 @@ import { cn } from '@/lib/utils';
 import { addMonths, subMonths, format } from 'date-fns';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useAuth } from '@/hooks/use-auth';
+import { useComparison } from '@/hooks/use-comparison';
 
 const budgetFormSchema = z.object({
   categoryId: z.string().min(1, 'Please select a category.'),
@@ -201,10 +203,11 @@ function BudgetDialog({ budget, onSave, children, isReadOnly }: { budget?: Budge
 function BudgetsPageContent() {
   const { budgets, addBudget, updateBudget, deleteBudget, toggleFavoriteBudget, loading, getBudgetDetails, transactions, categories } = useUserData();
   const { activeYear } = useAuth();
+  const { isComparing } = useComparison();
   
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
   const systemYear = new Date().getFullYear();
-  const isReadOnly = activeYear < systemYear;
+  const isReadOnly = activeYear < systemYear || isComparing;
 
   const selectedDate = useMemo(() => {
     return new Date(activeYear, currentMonth, 1);

@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState } from "react";
@@ -38,6 +39,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ExportCategoriesDialog } from "@/components/export-categories-dialog";
 import { ImportCategoriesDialog } from "@/components/import-categories-dialog";
 import { useAuth } from "@/hooks/use-auth";
+import { useComparison } from "@/hooks/use-comparison";
 
 function EditCategoryDialog({ 
     name, 
@@ -86,8 +88,9 @@ function EditCategoryDialog({
 function SubCategoryList({ items, parentId, parentPath = [] }: { items: SubCategory[], parentId: string, parentPath?: string[] }) {
     const { addSubCategory, updateSubCategory, deleteSubCategory } = useUserData();
     const { activeYear } = useAuth();
+    const { isComparing } = useComparison();
     const systemYear = new Date().getFullYear();
-    const isReadOnly = activeYear < systemYear;
+    const isReadOnly = activeYear < systemYear || isComparing;
 
     const handleAddSubCategory = (parentId: string, subCategoryName: string, path: string[]) => {
         const newSubCategory: Omit<SubCategory, 'id'> = {
@@ -159,8 +162,9 @@ export default function CategoriesPage() {
     const { categories, addCategory, addSubCategory, updateCategory, deleteCategory, importCategories, loading } = useUserData();
     const { toast } = useToast();
     const { activeYear } = useAuth();
+    const { isComparing } = useComparison();
     const systemYear = new Date().getFullYear();
-    const isReadOnly = activeYear < systemYear;
+    const isReadOnly = activeYear < systemYear || isComparing;
 
     const handleAddCategory = (categoryName: string, type: 'income' | 'expense') => {
         const newCategory: Omit<Category, 'id'> = { 

@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useMemo } from 'react';
@@ -41,6 +42,7 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { FeatureGate } from '@/components/feature-gate';
 import { useAuth } from '@/hooks/use-auth';
+import { useComparison } from '@/hooks/use-comparison';
 
 const recurringFormSchema = z.object({
   description: z.string().min(2, 'Description must be at least 2 characters.'),
@@ -227,8 +229,9 @@ function calculateNextOccurrence(rt: RecurringTransaction): Date {
 function RecurringPageContent() {
   const { recurringTransactions, addRecurringTransaction, updateRecurringTransaction, deleteRecurringTransaction, loading } = useUserData();
   const { activeYear } = useAuth();
+  const { isComparing } = useComparison();
   const systemYear = new Date().getFullYear();
-  const isReadOnly = activeYear < systemYear;
+  const isReadOnly = activeYear < systemYear || isComparing;
 
   const handleSave = (values: RecurringFormValues, id?: string) => {
     if (isReadOnly) return;

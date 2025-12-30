@@ -12,15 +12,22 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "./ui/button";
 import { Calendar } from "lucide-react";
+import { useComparison } from "@/hooks/use-comparison";
 
 export function YearSwitcher() {
   const { activeYear, setActiveYear, firstYear } = useAuth();
+  const { setComparisonYear } = useComparison();
 
   const currentSystemYear = new Date().getFullYear();
   const years = Array.from(
     { length: currentSystemYear - firstYear + 1 },
     (_, i) => currentSystemYear - i
   );
+
+  const handleYearChange = (year: number) => {
+    setActiveYear(year);
+    setComparisonYear(undefined); // Clear comparison when active year changes
+  };
 
   return (
     <DropdownMenu>
@@ -37,7 +44,7 @@ export function YearSwitcher() {
         <DropdownMenuLabel>Select a Year</DropdownMenuLabel>
         <DropdownMenuSeparator />
         {years.map((year) => (
-          <DropdownMenuItem key={year} onSelect={() => setActiveYear(year)}>
+          <DropdownMenuItem key={year} onSelect={() => handleYearChange(year)}>
             <span>{year}</span>
             {year === currentSystemYear && (
               <span className="ml-auto text-xs text-muted-foreground">Current</span>
