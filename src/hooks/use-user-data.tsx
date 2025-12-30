@@ -15,6 +15,8 @@ import {
   orderBy,
   where,
   QueryConstraint,
+  startAt,
+  endAt,
 } from 'firebase/firestore';
 import type { Transaction, Category, SubCategory, Budget, RecurringTransaction, Goal, ProcessedGoal } from '@/types';
 import { useAuth } from './use-auth';
@@ -28,10 +30,13 @@ import {
   startOfDay,
   parseISO,
   isToday,
+  startOfYear,
+  endOfYear,
 } from 'date-fns';
 
 interface UserDataContextType {
   allTransactions: Transaction[];
+  transactions: Transaction[]; // Year-scoped transactions
   categories: Category[];
   budgets: Budget[];
   recurringTransactions: RecurringTransaction[];
@@ -170,6 +175,7 @@ const buildCategoryPathLabel = (id: string, categories: Category[]): string | un
 export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, activeYear } = useAuth();
   const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [recurringTransactions, setRecurringTransactions] = useState<RecurringTransaction[]>([]);
@@ -286,6 +292,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!user) {
       setLoading(false);
       setAllTransactions([]);
+      setTransactions([]);
       setCategories([]);
       setBudgets([]);
       setRecurringTransactions([]);
@@ -303,22 +310,17 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     });
 
-    const collectionsToSync = ['categories', 'budgets', 'recurringTransactions', 'goals', 'transactions'] as const;
+    const collectionsToSync = ['categories', 'budgets', 'recurringTransactions', 'goals'] as const;
 
     const unsubscribers = collectionsToSync.map((name) => {
       const collRef = getCollectionRef(name);
       if (!collRef) return () => {};
 
-      const q = name === 'transactions' ? query(collRef, orderBy('date', 'desc')) : query(collRef);
-
       return onSnapshot(
-        q,
+        query(collRef),
         (snapshot) => {
           const data = snapshot.docs.map((docSnap) => ({ ...docSnap.data(), id: docSnap.id }));
           switch (name) {
-            case 'transactions':
-              setAllTransactions(data as Transaction[]);
-              break;
             case 'categories':
               setCategories(data as Category[]);
               break;
@@ -332,20 +334,59 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               setGoals(data as Goal[]);
               break;
           }
-          setLoading(false);
         },
         (error) => {
           console.error(`Error fetching ${name}:`, error);
-          setLoading(false);
         }
       );
     });
+
+    // Handle all transactions separately
+    const allTransactionsCollRef = getCollectionRef('transactions');
+    if (allTransactionsCollRef) {
+      const unsubAllTransactions = onSnapshot(
+        query(allTransactionsCollRef, orderBy('date', 'desc')),
+        (snapshot) => {
+          setAllTransactions(snapshot.docs.map(d => d.data() as Transaction));
+        },
+        (error) => console.error('Error fetching all transactions:', error)
+      );
+      unsubscribers.push(unsubAllTransactions);
+    }
+
+    // Handle year-scoped transactions
+    const transactionsCollRef = getCollectionRef('transactions');
+    if (transactionsCollRef) {
+        const yearStartDate = startOfYear(new Date(activeYear, 0, 1)).toISOString();
+        const yearEndDate = endOfYear(new Date(activeYear, 11, 31)).toISOString();
+
+        const q = query(
+            transactionsCollRef,
+            orderBy('date', 'desc'),
+            where('date', '>=', yearStartDate),
+            where('date', '<=', yearEndDate)
+        );
+
+        const unsubTransactions = onSnapshot(
+            q,
+            (snapshot) => {
+                setTransactions(snapshot.docs.map(d => d.data() as Transaction));
+                setLoading(false);
+            },
+            (error) => {
+                console.error(`Error fetching transactions for year ${activeYear}:`, error);
+                setLoading(false);
+            }
+        );
+        unsubscribers.push(unsubTransactions);
+    }
+
 
     return () => {
       unsubSettings();
       unsubscribers.forEach((unsub) => unsub());
     };
-  }, [user, getCollectionRef]);
+  }, [user, getCollectionRef, activeYear]);
 
   // ---------- Category ID migration for legacy transactions ----------
 
@@ -910,6 +951,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const value: UserDataContextType = {
     allTransactions,
+    transactions,
     categories,
     budgets,
     recurringTransactions,

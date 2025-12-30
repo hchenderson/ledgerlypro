@@ -42,8 +42,8 @@ function DashboardSkeleton() {
 }
 
 export default function DashboardPage() {
-  const { allTransactions, loading: userDataLoading, getBudgetDetails, goals, budgets } = useUserData();
-  const { user, showInstructions, loading: authLoading } = useAuth();
+  const { transactions, loading: userDataLoading, getBudgetDetails, goals, budgets, startingBalance } = useUserData();
+  const { user, showInstructions, loading: authLoading, activeYear } = useAuth();
   const [analytics, setAnalytics] = useState<GetDashboardAnalyticsOutput | null>(null);
   const [isAnalyticsLoading, setIsAnalyticsLoading] = useState(true);
 
@@ -51,40 +51,37 @@ export default function DashboardPage() {
     if (!userDataLoading && !authLoading && user) {
       const fetchAnalytics = async () => {
         setIsAnalyticsLoading(true);
-        
-        let startingBalance = 0;
-        const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'main');
-        const docSnap = await getDoc(settingsDocRef);
-        if (docSnap.exists()) {
-          startingBalance = docSnap.data().startingBalance || 0;
-        }
 
-        getDashboardAnalytics({ transactions: allTransactions, startingBalance })
+        // Filter transactions for the active year before sending to analytics
+        const yearTransactions = transactions.filter(t => new Date(t.date).getFullYear() === activeYear);
+
+        getDashboardAnalytics({ transactions: yearTransactions, startingBalance })
           .then(setAnalytics)
           .finally(() => setIsAnalyticsLoading(false));
       }
       fetchAnalytics();
     }
-  }, [allTransactions, userDataLoading, authLoading, user]);
+  }, [transactions, userDataLoading, authLoading, user, activeYear, startingBalance]);
 
 
   const favoritedBudgets = useMemo(() => {
-    return getBudgetDetails(budgets).filter(b => b.isFavorite);
-  }, [getBudgetDetails, budgets]);
+    const yearBudgets = budgets.filter(b => b.year === activeYear);
+    return getBudgetDetails(yearBudgets).filter(b => b.isFavorite);
+  }, [getBudgetDetails, budgets, activeYear]);
 
   const lastUpdatedDate = useMemo(() => {
-    if (allTransactions.length === 0) return null;
+    if (transactions.length === 0) return null;
     // Assuming transactions are sorted descending by date
-    return new Date(allTransactions[0].date);
-  }, [allTransactions]);
+    return new Date(transactions[0].date);
+  }, [transactions]);
   
   const isLoading = userDataLoading || authLoading || isAnalyticsLoading || !analytics;
 
-  if (isLoading && allTransactions.length === 0) {
+  if (isLoading && transactions.length === 0) {
     return <DashboardSkeleton />;
   }
   
-  if (isLoading && allTransactions.length > 0) {
+  if (isLoading && transactions.length > 0) {
      // Show skeleton but keep previous data if available
   } else if (isLoading) {
      return <DashboardSkeleton />;
@@ -96,7 +93,7 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      {(allTransactions.length === 0 || showInstructions) && <InstructionsGuide />}
+      {(transactions.length === 0 || showInstructions) && <InstructionsGuide />}
       
       {analytics ? (
         <>
@@ -131,14 +128,14 @@ export default function DashboardPage() {
               title="Total Income"
               value={analytics.totalIncome}
               icon="TrendingUp"
-              trendValue="All-time income"
+              trendValue={`All-time income for ${activeYear}`}
               variant="success"
             />
             <StatCard
               title="Total Expenses"
               value={analytics.totalExpenses}
               icon="TrendingDown"
-              trendValue="All-time expenses"
+              trendValue={`All-time expenses for ${activeYear}`}
               variant="danger"
             />
              <StatCard
@@ -169,7 +166,7 @@ export default function DashboardPage() {
               title="Savings Rate"
               value={analytics.savingsRate}
               icon="DollarSign"
-              trendValue="Based on all-time data"
+              trendValue={`Based on ${activeYear} data`}
               isPercentage
             />
           </div>
@@ -194,7 +191,7 @@ export default function DashboardPage() {
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
             <Card className="lg:col-span-3">
               <CardHeader>
-                <CardTitle>Income vs. Expense</CardTitle>
+                <CardTitle>Income vs. Expense ({activeYear})</CardTitle>
               </CardHeader>
               <CardContent>
                 <OverviewChart data={analytics.overviewData}/>
@@ -202,14 +199,14 @@ export default function DashboardPage() {
             </Card>
             <Card className="lg:col-span-2">
               <CardHeader>
-                <CardTitle>Recent Transactions</CardTitle>
+                <CardTitle>Recent Transactions ({activeYear})</CardTitle>
               </CardHeader>
               <CardContent>
-                {allTransactions.length > 0 ? (
-                    <RecentTransactions transactions={allTransactions.slice(0, 5)} />
+                {transactions.length > 0 ? (
+                    <RecentTransactions transactions={transactions.slice(0, 5)} />
                 ) : (
                     <div className="flex flex-col items-center justify-center h-full text-center">
-                        <p className="text-muted-foreground">No transactions yet.</p>
+                        <p className="text-muted-foreground">No transactions yet for {activeYear}.</p>
                         <p className="text-sm text-muted-foreground">Add your first transaction to get started.</p>
                     </div>
                 )}
@@ -231,7 +228,7 @@ export default function DashboardPage() {
         </Card>
         <Card>
           <CardHeader>
-              <CardTitle className="flex items-center gap-2"><Star className="text-yellow-400 fill-yellow-400" /> Favorite Budgets</CardTitle>
+              <CardTitle className="flex items-center gap-2"><Star className="text-yellow-400 fill-yellow-400" /> Favorite Budgets ({activeYear})</CardTitle>
               <CardDescription>Your hand-picked budgets for quick insights.</CardDescription>
           </CardHeader>
           <CardContent>
