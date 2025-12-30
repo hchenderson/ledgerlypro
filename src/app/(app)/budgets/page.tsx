@@ -203,7 +203,8 @@ function BudgetsPageContent() {
   const { activeYear } = useAuth();
   
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
-  const isReadOnly = activeYear < new Date().getFullYear();
+  const systemYear = new Date().getFullYear();
+  const isReadOnly = activeYear < systemYear;
 
   const selectedDate = useMemo(() => {
     return new Date(activeYear, currentMonth, 1);

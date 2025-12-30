@@ -71,7 +71,8 @@ export default function TransactionsPage() {
   const [minAmount, setMinAmount] = useState('');
   const [maxAmount, setMaxAmount] = useState('');
 
-  const isReadOnly = activeYear < new Date().getFullYear();
+  const systemYear = new Date().getFullYear();
+  const isReadOnly = activeYear < systemYear;
 
   const filteredTransactions = useMemo(() => {
     let transactions = [...allTransactions];

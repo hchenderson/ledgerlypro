@@ -307,7 +307,8 @@ function GoalsPageContent() {
   const { goals, addGoal, updateGoal, deleteGoal, addContributionToGoal, loading } = useUserData();
   const { toast } = useToast();
   const { activeYear } = useAuth();
-  const isReadOnly = activeYear < new Date().getFullYear();
+  const systemYear = new Date().getFullYear();
+  const isReadOnly = activeYear < systemYear;
 
   const handleSaveGoal = async (values: GoalFormValues, id?: string) => {
     try {

@@ -230,7 +230,8 @@ function calculateNextOccurrence(rt: RecurringTransaction): Date {
 function RecurringPageContent() {
   const { recurringTransactions, addRecurringTransaction, updateRecurringTransaction, deleteRecurringTransaction, loading } = useUserData();
   const { activeYear } = useAuth();
-  const isReadOnly = activeYear < new Date().getFullYear();
+  const systemYear = new Date().getFullYear();
+  const isReadOnly = activeYear < systemYear;
 
   const handleSave = (values: RecurringFormValues, id?: string) => {
     if (isReadOnly) return;

@@ -64,7 +64,8 @@ function MainAppShell({ children }: { children: React.ReactNode }) {
     const [isImportSheetOpen, setIsImportSheetOpen] = useState(false);
     const [isNewTxSheetOpen, setIsNewTxSheetOpen] = useState(false);
     
-    const isReadOnly = activeYear < new Date().getFullYear();
+    const systemYear = new Date().getFullYear();
+    const isReadOnly = activeYear < systemYear;
 
     const handleTransactionsImported = (transactions: Omit<Transaction, 'id'>[]) => {
         transactions.forEach(addTransaction);
