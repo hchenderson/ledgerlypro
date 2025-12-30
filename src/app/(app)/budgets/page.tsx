@@ -34,7 +34,7 @@ import { useToast } from '@/hooks/use-toast';
 import type { Budget, Category, SubCategory } from '@/types';
 import { FeatureGate } from '@/components/feature-gate';
 import { cn } from '@/lib/utils';
-import { addMonths, subMonths, format, setYear, getYear } from 'date-fns';
+import { addMonths, subMonths, format } from 'date-fns';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useAuth } from '@/hooks/use-auth';
 
@@ -49,6 +49,7 @@ type BudgetFormValues = z.infer<typeof budgetFormSchema>;
 function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (values: BudgetFormValues, id?: string) => void, children: React.ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);
   const { categories, budgets } = useUserData();
+  const { activeYear } = useAuth();
   const { toast } = useToast();
 
   const form = useForm<BudgetFormValues>({
@@ -83,13 +84,15 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
     const categoryName = categories.find(c => c.id === data.categoryId)?.name || 'the';
     toast({
       title: budget ? 'Budget Updated' : 'Budget Created',
-      description: `Your budget for the "${categoryName}" category has been successfully saved.`,
+      description: `Your budget for the "${categoryName}" category has been successfully saved for ${activeYear}.`,
     });
     setIsOpen(false);
   };
+  
+  const budgetsForActiveYear = useMemo(() => budgets.filter(b => b.year === activeYear), [budgets, activeYear]);
 
   const expenseCategories = useMemo(() => {
-      const budgetedCategoryIds = new Set(budgets.filter(b => b.id !== budget?.id).map(b => b.categoryId));
+      const budgetedCategoryIds = new Set(budgetsForActiveYear.filter(b => b.id !== budget?.id).map(b => b.categoryId));
       
       const flatten = (cats: (Category | SubCategory)[]): { id: string; name: string, disabled: boolean }[] => {
           return cats.reduce<{ id: string; name: string, disabled: boolean }[]>((acc, cat) => {
@@ -102,17 +105,6 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
           }, []);
       };
       
-      const findCategory = (id: string, cats: (Category|SubCategory)[]): Category | SubCategory | undefined => {
-          for (const cat of cats) {
-              if (cat.id === id) return cat;
-              if (cat.subCategories) {
-                  const found = findCategory(id, cat.subCategories);
-                  if (found) return found;
-              }
-          }
-          return undefined;
-      };
-
       const getExpenseCategories = (cats: Category[]) => {
           let expenseCats: (Category | SubCategory)[] = [];
           cats.forEach(c => {
@@ -124,14 +116,14 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
       }
       
       return flatten(getExpenseCategories(categories));
-  }, [categories, budgets, budget]);
+  }, [categories, budgetsForActiveYear, budget]);
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{budget ? 'Edit' : 'Create'} Budget</DialogTitle>
+          <DialogTitle>{budget ? 'Edit' : 'Create'} Budget for {activeYear}</DialogTitle>
           <DialogDescription>
             Set a spending limit for a specific category.
           </DialogDescription>
@@ -207,7 +199,7 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
 
 
 function BudgetsPageContent() {
-  const { addBudget, updateBudget, deleteBudget, toggleFavoriteBudget, loading, getBudgetDetails } = useUserData();
+  const { budgets, addBudget, updateBudget, deleteBudget, toggleFavoriteBudget, loading, getBudgetDetails } = useUserData();
   const { activeYear } = useAuth();
   
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
@@ -217,8 +209,10 @@ function BudgetsPageContent() {
   }, [activeYear, currentMonth]);
   
   const initialBudgetDetails = useMemo(() => {
-    return getBudgetDetails(selectedDate);
-  }, [getBudgetDetails, selectedDate]);
+    // Filter budgets for the active year before getting details
+    const yearBudgets = budgets.filter(b => b.year === activeYear);
+    return getBudgetDetails(yearBudgets, selectedDate);
+  }, [getBudgetDetails, selectedDate, budgets, activeYear]);
 
   const [budgetDetails, setBudgetDetails] = useState(initialBudgetDetails);
   const [draggedItem, setDraggedItem] = useState<any>(null);
@@ -234,6 +228,7 @@ function BudgetsPageContent() {
     } else {
         addBudget({
             ...values,
+            year: activeYear,
             isFavorite: false,
         });
     }
@@ -280,7 +275,7 @@ function BudgetsPageContent() {
             <Target/> Budgets
           </h2>
           <p className="text-muted-foreground">
-            Track your spending against your goals. You can drag and drop cards to reorder them.
+            Track your spending against your goals for {activeYear}. You can drag and drop cards to reorder them.
           </p>
         </div>
         <BudgetDialog onSave={handleSaveBudget}>
@@ -310,8 +305,8 @@ function BudgetsPageContent() {
         <Card className="flex flex-col items-center justify-center py-12">
              <CardHeader className="text-center">
                  <Target className="mx-auto h-12 w-12 text-muted-foreground" />
-                <CardTitle className="mt-4">No Budgets Created</CardTitle>
-                <CardDescription>Get started by creating your first budget.</CardDescription>
+                <CardTitle className="mt-4">No Budgets For {activeYear}</CardTitle>
+                <CardDescription>Get started by creating your first budget for this year.</CardDescription>
             </CardHeader>
             <CardContent>
                 <BudgetDialog onSave={handleSaveBudget}>

@@ -42,7 +42,7 @@ function DashboardSkeleton() {
 }
 
 export default function DashboardPage() {
-  const { allTransactions, loading: userDataLoading, getBudgetDetails, goals } = useUserData();
+  const { allTransactions, loading: userDataLoading, getBudgetDetails, goals, budgets } = useUserData();
   const { user, showInstructions, loading: authLoading } = useAuth();
   const [analytics, setAnalytics] = useState<GetDashboardAnalyticsOutput | null>(null);
   const [isAnalyticsLoading, setIsAnalyticsLoading] = useState(true);
@@ -69,8 +69,8 @@ export default function DashboardPage() {
 
 
   const favoritedBudgets = useMemo(() => {
-    return getBudgetDetails().filter(b => b.isFavorite);
-  }, [getBudgetDetails]);
+    return getBudgetDetails(budgets).filter(b => b.isFavorite);
+  }, [getBudgetDetails, budgets]);
 
   const lastUpdatedDate = useMemo(() => {
     if (allTransactions.length === 0) return null;

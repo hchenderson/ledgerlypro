@@ -54,7 +54,7 @@ interface UserDataContextType {
   addRecurringTransaction: (transaction: Omit<RecurringTransaction, 'id'>) => Promise<void>;
   updateRecurringTransaction: (id: string, values: Partial<Omit<RecurringTransaction, 'id'>>) => Promise<void>;
   deleteRecurringTransaction: (id: string) => Promise<void>;
-  getBudgetDetails: (forDate?: Date) => any[];
+  getBudgetDetails: (budgets: Budget[], forDate?: Date) => any[];
   addGoal: (goal: Omit<Goal, 'id'>) => Promise<void>;
   updateGoal: (id: string, values: Partial<Omit<Goal, 'id'>>) => Promise<void>;
   deleteGoal: (id: string) => Promise<void>;
@@ -168,7 +168,7 @@ const buildCategoryPathLabel = (id: string, categories: Category[]): string | un
 };
 
 export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user } = useAuth();
+  const { user, activeYear } = useAuth();
   const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
@@ -491,7 +491,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 }, [allTransactions, categories, goals, loading]);
   
   const getBudgetDetails = useCallback(
-    (forDate: Date = new Date()) => {
+    (budgets: Budget[], forDate: Date = new Date()) => {
       if (loading) return [];
       
       const normalizeCategoryName = (name: string): string => {
@@ -542,7 +542,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         };
       });
     },
-    [budgets, allTransactions, categories, loading]
+    [allTransactions, categories, loading]
   );
 
   // ---------- CRUD helpers ----------

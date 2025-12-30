@@ -105,18 +105,21 @@ export const defaultBudgets: Omit<Budget, 'id'>[] = [
         amount: 400,
         period: "monthly",
         isFavorite: true,
+        year: now.getFullYear(),
     },
     {
         categoryId: "sub_exp_6", // Restaurants
         amount: 200,
         period: "monthly",
         isFavorite: false,
+        year: now.getFullYear(),
     },
      {
         categoryId: "sub_exp_8", // Clothing
         amount: 150,
         period: "monthly",
         isFavorite: false,
+        year: now.getFullYear(),
     }
 ];
 
