@@ -61,10 +61,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           await setDoc(userDocRef, settingsData, { merge: true });
         }
         
-        setOnboardingCompleteState(settingsData.onboardingComplete);
-        setShowInstructionsState(settingsData.showInstructions);
-        setActiveYearState(settingsData.activeYear);
-        setFirstYearState(settingsData.firstYear);
+        setOnboardingCompleteState(prev => prev !== settingsData.onboardingComplete ? settingsData.onboardingComplete : prev);
+        setShowInstructionsState(prev => prev !== settingsData.showInstructions ? settingsData.showInstructions : prev);
+        setActiveYearState(prev => prev !== settingsData.activeYear ? settingsData.activeYear : prev);
+        setFirstYearState(prev => prev !== settingsData.firstYear ? settingsData.firstYear : prev);
 
       } else {
         // No user, reset to defaults
@@ -111,3 +111,5 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 };
 
 export const useAuth = () => useContext(AuthContext);
+
+    

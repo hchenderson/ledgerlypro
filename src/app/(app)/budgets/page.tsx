@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useState, useMemo, useEffect } from 'react';
@@ -120,6 +119,7 @@ function BudgetDialog({ budget, onSave, children, isReadOnly }: { budget?: Budge
   }, [isOpen, budget, form]);
 
   const onSubmit = (data: BudgetFormValues) => {
+    if (isReadOnly) return;
     onSave(data, budget?.id);
     const categoryName = categories.find(c => c.id === data.categoryId)?.name || 'the';
     toast({
@@ -251,27 +251,32 @@ function BudgetsPageContent() {
     return new Date(activeYear, currentMonth, 1);
   }, [activeYear, currentMonth]);
   
-  const initialBudgetDetails = useMemo(() => {
-    const yearBudgets = budgets.filter(b => b.year === activeYear);
-    const comparisonBudgets = comparisonYear ? budgets.filter(b => b.year === comparisonYear) : [];
-    
+  const activeYearBudgets = useMemo(() => budgets.filter(b => b.year === activeYear), [budgets, activeYear]);
+  const comparisonYearBudgets = useMemo(() => comparisonYear ? budgets.filter(b => b.year === comparisonYear) : [], [budgets, comparisonYear]);
+
+  const budgetDetails = useMemo(() => {
     return getBudgetDetails({
-      activeBudgets: yearBudgets,
-      comparisonBudgets: comparisonBudgets,
+      activeBudgets: activeYearBudgets,
+      comparisonBudgets: comparisonYearBudgets,
       transactions: allTransactions,
       categories: categories,
       forDate: selectedDate,
       comparisonYear: comparisonYear,
     });
-  }, [getBudgetDetails, selectedDate, budgets, activeYear, allTransactions, categories, comparisonYear]);
+  }, [getBudgetDetails, activeYearBudgets, comparisonYearBudgets, allTransactions, categories, selectedDate, comparisonYear]);
 
-  const [budgetDetails, setBudgetDetails] = useState(initialBudgetDetails);
-  const [draggedItem, setDraggedItem] = useState<any>(null);
+  const [order, setOrder] = useState<string[]>([]);
+  const [draggedItem, setDraggedItem] = useState<{item: any, index: number} | null>(null);
 
   useEffect(() => {
-    setBudgetDetails(initialBudgetDetails);
-  }, [initialBudgetDetails]);
+    setOrder(budgetDetails.map(b => b.id));
+  }, [budgetDetails]);
 
+  const orderedBudgets = useMemo(() => {
+    if (!order.length) return budgetDetails;
+    const budgetMap = new Map(budgetDetails.map(b => [b.id, b]));
+    return order.map(id => budgetMap.get(id)).filter(b => b !== undefined) as typeof budgetDetails;
+  }, [order, budgetDetails]);
 
   const handleSaveBudget = (values: BudgetFormValues, id?: string) => {
     if (isReadOnly) return;
@@ -286,7 +291,6 @@ function BudgetsPageContent() {
     }
   };
 
-
   const handlePrevMonth = () => {
     setCurrentMonth(prev => prev === 0 ? 11 : prev - 1);
   }
@@ -299,19 +303,19 @@ function BudgetsPageContent() {
     if (isReadOnly) return;
     setDraggedItem({ item, index });
     e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/html', e.currentTarget.outerHTML);
+    e.dataTransfer.setData('text/plain', item.id);
   };
   
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>, index: number) => {
-    if (isReadOnly) return;
     e.preventDefault();
-    const draggedOverItem = budgetDetails[index];
-    if (draggedItem && draggedOverItem.id === draggedItem.item.id) return;
+    if (isReadOnly || !draggedItem) return;
     
-    let items = budgetDetails.filter(item => item.id !== draggedItem.item.id);
-    items.splice(index, 0, draggedItem.item);
-    
-    setBudgetDetails(items);
+    const draggedOverId = orderedBudgets[index].id;
+    if (draggedItem.item.id === draggedOverId) return;
+
+    const items = order.filter(id => id !== draggedItem.item.id);
+    items.splice(index, 0, draggedItem.item.id);
+    setOrder(items);
   };
 
   const handleDragEnd = () => {
@@ -355,7 +359,7 @@ function BudgetsPageContent() {
             </CardHeader>
        </Card>
 
-      {budgetDetails.length === 0 ? (
+      {orderedBudgets.length === 0 ? (
         <Card className="flex flex-col items-center justify-center py-12">
              <CardHeader className="text-center">
                  <Target className="mx-auto h-12 w-12 text-muted-foreground" />
@@ -373,7 +377,7 @@ function BudgetsPageContent() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {budgetDetails.map((budget, index) => (
+          {orderedBudgets.map((budget, index) => (
             <div
                 key={budget.id}
                 draggable={!isReadOnly}
@@ -443,3 +447,5 @@ export default function BudgetsPage() {
         </FeatureGate>
     )
 }
+
+    
