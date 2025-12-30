@@ -242,7 +242,7 @@ function BudgetsPageContent() {
   }
   
   const handleNextMonth = () => {
-    setCurrentMonth(prev => prev === 11 ? 0 : prev - 1);
+    setCurrentMonth(prev => prev === 11 ? 0 : prev + 1);
   }
 
   const handleDragStart = (e: React.DragEvent<HTMLDivElement>, item: any, index: number) => {

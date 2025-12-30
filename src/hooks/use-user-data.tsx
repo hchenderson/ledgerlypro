@@ -533,7 +533,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 }, [allTransactions, categories, goals, loading]);
   
   const getBudgetDetails = useCallback(
-    (budgets: Budget[], forDate: Date = new Date()) => {
+    (budgetsToProcess: Budget[], forDate: Date = new Date()) => {
       if (loading) return [];
       
       const normalizeCategoryName = (name: string): string => {
@@ -541,7 +541,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return name.split(">").map(n => n.trim()).pop()!;
       };
 
-      return budgets.map((budget) => {
+      return budgetsToProcess.map((budget) => {
         const result = findCategoryWithPathById(budget.categoryId, categories);
         let categoryName = 'Unknown Category';
         let allCategoryNamesForBudget: string[] = [];
