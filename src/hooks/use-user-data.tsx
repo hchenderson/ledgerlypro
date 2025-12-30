@@ -194,6 +194,9 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // ---------- Recurring transactions ----------
 
   const processRecurringTransactions = useCallback(async () => {
+    const systemYear = new Date().getFullYear();
+    if (activeYear !== systemYear) return;
+
     if (!user || recurringTransactions.length === 0) return;
 
     const today = startOfDay(new Date());
@@ -277,16 +280,15 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     } catch (e) {
       console.error('Error processing recurring transactions batch: ', e);
     }
-  }, [user, recurringTransactions, getCollectionRef]);
+  }, [user, recurringTransactions, getCollectionRef, activeYear]);
 
   useEffect(() => {
-    const currentYear = new Date().getFullYear();
-    if (user && !loading && recurringTransactions.length > 0 && activeYear === currentYear) {
+    if (user && !loading && recurringTransactions.length > 0) {
       processRecurringTransactions();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recurringTransactions, loading, activeYear]);
-
+  }, [recurringTransactions, loading, processRecurringTransactions, user]);
+  
   // ---------- Sync user collections ----------
 
   useEffect(() => {
