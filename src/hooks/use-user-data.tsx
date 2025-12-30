@@ -514,21 +514,24 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   
   const getBudgetDetails = useCallback(
     ({
-        activeBudgets,
-        comparisonBudgets = [],
-        transactions,
-        categories,
-        forDate,
-        comparisonYear,
+      activeBudgets,
+      comparisonBudgets = [],
+      transactions,
+      categories,
+      forDate,
+      comparisonYear,
     }: {
-        activeBudgets: Budget[],
-        comparisonBudgets?: Budget[],
-        transactions: Transaction[],
-        categories: Category[],
-        forDate: Date,
-        comparisonYear?: number,
+      activeBudgets: Budget[];
+      comparisonBudgets?: Budget[];
+      transactions: Transaction[];
+      categories: Category[];
+      forDate: Date;
+      comparisonYear?: number;
     }) => {
-      
+      if (!activeBudgets) {
+        return [];
+      }
+
       const normalizeCategoryName = (name: string): string => {
         if (!name) return '';
         return name.split(">").map(n => n.trim()).pop()!;

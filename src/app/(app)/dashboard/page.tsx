@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { DollarSign, TrendingUp, TrendingDown, Wallet, Target, CalendarClock, Star, Flag, Activity, PiggyBank } from "lucide-react";
@@ -66,7 +67,12 @@ export default function DashboardPage() {
 
   const favoritedBudgets = useMemo(() => {
     const yearBudgets = budgets.filter(b => b.year === activeYear);
-    return getBudgetDetails(yearBudgets, new Date(), transactions, categories).filter(b => b.isFavorite);
+    return getBudgetDetails({
+      activeBudgets: yearBudgets,
+      transactions: transactions,
+      categories: categories,
+      forDate: new Date(),
+    }).filter(b => b.isFavorite);
   }, [getBudgetDetails, budgets, activeYear, transactions, categories]);
 
   const lastUpdatedDate = useMemo(() => {
