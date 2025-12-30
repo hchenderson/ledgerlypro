@@ -280,11 +280,12 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [user, recurringTransactions, getCollectionRef]);
 
   useEffect(() => {
-    if (user && !loading && recurringTransactions.length > 0) {
+    const currentYear = new Date().getFullYear();
+    if (user && !loading && recurringTransactions.length > 0 && activeYear === currentYear) {
       processRecurringTransactions();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recurringTransactions, loading]);
+  }, [recurringTransactions, loading, activeYear]);
 
   // ---------- Sync user collections ----------
 
