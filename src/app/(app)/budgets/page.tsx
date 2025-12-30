@@ -199,7 +199,7 @@ function BudgetDialog({ budget, onSave, children, isReadOnly }: { budget?: Budge
 
 
 function BudgetsPageContent() {
-  const { budgets, addBudget, updateBudget, deleteBudget, toggleFavoriteBudget, loading, getBudgetDetails } = useUserData();
+  const { budgets, addBudget, updateBudget, deleteBudget, toggleFavoriteBudget, loading, getBudgetDetails, transactions, categories } = useUserData();
   const { activeYear } = useAuth();
   
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
@@ -212,8 +212,8 @@ function BudgetsPageContent() {
   
   const initialBudgetDetails = useMemo(() => {
     const yearBudgets = budgets.filter(b => b.year === activeYear);
-    return getBudgetDetails(yearBudgets, selectedDate);
-  }, [getBudgetDetails, selectedDate, budgets, activeYear]);
+    return getBudgetDetails(yearBudgets, selectedDate, transactions, categories);
+  }, [getBudgetDetails, selectedDate, budgets, activeYear, transactions, categories]);
 
   const [budgetDetails, setBudgetDetails] = useState(initialBudgetDetails);
   const [draggedItem, setDraggedItem] = useState<any>(null);

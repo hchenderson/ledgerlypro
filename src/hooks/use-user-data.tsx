@@ -56,10 +56,7 @@ interface UserDataContextType {
   updateBudget: (id: string, values: Partial<Omit<Budget, 'id'>>) => Promise<void>;
   deleteBudget: (id: string) => Promise<void>;
   toggleFavoriteBudget: (id: string) => Promise<void>;
-  addRecurringTransaction: (transaction: Omit<RecurringTransaction, 'id'>) => Promise<void>;
-  updateRecurringTransaction: (id: string, values: Partial<Omit<RecurringTransaction, 'id'>>) => Promise<void>;
-  deleteRecurringTransaction: (id: string) => Promise<void>;
-  getBudgetDetails: (budgets: Budget[], forDate: Date) => any[];
+  getBudgetDetails: (budgetsToProcess: Budget[], forDate: Date, transactions: Transaction[], categories: Category[]) => any[];
   addGoal: (goal: Omit<Goal, 'id'>) => Promise<void>;
   updateGoal: (id: string, values: Partial<Omit<Goal, 'id'>>) => Promise<void>;
   deleteGoal: (id: string) => Promise<void>;
@@ -507,8 +504,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 }, [allTransactions, categories, goals, loading]);
   
   const getBudgetDetails = useCallback(
-    (budgetsToProcess: Budget[], forDate: Date) => {
-      if (loading) return [];
+    (budgetsToProcess: Budget[], forDate: Date, transactions: Transaction[], categories: Category[]) => {
       
       const normalizeCategoryName = (name: string): string => {
         if (!name) return '';
@@ -525,7 +521,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           allCategoryNamesForBudget = getCategorySubtreeIdsAndNames(result.category).names;
         }
 
-        const spent = allTransactions
+        const spent = transactions
           .filter((t) => {
             if (t.type !== 'expense') return false;
             
@@ -561,7 +557,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         };
       });
     },
-    [allTransactions, categories, loading]
+    []
   );
 
   const addTransaction = async (transaction: Omit<Transaction, 'id'>) => {
@@ -941,9 +937,6 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     updateBudget,
     deleteBudget,
     toggleFavoriteBudget,
-    addRecurringTransaction,
-    updateRecurringTransaction,
-    deleteRecurringTransaction,
     getBudgetDetails,
     addGoal,
     updateGoal,

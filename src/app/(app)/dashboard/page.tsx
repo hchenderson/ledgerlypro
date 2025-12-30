@@ -42,7 +42,7 @@ function DashboardSkeleton() {
 }
 
 export default function DashboardPage() {
-  const { transactions, loading: userDataLoading, getBudgetDetails, goals, budgets, startingBalance } = useUserData();
+  const { transactions, loading: userDataLoading, getBudgetDetails, goals, budgets, categories, startingBalance } = useUserData();
   const { user, showInstructions, loading: authLoading, activeYear } = useAuth();
   const [analytics, setAnalytics] = useState<GetDashboardAnalyticsOutput | null>(null);
   const [isAnalyticsLoading, setIsAnalyticsLoading] = useState(true);
@@ -66,8 +66,8 @@ export default function DashboardPage() {
 
   const favoritedBudgets = useMemo(() => {
     const yearBudgets = budgets.filter(b => b.year === activeYear);
-    return getBudgetDetails(yearBudgets).filter(b => b.isFavorite);
-  }, [getBudgetDetails, budgets, activeYear]);
+    return getBudgetDetails(yearBudgets, new Date(), transactions, categories).filter(b => b.isFavorite);
+  }, [getBudgetDetails, budgets, activeYear, transactions, categories]);
 
   const lastUpdatedDate = useMemo(() => {
     if (transactions.length === 0) return null;
