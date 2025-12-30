@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
@@ -32,6 +33,7 @@ import {
   isToday,
   startOfYear,
   endOfYear,
+  getYear,
 } from 'date-fns';
 
 interface UserDataContextType {
@@ -56,7 +58,14 @@ interface UserDataContextType {
   updateBudget: (id: string, values: Partial<Omit<Budget, 'id'>>) => Promise<void>;
   deleteBudget: (id: string) => Promise<void>;
   toggleFavoriteBudget: (id: string) => Promise<void>;
-  getBudgetDetails: (budgetsToProcess: Budget[], forDate: Date, transactions: Transaction[], categories: Category[]) => any[];
+  getBudgetDetails: (params: {
+    activeBudgets: Budget[];
+    comparisonBudgets?: Budget[];
+    transactions: Transaction[];
+    categories: Category[];
+    forDate: Date;
+    comparisonYear?: number;
+  }) => any[];
   addGoal: (goal: Omit<Goal, 'id'>) => Promise<void>;
   updateGoal: (id: string, values: Partial<Omit<Goal, 'id'>>) => Promise<void>;
   deleteGoal: (id: string) => Promise<void>;
@@ -504,25 +513,38 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 }, [allTransactions, categories, goals, loading]);
   
   const getBudgetDetails = useCallback(
-    (budgetsToProcess: Budget[], forDate: Date, transactions: Transaction[], categories: Category[]) => {
+    ({
+        activeBudgets,
+        comparisonBudgets = [],
+        transactions,
+        categories,
+        forDate,
+        comparisonYear,
+    }: {
+        activeBudgets: Budget[],
+        comparisonBudgets?: Budget[],
+        transactions: Transaction[],
+        categories: Category[],
+        forDate: Date,
+        comparisonYear?: number,
+    }) => {
       
       const normalizeCategoryName = (name: string): string => {
         if (!name) return '';
         return name.split(">").map(n => n.trim()).pop()!;
       };
-
-      return budgetsToProcess.map((budget) => {
-        const result = findCategoryWithPathById(budget.categoryId, categories);
-        let categoryName = 'Unknown Category';
-        let allCategoryNamesForBudget: string[] = [];
-
-        if (result) {
-          categoryName = result.path.map((c) => c.name).join(' > ');
-          allCategoryNamesForBudget = getCategorySubtreeIdsAndNames(result.category).names;
-        }
-
-        const spent = transactions
+      
+      const calculateSpending = (
+        budget: Budget,
+        allCategoryNamesForBudget: string[],
+        forDate: Date,
+        yearToFilter: number
+      ) => {
+        return transactions
           .filter((t) => {
+            const transactionYear = getYear(new Date(t.date));
+            if (transactionYear !== yearToFilter) return false;
+            
             if (t.type !== 'expense') return false;
             
             const transactionCategoryName = normalizeCategoryName(t.category);
@@ -533,20 +555,48 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             const transactionDate = new Date(t.date);
 
             if (budget.period === 'monthly') {
-                return transactionDate.getMonth() === forDate.getMonth() &&
-                       transactionDate.getFullYear() === forDate.getFullYear();
+                return transactionDate.getMonth() === forDate.getMonth();
             }
             
             if (budget.period === 'yearly') {
-                return transactionDate.getFullYear() === forDate.getFullYear();
+                return true;
             }
 
             return false;
           })
           .reduce((sum, t) => sum + t.amount, 0);
+      };
+
+      return activeBudgets.map((budget) => {
+        const result = findCategoryWithPathById(budget.categoryId, categories);
+        let categoryName = 'Unknown Category';
+        let allCategoryNamesForBudget: string[] = [];
+
+        if (result) {
+          categoryName = result.path.map((c) => c.name).join(' > ');
+          allCategoryNamesForBudget = getCategorySubtreeIdsAndNames(result.category).names;
+        }
+
+        const spent = calculateSpending(budget, allCategoryNamesForBudget, forDate, getYear(forDate));
 
         const remaining = budget.amount - spent;
         const progress = budget.amount > 0 ? (spent / budget.amount) * 100 : 0;
+        
+        let deltas = null;
+        if (comparisonYear && comparisonBudgets.length > 0) {
+            const comparisonBudget = comparisonBudgets.find(b => b.categoryId === budget.categoryId && b.period === budget.period);
+            if (comparisonBudget) {
+                const comparisonDate = new Date(comparisonYear, forDate.getMonth(), 1);
+                const comparisonSpent = calculateSpending(comparisonBudget, allCategoryNamesForBudget, comparisonDate, comparisonYear);
+                const comparisonRemaining = comparisonBudget.amount - comparisonSpent;
+
+                deltas = {
+                    amount: budget.amount - comparisonBudget.amount,
+                    spent: spent - comparisonSpent,
+                    remaining: remaining - comparisonRemaining,
+                }
+            }
+        }
 
         return {
           ...budget,
@@ -554,6 +604,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           spent,
           remaining,
           progress,
+          deltas,
         };
       });
     },

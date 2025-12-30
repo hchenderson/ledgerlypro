@@ -7,7 +7,7 @@ import { useUserData } from '@/hooks/use-user-data';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { PlusCircle, Target, Trash2, Edit, Star, ChevronLeft, ChevronRight } from 'lucide-react';
+import { PlusCircle, Target, Trash2, Edit, Star, ChevronLeft, ChevronRight, ArrowUp, ArrowDown } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -47,6 +47,44 @@ const budgetFormSchema = z.object({
 });
 
 type BudgetFormValues = z.infer<typeof budgetFormSchema>;
+
+function ComparisonCard({ deltas, comparisonPeriod }: { deltas: any, comparisonPeriod: string }) {
+    if (!deltas) return null;
+
+    const formatDelta = (value: number, isCurrency = true) => {
+        const sign = value > 0 ? '+' : '−';
+        const formattedValue = isCurrency ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Math.abs(value)) : Math.abs(value);
+        return `${sign}${formattedValue}`;
+    };
+
+    return (
+        <Card className="bg-muted/50 mt-4">
+            <CardHeader className="p-4">
+                <CardDescription>Comparison vs. {comparisonPeriod}</CardDescription>
+            </CardHeader>
+            <CardContent className="p-4 pt-0 text-sm">
+                 <div className="flex justify-between">
+                    <span className="flex items-center gap-1">
+                        {deltas.spent > 0 ? <ArrowUp className="h-4 w-4 text-red-500" /> : <ArrowDown className="h-4 w-4 text-emerald-500" />}
+                        Spent
+                    </span>
+                    <span className={cn(deltas.spent > 0 ? "text-red-500" : "text-emerald-500", "font-medium")}>
+                        {formatDelta(deltas.spent)}
+                    </span>
+                </div>
+                <div className="flex justify-between mt-2">
+                    <span className="flex items-center gap-1">
+                         {deltas.remaining < 0 ? <ArrowUp className="h-4 w-4 text-red-500" /> : <ArrowDown className="h-4 w-4 text-emerald-500" />}
+                        Remaining
+                    </span>
+                     <span className={cn(deltas.remaining < 0 ? "text-red-500" : "text-emerald-500", "font-medium")}>
+                        {formatDelta(deltas.remaining)}
+                    </span>
+                </div>
+            </CardContent>
+        </Card>
+    )
+}
 
 function BudgetDialog({ budget, onSave, children, isReadOnly }: { budget?: Budget, onSave: (values: BudgetFormValues, id?: string) => void, children: React.ReactNode, isReadOnly: boolean }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -201,9 +239,9 @@ function BudgetDialog({ budget, onSave, children, isReadOnly }: { budget?: Budge
 
 
 function BudgetsPageContent() {
-  const { budgets, addBudget, updateBudget, deleteBudget, toggleFavoriteBudget, loading, getBudgetDetails, transactions, categories } = useUserData();
+  const { allTransactions, budgets, addBudget, updateBudget, deleteBudget, toggleFavoriteBudget, loading, getBudgetDetails, categories } = useUserData();
   const { activeYear } = useAuth();
-  const { isComparing } = useComparison();
+  const { isComparing, comparisonYear } = useComparison();
   
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
   const systemYear = new Date().getFullYear();
@@ -215,8 +253,17 @@ function BudgetsPageContent() {
   
   const initialBudgetDetails = useMemo(() => {
     const yearBudgets = budgets.filter(b => b.year === activeYear);
-    return getBudgetDetails(yearBudgets, selectedDate, transactions, categories);
-  }, [getBudgetDetails, selectedDate, budgets, activeYear, transactions, categories]);
+    const comparisonBudgets = comparisonYear ? budgets.filter(b => b.year === comparisonYear) : [];
+    
+    return getBudgetDetails({
+      activeBudgets: yearBudgets,
+      comparisonBudgets: comparisonBudgets,
+      transactions: allTransactions,
+      categories: categories,
+      forDate: selectedDate,
+      comparisonYear: comparisonYear,
+    });
+  }, [getBudgetDetails, selectedDate, budgets, activeYear, allTransactions, categories, comparisonYear]);
 
   const [budgetDetails, setBudgetDetails] = useState(initialBudgetDetails);
   const [draggedItem, setDraggedItem] = useState<any>(null);
@@ -373,6 +420,12 @@ function BudgetsPageContent() {
                         </span>
                     </div>
                     </div>
+                    {isComparing && budget.deltas && (
+                         <ComparisonCard
+                            deltas={budget.deltas}
+                            comparisonPeriod={budget.period === 'yearly' ? 'Year' : format(selectedDate, 'MMMM')}
+                        />
+                    )}
                 </CardContent>
                 </Card>
             </div>
