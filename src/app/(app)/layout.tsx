@@ -26,6 +26,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import { AdBanner } from "@/components/ad-banner";
 import { cn } from "@/lib/utils";
+import { YearSwitcher } from "@/components/year-switcher";
 
 
 function AppLayoutSkeleton() {
@@ -89,9 +90,7 @@ function MainAppShell({ children }: { children: React.ReactNode }) {
             <SidebarInset className="flex flex-col">
                  <header className="flex h-16 shrink-0 items-center border-b px-6 gap-4">
                     <SidebarTrigger className="md:hidden" />
-                    <div className="hidden md:block text-muted-foreground font-medium">
-                        Welcome back!
-                    </div>
+                    <YearSwitcher />
 
                     <div className="ml-auto flex items-center gap-2">
                         <ImportTransactionsDialog
