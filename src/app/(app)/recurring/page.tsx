@@ -202,10 +202,8 @@ function calculateNextOccurrence(rt: RecurringTransaction): Date {
 
   let nextDate = startDate;
   
-  // If a lastAddedDate exists, start the calculation from there
   if (rt.lastAddedDate) {
     nextDate = parseISO(rt.lastAddedDate);
-    // Move to the next period after the last one was added
     switch (rt.frequency) {
         case 'daily':   nextDate = addDays(nextDate, 1); break;
         case 'weekly':  nextDate = addWeeks(nextDate, 1); break;
@@ -214,7 +212,6 @@ function calculateNextOccurrence(rt: RecurringTransaction): Date {
     }
   }
 
-  // Fast-forward to the first occurrence that is on or after today.
   while (isBefore(nextDate, today)) {
     switch (rt.frequency) {
       case 'daily':   nextDate = addDays(nextDate, 1); break;

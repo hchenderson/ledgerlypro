@@ -211,7 +211,6 @@ function BudgetsPageContent() {
   }, [activeYear, currentMonth]);
   
   const initialBudgetDetails = useMemo(() => {
-    // Filter budgets for the active year before getting details
     const yearBudgets = budgets.filter(b => b.year === activeYear);
     return getBudgetDetails(yearBudgets, selectedDate);
   }, [getBudgetDetails, selectedDate, budgets, activeYear]);
@@ -268,7 +267,6 @@ function BudgetsPageContent() {
   const handleDragEnd = () => {
     if (isReadOnly) return;
     setDraggedItem(null);
-    // Here you would typically save the new order to a database
   };
   
   if (loading) return <div>Loading...</div>

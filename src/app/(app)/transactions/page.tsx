@@ -64,7 +64,6 @@ export default function TransactionsPage() {
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const { toast } = useToast();
 
-  // Filter states
   const [descriptionFilter, setDescriptionFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
@@ -77,19 +76,16 @@ export default function TransactionsPage() {
   const filteredTransactions = useMemo(() => {
     let transactions = [...allTransactions];
 
-    // Apply description filter
     if (descriptionFilter) {
       transactions = transactions.filter(t => 
         t.description.toLowerCase().includes(descriptionFilter.toLowerCase())
       );
     }
     
-    // Apply category filter
     if (categoryFilter !== 'all') {
       transactions = transactions.filter(t => t.category === categoryFilter);
     }
 
-    // Apply date range filter
     if (dateRange?.from) {
       transactions = transactions.filter(t => new Date(t.date) >= dateRange.from!);
     }
@@ -99,7 +95,6 @@ export default function TransactionsPage() {
       transactions = transactions.filter(t => new Date(t.date) <= toDate);
     }
 
-    // Apply amount filters
     const min = minAmount ? parseFloat(minAmount) : -Infinity;
     const max = maxAmount ? parseFloat(maxAmount) : Infinity;
     if (minAmount || maxAmount) {
@@ -110,7 +105,7 @@ export default function TransactionsPage() {
   }, [allTransactions, descriptionFilter, categoryFilter, dateRange, minAmount, maxAmount]);
   
    useEffect(() => {
-    setPage(1); // Reset page to 1 when filters change
+    setPage(1);
   }, [filteredTransactions]);
 
   useEffect(() => {

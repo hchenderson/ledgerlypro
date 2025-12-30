@@ -72,7 +72,6 @@ interface UserDataContextType {
 
 const UserDataContext = createContext<UserDataContextType | undefined>(undefined);
 
-// ---------- Category Helpers ----------
 const getCategorySubtreeIdsAndNames = (
   category: Category | SubCategory
 ): { ids: string[]; names: string[] } => {
@@ -91,19 +90,6 @@ const getCategorySubtreeIdsAndNames = (
   return { ids, names };
 };
 
-
-// Recursively collect *all* IDs for a category and its descendants
-const collectSubCategoryIds = (category: Category | SubCategory): string[] => {
-  let ids = [category.id];
-  if (category.subCategories) {
-    for (const sub of category.subCategories) {
-      ids = ids.concat(collectSubCategoryIds(sub));
-    }
-  }
-  return ids;
-};
-
-// Find a category/subcategory by ID in the tree
 const findCategoryByIdRecursive = (
   id: string,
   cats: (Category | SubCategory)[]
@@ -118,8 +104,6 @@ const findCategoryByIdRecursive = (
   return undefined;
 };
 
-// Find category by a "path" string like "Parent > Child > Sub"
-// used for migrating legacy transactions
 const findCategoryByPath = (
   path: string,
   cats: Category[]
@@ -146,7 +130,6 @@ const findCategoryByPath = (
   return search(cats, 0);
 };
 
-// Find category *and* path of names by ID
 const findCategoryWithPathById = (
   id: string,
   cats: Category[],
@@ -165,7 +148,6 @@ const findCategoryWithPathById = (
   return undefined;
 };
 
-// Build a display label like "Parent > Child > Sub"
 const buildCategoryPathLabel = (id: string, categories: Category[]): string | undefined => {
   const result = findCategoryWithPathById(id, categories);
   if (!result) return undefined;
@@ -190,8 +172,6 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     },
     [user]
   );
-
-  // ---------- Recurring transactions ----------
 
   const processRecurringTransactions = useCallback(async () => {
     const systemYear = new Date().getFullYear();
@@ -286,11 +266,8 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (user && !loading && recurringTransactions.length > 0) {
       processRecurringTransactions();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recurringTransactions, loading, processRecurringTransactions, user]);
   
-  // ---------- Sync user collections ----------
-
   useEffect(() => {
     if (!user) {
       setLoading(false);
@@ -344,7 +321,6 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       );
     });
 
-    // Handle all transactions separately
     const allTransactionsCollRef = getCollectionRef('transactions');
     if (allTransactionsCollRef) {
       const unsubAllTransactions = onSnapshot(
@@ -357,7 +333,6 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       unsubscribers.push(unsubAllTransactions);
     }
 
-    // Handle year-scoped transactions
     const transactionsCollRef = getCollectionRef('transactions');
     if (transactionsCollRef) {
         const yearStartDate = startOfYear(new Date(activeYear, 0, 1)).toISOString();
@@ -391,8 +366,6 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, [user, getCollectionRef, activeYear]);
 
-  // ---------- Category ID migration for legacy transactions ----------
-
   useEffect(() => {
     if (!user || loading || categories.length === 0 || allTransactions.length === 0) return;
 
@@ -408,7 +381,6 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const batch = writeBatch(db);
       let updatedCount = 0;
 
-      // Limit per run to avoid huge batches
       for (const t of transactionsNeedingCategoryId.slice(0, 100)) {
         const matched = findCategoryByPath(t.category, categories);
         if (matched) {
@@ -592,8 +564,6 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     [allTransactions, categories, loading]
   );
 
-  // ---------- CRUD helpers ----------
-
   const addTransaction = async (transaction: Omit<Transaction, 'id'>) => {
     const collRef = getCollectionRef('transactions');
     if (!collRef) return;
@@ -628,7 +598,6 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return newCategory;
   };
 
-  // Auto-update category *path string* for all transactions that reference this categoryId
   const updateCategory = async (id: string, _oldName: string, newName: string) => {
     const categoriesCollRef = getCollectionRef('categories');
     if (!categoriesCollRef) return;
@@ -639,10 +608,8 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     const batch = writeBatch(db);
 
-    // Update category document
     batch.update(categoryDocRef, { name: newName });
 
-    // Recompute path for all affected transactions
     const transactionsCollRef = getCollectionRef('transactions');
     if (transactionsCollRef) {
       const q = query(transactionsCollRef, where('categoryId', '==', id));
@@ -737,7 +704,6 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       batch.update(categoryDocRef, { subCategories: updatedSubCategories });
     }
 
-    // Update all transactions that reference this subCategoryId
     const transactionsCollRef = getCollectionRef('transactions');
     if (transactionsCollRef) {
       const q = query(transactionsCollRef, where('categoryId', '==', subCategoryId));
@@ -923,7 +889,6 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     const batch = writeBatch(db);
 
-    // First pass: main categories
     const mainCategoriesToCreate = importedData.filter(
       (item) => !item.parent_name && !findCategoryByNameLoose(item.name, existingCats)
     );
@@ -942,7 +907,6 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     await batch.commit();
 
-    // Second pass: subcategories
     const subCategoriesToCreate = importedData.filter((item) => item.parent_name);
     for (const item of subCategoriesToCreate) {
       if (!findCategoryByNameLoose(item.name, existingCats)) {
