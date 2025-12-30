@@ -59,7 +59,7 @@ interface UserDataContextType {
   addRecurringTransaction: (transaction: Omit<RecurringTransaction, 'id'>) => Promise<void>;
   updateRecurringTransaction: (id: string, values: Partial<Omit<RecurringTransaction, 'id'>>) => Promise<void>;
   deleteRecurringTransaction: (id: string) => Promise<void>;
-  getBudgetDetails: (budgets: Budget[], forDate?: Date) => any[];
+  getBudgetDetails: (budgets: Budget[], forDate: Date) => any[];
   addGoal: (goal: Omit<Goal, 'id'>) => Promise<void>;
   updateGoal: (id: string, values: Partial<Omit<Goal, 'id'>>) => Promise<void>;
   deleteGoal: (id: string) => Promise<void>;
@@ -533,7 +533,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 }, [allTransactions, categories, goals, loading]);
   
   const getBudgetDetails = useCallback(
-    (budgetsToProcess: Budget[], forDate: Date = new Date()) => {
+    (budgetsToProcess: Budget[], forDate: Date) => {
       if (loading) return [];
       
       const normalizeCategoryName = (name: string): string => {
@@ -561,14 +561,17 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             }
 
             const transactionDate = new Date(t.date);
-            const isMonthly =
-              budget.period === 'monthly' &&
-              transactionDate.getMonth() === forDate.getMonth() &&
-              transactionDate.getFullYear() === forDate.getFullYear();
-            const isYearly =
-              budget.period === 'yearly' && transactionDate.getFullYear() === forDate.getFullYear();
 
-            return isMonthly || isYearly;
+            if (budget.period === 'monthly') {
+                return transactionDate.getMonth() === forDate.getMonth() &&
+                       transactionDate.getFullYear() === forDate.getFullYear();
+            }
+            
+            if (budget.period === 'yearly') {
+                return transactionDate.getFullYear() === forDate.getFullYear();
+            }
+
+            return false;
           })
           .reduce((sum, t) => sum + t.amount, 0);
 
