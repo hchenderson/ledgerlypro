@@ -13,16 +13,26 @@ import {
 import { Button } from "./ui/button";
 import { Calendar } from "lucide-react";
 import { useComparison } from "@/hooks/use-comparison";
+import { useUserData } from "@/hooks/use-user-data";
+import { useMemo } from "react";
 
 export function YearSwitcher() {
   const { activeYear, setActiveYear, firstYear } = useAuth();
   const { setComparisonYear } = useComparison();
+  const { allTransactions } = useUserData();
+
+  const transactionYears = useMemo(() => {
+    if (!allTransactions.length) return [];
+    return Array.from(new Set(allTransactions.map(t => new Date(t.date).getFullYear())));
+  }, [allTransactions]);
 
   const currentSystemYear = new Date().getFullYear();
-  const years = Array.from(
-    { length: currentSystemYear - firstYear + 1 },
-    (_, i) => currentSystemYear - i
-  );
+  
+  const years = useMemo(() => {
+    const allYears = new Set([currentSystemYear, firstYear, ...transactionYears]);
+    return Array.from(allYears).sort((a, b) => b - a);
+  }, [currentSystemYear, firstYear, transactionYears]);
+
 
   const handleYearChange = (year: number) => {
     setActiveYear(year);
