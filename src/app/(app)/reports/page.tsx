@@ -28,6 +28,7 @@ import {
   Trash2,
   CalendarCheck,
   ArrowRight,
+  PlusCircle,
 } from 'lucide-react';
 import type { Category, SubCategory, QuarterlyReport, Budget } from '@/types';
 import { DateRange } from 'react-day-picker';
