@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
@@ -99,52 +98,60 @@ const PRESET_RANGES = [
 
 function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
   const { allTransactions, categories } = useUserData();
+  const { activeYear } = useAuth();
   
   const defaultDateRange = useMemo(() => {
-    const now = new Date();
+    const baseDate = new Date(activeYear, new Date().getMonth(), 1);
     if (period === 'monthly') {
       return {
-        from: startOfMonth(now),
-        to: endOfMonth(now),
+        from: startOfMonth(baseDate),
+        to: endOfMonth(baseDate),
       };
     } else {
       return {
-        from: startOfYear(now),
-        to: endOfYear(now),
+        from: startOfYear(baseDate),
+        to: endOfYear(baseDate),
       };
     }
-  }, [period]);
+  }, [period, activeYear]);
 
   const [dateRange, setDateRange] = useState<DateRange | undefined>(defaultDateRange);
   const [selectedIncomeCategories, setSelectedIncomeCategories] = useState<string[]>([]);
   const [selectedExpenseCategories, setSelectedExpenseCategories] = useState<string[]>([]);
+  
+  useEffect(() => {
+    setDateRange(defaultDateRange);
+  }, [activeYear, defaultDateRange]);
 
   const handlePresetChange = (value: string) => {
     const now = new Date();
-    const currentYear = getYear(now);
+    // Use activeYear for calculations, but retain current month/day for presets like "This Month"
+    const baseDate = new Date(activeYear, now.getMonth(), now.getDate());
+    const currentYear = activeYear;
+
     let fromDate: Date;
     let toDate: Date;
     switch (value) {
       case 'this-month':
-        fromDate = startOfMonth(now);
-        toDate = endOfMonth(now);
+        fromDate = startOfMonth(baseDate);
+        toDate = endOfMonth(baseDate);
         break;
       case 'last-month':
-        const lastMonth = subMonths(now, 1);
+        const lastMonth = subMonths(baseDate, 1);
         fromDate = startOfMonth(lastMonth);
         toDate = endOfMonth(lastMonth);
         break;
       case 'this-year':
-         fromDate = startOfYear(now);
-         toDate = endOfYear(now);
+         fromDate = startOfYear(baseDate);
+         toDate = endOfYear(baseDate);
         break;
       case 'last-30':
-         fromDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29);
-         toDate = now;
+         fromDate = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate() - 29);
+         toDate = baseDate;
         break;
       case 'last-90':
-        fromDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 89);
-        toDate = now;
+        fromDate = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate() - 89);
+        toDate = baseDate;
         break;
       case 'q1':
         fromDate = new Date(currentYear, 0, 1);
@@ -584,6 +591,107 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
   );
 }
 
+function GenerateReportDialog({ onGenerate }: { onGenerate: (referenceDate: Date, notes: string | undefined, budgetIds: string[]) => void }) {
+    const { toast } = useToast();
+    const { budgets } = useUserData();
+    const [isOpen, setIsOpen] = useState(false);
+    const [referenceDate, setReferenceDate] = useState<Date | undefined>(subQuarters(new Date(), 1));
+    const [notes, setNotes] = useState<string | undefined>();
+    const [selectedBudgetIds, setSelectedBudgetIds] = useState<string[]>([]);
+    const [isLoading, setIsLoading] = useState(false);
+    
+    const budgetOptions = useMemo(() => {
+        return budgets.map(b => ({
+            value: b.id,
+            label: `${b.categoryName} (${b.year})`,
+        })).sort((a, b) => a.label.localeCompare(b.label));
+    }, [budgets]);
+    
+    const handleGenerate = async () => {
+        if (!referenceDate) {
+            toast({
+                variant: "destructive",
+                title: "Date Required",
+                description: "Please select a reference date for the report."
+            });
+            return;
+        }
+
+        setIsLoading(true);
+        try {
+            await onGenerate(referenceDate, notes, selectedBudgetIds);
+            setIsOpen(false);
+            setNotes(undefined);
+            setSelectedBudgetIds([]);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+    
+    return (
+        <Dialog open={isOpen} onOpenChange={setIsOpen}>
+            <DialogTrigger asChild>
+                <Button>
+                    <PlusCircle className="mr-2 h-4 w-4" />
+                    New Quarterly Report
+                </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-lg">
+                <DialogHeader>
+                    <DialogTitle>Generate Quarterly Report</DialogTitle>
+                    <DialogDescription>
+                        Select a date within the quarter you want to report on. You can also include specific budgets.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                        <Label>Reference Date</Label>
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button variant="outline" className="w-full justify-start text-left font-normal">
+                                    <CalendarIcon className="mr-2 h-4 w-4" />
+                                    {referenceDate ? format(referenceDate, 'PPP') : 'Select a date'}
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0">
+                                <Calendar mode="single" selected={referenceDate} onSelect={setReferenceDate} initialFocus />
+                            </PopoverContent>
+                        </Popover>
+                        {referenceDate && (
+                            <p className="text-sm text-muted-foreground">This will generate a report for <strong>Q{getQuarter(referenceDate)} {getYear(referenceDate)}</strong>.</p>
+                        )}
+                    </div>
+                     <div className="space-y-2">
+                        <Label>Budgets to Include (Optional)</Label>
+                        <SearchableMultiSelect
+                            options={budgetOptions}
+                            selected={selectedBudgetIds}
+                            onChange={setSelectedBudgetIds}
+                            placeholder="Select budgets..."
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <Label>Notes (Optional)</Label>
+                        <Textarea
+                            placeholder="Add any notes or commentary for this report..."
+                            value={notes}
+                            onChange={(e) => setNotes(e.target.value)}
+                            rows={3}
+                        />
+                    </div>
+                </div>
+                <DialogFooter>
+                    <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                    <Button onClick={handleGenerate} disabled={isLoading}>
+                        {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Generating...</> : "Generate Report"}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+
 function AdvancedReportView() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -1011,3 +1119,5 @@ export default function ReportsPage() {
         </Tabs>
     )
 }
+
+    
