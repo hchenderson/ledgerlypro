@@ -28,8 +28,7 @@ import { Button } from "@/components/ui/button";
 import { AdBanner } from "@/components/ad-banner";
 import { cn } from "@/lib/utils";
 import { YearSwitcher } from "@/components/year-switcher";
-import { ComparisonSwitcher } from "@/components/comparison-switcher";
-import { ComparisonProvider, useComparison } from "@/hooks/use-comparison";
+import { ComparisonProvider } from "@/hooks/use-comparison";
 
 
 function AppLayoutSkeleton() {
@@ -64,12 +63,11 @@ function AppLayoutSkeleton() {
 function MainAppShell({ children }: { children: React.ReactNode }) {
     const { addTransaction, categories } = useUserData();
     const { user, activeYear } = useAuth();
-    const { isComparing } = useComparison();
     const [isImportSheetOpen, setIsImportSheetOpen] = useState(false);
     const [isNewTxSheetOpen, setIsNewTxSheetOpen] = useState(false);
     
     const systemYear = new Date().getFullYear();
-    const isReadOnly = activeYear < systemYear || isComparing;
+    const isReadOnly = activeYear < systemYear;
 
     const handleTransactionsImported = (transactions: Omit<Transaction, 'id'>[]) => {
         transactions.forEach(addTransaction);
@@ -98,7 +96,6 @@ function MainAppShell({ children }: { children: React.ReactNode }) {
                  <header className="flex h-16 shrink-0 items-center border-b px-6 gap-4">
                     <SidebarTrigger />
                     <YearSwitcher />
-                    <ComparisonSwitcher />
 
                     <div className="ml-auto flex items-center gap-2">
                         <ImportTransactionsDialog

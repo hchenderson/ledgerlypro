@@ -255,6 +255,7 @@ function BudgetsPageContent() {
   const comparisonYearBudgets = useMemo(() => comparisonYear ? budgets.filter(b => b.year === comparisonYear) : [], [budgets, comparisonYear]);
 
   const budgetDetails = useMemo(() => {
+    if (!activeYearBudgets) return [];
     return getBudgetDetails({
       activeBudgets: activeYearBudgets,
       comparisonBudgets: comparisonYearBudgets,
@@ -269,11 +270,13 @@ function BudgetsPageContent() {
   const [draggedItem, setDraggedItem] = useState<{item: any, index: number} | null>(null);
 
   useEffect(() => {
-    setOrder(budgetDetails.map(b => b.id));
+    if (budgetDetails) {
+        setOrder(budgetDetails.map(b => b.id));
+    }
   }, [budgetDetails]);
 
   const orderedBudgets = useMemo(() => {
-    if (!order.length) return budgetDetails;
+    if (!order.length || !budgetDetails) return budgetDetails;
     const budgetMap = new Map(budgetDetails.map(b => [b.id, b]));
     return order.map(id => budgetMap.get(id)).filter(b => b !== undefined) as typeof budgetDetails;
   }, [order, budgetDetails]);
@@ -310,6 +313,7 @@ function BudgetsPageContent() {
     e.preventDefault();
     if (isReadOnly || !draggedItem) return;
     
+    if (!orderedBudgets) return;
     const draggedOverId = orderedBudgets[index].id;
     if (draggedItem.item.id === draggedOverId) return;
 
@@ -359,7 +363,7 @@ function BudgetsPageContent() {
             </CardHeader>
        </Card>
 
-      {orderedBudgets.length === 0 ? (
+      {!orderedBudgets || orderedBudgets.length === 0 ? (
         <Card className="flex flex-col items-center justify-center py-12">
              <CardHeader className="text-center">
                  <Target className="mx-auto h-12 w-12 text-muted-foreground" />
@@ -447,5 +451,3 @@ export default function BudgetsPage() {
         </FeatureGate>
     )
 }
-
-    
