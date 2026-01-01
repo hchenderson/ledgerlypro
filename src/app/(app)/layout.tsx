@@ -96,7 +96,7 @@ function MainAppShell({ children }: { children: React.ReactNode }) {
 
             <SidebarInset className="flex flex-col">
                  <header className="flex h-16 shrink-0 items-center border-b px-6 gap-4">
-                    <SidebarTrigger className="md:hidden" />
+                    <SidebarTrigger />
                     <YearSwitcher />
                     <ComparisonSwitcher />
 
