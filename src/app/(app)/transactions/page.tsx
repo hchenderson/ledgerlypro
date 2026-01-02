@@ -327,7 +327,7 @@ export default function TransactionsPage() {
                 </TableRow>
               ) : paginatedTransactions.length > 0 ? (
                 paginatedTransactions.map((transaction) => (
-                  <TableRow key={transaction.id} className={cn(isReadOnly ? "cursor-default" : "cursor-pointer")} onClick={() => handleEdit(transaction)}>
+                  <TableRow key={transaction.id}>
                     <TableCell className="font-medium">
                       {transaction.description}
                     </TableCell>
