@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
@@ -7,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
-import { MoreHorizontal, Upload, Calendar as CalendarIcon, X, Loader2 } from "lucide-react";
+import { MoreHorizontal, Upload, Calendar as CalendarIcon, X, Loader2, Edit, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { NewTransactionSheet } from "@/components/new-transaction-sheet";
@@ -344,10 +343,9 @@ export default function TransactionsPage() {
                       {formatCurrency(transaction.amount)}
                     </TableCell>
                     <TableCell>
-                      <AlertDialog>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button aria-haspopup="true" size="icon" variant="ghost" onClick={(e) => e.stopPropagation()} disabled={isReadOnly}>
+                            <Button aria-haspopup="true" size="icon" variant="ghost" disabled={isReadOnly}>
                               <MoreHorizontal className="h-4 w-4" />
                               <span className="sr-only">Toggle menu</span>
                             </Button>
@@ -355,36 +353,37 @@ export default function TransactionsPage() {
                           <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Actions</DropdownMenuLabel>
                             <DropdownMenuItem onSelect={() => handleEdit(transaction)}>
-                              Edit
+                              <Edit className="mr-2 h-4 w-4" /> Edit
                             </DropdownMenuItem>
-                            <AlertDialogTrigger asChild>
-                              <DropdownMenuItem 
-                                className="text-red-600 focus:text-red-600"
-                                onSelect={(e) => e.preventDefault()}
-                              >
-                                Delete
-                              </DropdownMenuItem>
-                            </AlertDialogTrigger>
+                             <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <DropdownMenuItem 
+                                    className="text-red-600 focus:text-red-600"
+                                    onSelect={(e) => e.preventDefault()}
+                                  >
+                                    <Trash2 className="mr-2 h-4 w-4" /> Delete
+                                  </DropdownMenuItem>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      This action cannot be undone. This will permanently delete this transaction.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction 
+                                      onClick={() => handleDelete(transaction.id)}
+                                      className="bg-red-600 hover:bg-red-700"
+                                    >
+                                      Delete
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This action cannot be undone. This will permanently delete this transaction.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction 
-                              onClick={() => handleDelete(transaction.id)}
-                              className="bg-red-600 hover:bg-red-700"
-                            >
-                              Delete
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
                     </TableCell>
                   </TableRow>
                 ))
