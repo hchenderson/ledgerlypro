@@ -528,7 +528,13 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       forDate: Date;
       comparisonYear?: number;
     }) => {
-      if (!activeBudgets) {
+      const year = getYear(forDate);
+      // Filter budgets by the report year, with a safety net for older data
+      const relevantBudgets = (activeBudgets || []).filter(
+        (budget) => (budget.year ?? new Date().getFullYear()) === year
+      );
+
+      if (relevantBudgets.length === 0) {
         return [];
       }
 
@@ -540,7 +546,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const calculateSpending = (
         budget: Budget,
         allCategoryNamesForBudget: string[],
-        forDate: Date,
+        currentForDate: Date,
         yearToFilter: number
       ) => {
         return transactions
@@ -558,7 +564,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             const transactionDate = new Date(t.date);
 
             if (budget.period === 'monthly') {
-                return transactionDate.getMonth() === forDate.getMonth();
+                return transactionDate.getMonth() === currentForDate.getMonth();
             }
             
             if (budget.period === 'yearly') {
@@ -570,7 +576,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           .reduce((sum, t) => sum + t.amount, 0);
       };
 
-      return activeBudgets.map((budget) => {
+      return relevantBudgets.map((budget) => {
         const result = findCategoryWithPathById(budget.categoryId, categories);
         let categoryName = 'Unknown Category';
         let allCategoryNamesForBudget: string[] = [];
@@ -580,13 +586,13 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           allCategoryNamesForBudget = getCategorySubtreeIdsAndNames(result.category).names;
         }
 
-        const spent = calculateSpending(budget, allCategoryNamesForBudget, forDate, getYear(forDate));
+        const spent = calculateSpending(budget, allCategoryNamesForBudget, forDate, year);
 
         const remaining = budget.amount - spent;
         const progress = budget.amount > 0 ? (spent / budget.amount) * 100 : 0;
         
         let deltas = null;
-        if (comparisonYear && comparisonBudgets.length > 0) {
+        if (comparisonYear && comparisonBudgets && comparisonBudgets.length > 0) {
             const comparisonBudget = comparisonBudgets.find(b => b.categoryId === budget.categoryId && b.period === budget.period);
             if (comparisonBudget) {
                 const comparisonDate = new Date(comparisonYear, forDate.getMonth(), 1);
