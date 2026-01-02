@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useMemo, useRef, useState } from "react";
+import React, { useMemo, useRef, useState, useEffect } from "react";
 import type { Transaction, Category, Goal } from "@/types";
 import { computeEOYReport } from "@/lib/eoy";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -119,6 +119,12 @@ export const EOYReport: React.FC<EOYReportProps> = ({
   const [aiSummary, setAiSummary] = useState<string | null>(null);
   const reportRef = useRef<HTMLDivElement | null>(null);
   const categoryDetailsRef = useRef<HTMLDivElement | null>(null);
+  
+  useEffect(() => {
+    if (initialYear) {
+      setYear(initialYear);
+    }
+  }, [initialYear]);
 
   const data = useMemo(
     () => computeEOYReport(allTransactions, categories, year),
