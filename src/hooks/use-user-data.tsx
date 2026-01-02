@@ -161,7 +161,7 @@ const buildCategoryPathLabel = (id: string, categories: Category[]): string | un
 };
 
 export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, activeYear } = useAuth();
+  const { user, activeYear, firstYear } = useAuth();
   const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -528,11 +528,33 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       forDate: Date;
       comparisonYear?: number;
     }) => {
-      const year = getYear(forDate);
-      // Filter budgets by the report year, with a safety net for older data
-      const relevantBudgets = (activeBudgets || []).filter(
-        (budget) => (budget.year ?? new Date().getFullYear()) === year
-      );
+      const reportYear = getYear(forDate);
+
+      const findFirstTransactionYearForBudget = (
+        budget: Budget,
+        allTx: Transaction[],
+        allCategoryNames: string[]
+      ) => {
+        const budgetTxs = allTx
+          .filter(
+            (t) =>
+              t.type === 'expense' && allCategoryNames.includes(t.category)
+          )
+          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+        return budgetTxs.length > 0
+          ? getYear(new Date(budgetTxs[0].date))
+          : null;
+      };
+
+      const relevantBudgets = (activeBudgets || []).filter((budget) => {
+        let effectiveYear = budget.year;
+        if (!effectiveYear) {
+            const budgetCategoryNames = getCategorySubtreeIdsAndNames(findCategoryByIdRecursive(budget.categoryId, categories) || {} as Category).names;
+            effectiveYear = findFirstTransactionYearForBudget(budget, transactions, budgetCategoryNames) ?? firstYear;
+        }
+        return effectiveYear === reportYear;
+      });
 
       if (relevantBudgets.length === 0) {
         return [];
@@ -586,7 +608,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           allCategoryNamesForBudget = getCategorySubtreeIdsAndNames(result.category).names;
         }
 
-        const spent = calculateSpending(budget, allCategoryNamesForBudget, forDate, year);
+        const spent = calculateSpending(budget, allCategoryNamesForBudget, forDate, reportYear);
 
         const remaining = budget.amount - spent;
         const progress = budget.amount > 0 ? (spent / budget.amount) * 100 : 0;
@@ -617,7 +639,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         };
       });
     },
-    []
+    [firstYear]
   );
 
   const addTransaction = async (transaction: Omit<Transaction, 'id'>) => {
