@@ -326,7 +326,11 @@ export default function TransactionsPage() {
                 </TableRow>
               ) : paginatedTransactions.length > 0 ? (
                 paginatedTransactions.map((transaction) => (
-                  <TableRow key={transaction.id}>
+                  <TableRow 
+                    key={transaction.id} 
+                    onClick={() => handleEdit(transaction)}
+                    className={cn(!isReadOnly && "cursor-pointer")}
+                  >
                     <TableCell className="font-medium">
                       {transaction.description}
                     </TableCell>
@@ -345,7 +349,7 @@ export default function TransactionsPage() {
                     <TableCell>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button aria-haspopup="true" size="icon" variant="ghost" disabled={isReadOnly}>
+                            <Button aria-haspopup="true" size="icon" variant="ghost" disabled={isReadOnly} onClick={(e) => e.stopPropagation()}>
                               <MoreHorizontal className="h-4 w-4" />
                               <span className="sr-only">Toggle menu</span>
                             </Button>
