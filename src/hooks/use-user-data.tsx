@@ -178,6 +178,51 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     },
     [user]
   );
+  
+  // One-time migration effect for budgets without a year
+  useEffect(() => {
+    if (loading || !user || !budgets.length || !allTransactions.length) return;
+
+    const migrateBudgets = async () => {
+        const budgetsToMigrate = budgets.filter(b => typeof b.year !== 'number');
+
+        if (budgetsToMigrate.length === 0) return;
+        
+        console.log(`Found ${budgetsToMigrate.length} legacy budgets to migrate.`);
+
+        const budgetsCollRef = getCollectionRef('budgets');
+        if (!budgetsCollRef) return;
+
+        const batch = writeBatch(db);
+
+        for (const budget of budgetsToMigrate) {
+            const budgetCategory = findCategoryByIdRecursive(budget.categoryId, categories);
+            const allCategoryNamesForBudget = budgetCategory ? getCategorySubtreeIdsAndNames(budgetCategory).names : [];
+            
+            const budgetTxs = allTransactions
+                .filter(t => t.type === 'expense' && allCategoryNamesForBudget.includes(t.category))
+                .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+            
+            const inferredYear = budgetTxs.length > 0 ? getYear(new Date(budgetTxs[0].date)) : firstYear;
+
+            const budgetRef = doc(budgetsCollRef, budget.id);
+            batch.update(budgetRef, { year: inferredYear });
+        }
+
+        try {
+            await batch.commit();
+            console.log(`Successfully migrated ${budgetsToMigrate.length} budgets.`);
+        } catch (error) {
+            console.error("Budget migration failed:", error);
+        }
+    };
+
+    migrateBudgets();
+    // We only want this to run once after the initial data load, so we disable the exhaustive-deps rule.
+    // The check for budgetsToMigrate.length prevents it from running multiple times.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
+
 
   const processRecurringTransactions = useCallback(async () => {
     const systemYear = new Date().getFullYear();
@@ -547,9 +592,9 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           : null;
       };
 
-      const relevantBudgets = (activeBudgets || []).filter((budget) => {
+      const relevantBudgets = activeBudgets.filter((budget) => {
         let effectiveYear = budget.year;
-        if (!effectiveYear) {
+        if (typeof effectiveYear !== 'number') {
             const budgetCategoryNames = getCategorySubtreeIdsAndNames(findCategoryByIdRecursive(budget.categoryId, categories) || {} as Category).names;
             effectiveYear = findFirstTransactionYearForBudget(budget, transactions, budgetCategoryNames) ?? firstYear;
         }
