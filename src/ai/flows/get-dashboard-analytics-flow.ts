@@ -22,7 +22,7 @@ const GetDashboardAnalyticsInputSchema = z.object({
         category: z.string(),
       })
     )
-    .describe('An array of user transactions.'),
+    .describe('An array of user transactions for the specific year being analyzed.'),
   startingBalanceForYear: z.number().describe('The user\'s starting balance for the given year.'),
 });
 export type GetDashboardAnalyticsInput = z.infer<
@@ -77,6 +77,9 @@ const getDashboardAnalyticsFlow = ai.defineFlow(
       .filter(t => t.type === 'expense')
       .reduce((sum, t) => sum + t.amount, 0);
 
+    const netDelta = totalIncome - totalExpenses;
+    const currentBalance = startingBalanceForYear + netDelta;
+
     const currentMonthIncome = transactions
       .filter(t => {
         const transactionDate = new Date(t.date);
@@ -120,8 +123,6 @@ const getDashboardAnalyticsFlow = ai.defineFlow(
         );
       })
       .reduce((sum, t) => sum + t.amount, 0);
-
-    const currentBalance = startingBalanceForYear + totalIncome - totalExpenses;
 
     const monthlyData: Record<string, {income: number; expense: number}> = {};
 
