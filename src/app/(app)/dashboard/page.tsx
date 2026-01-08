@@ -48,27 +48,24 @@ export default function DashboardPage() {
   const [analytics, setAnalytics] = useState<GetDashboardAnalyticsOutput | null>(null);
   const [isAnalyticsLoading, setIsAnalyticsLoading] = useState(true);
 
-  const effectiveStartingBalance = useMemo(() => {
+  const openingBalanceForYear = useMemo(() => {
     if (userDataLoading || authLoading) return 0;
-    if (activeYear === firstYear) {
-      return startingBalance;
-    }
-    
-    // Calculate the carry-over balance from all previous years
-    const historicalTransactions = allTransactions.filter(t => {
-      const transactionYear = new Date(t.date).getFullYear();
-      return transactionYear >= firstYear && transactionYear < activeYear;
+
+    const priorTransactions = allTransactions.filter(t => {
+        const year = new Date(t.date).getFullYear();
+        return year < activeYear;
     });
 
-    const carryOverBalance = historicalTransactions.reduce((balance, t) => {
-      if (t.type === 'income') {
-        return balance + t.amount;
-      }
-      return balance - t.amount;
+    if (priorTransactions.length === 0) {
+        return startingBalance;
+    }
+
+    return priorTransactions.reduce((balance, t) => {
+        return t.type === 'income'
+        ? balance + t.amount
+        : balance - t.amount;
     }, startingBalance);
-    
-    return carryOverBalance;
-  }, [userDataLoading, authLoading, activeYear, firstYear, allTransactions, startingBalance]);
+  }, [allTransactions, startingBalance, activeYear, userDataLoading, authLoading]);
 
   useEffect(() => {
     if (!userDataLoading && !authLoading && user) {
@@ -78,13 +75,13 @@ export default function DashboardPage() {
         // Filter transactions for the active year before sending to analytics
         const yearTransactions = transactions.filter(t => new Date(t.date).getFullYear() === activeYear);
 
-        getDashboardAnalytics({ transactions: yearTransactions, startingBalance: effectiveStartingBalance })
+        getDashboardAnalytics({ transactions: yearTransactions, startingBalance: openingBalanceForYear })
           .then(setAnalytics)
           .finally(() => setIsAnalyticsLoading(false));
       }
       fetchAnalytics();
     }
-  }, [transactions, userDataLoading, authLoading, user, activeYear, effectiveStartingBalance]);
+  }, [transactions, userDataLoading, authLoading, user, activeYear, openingBalanceForYear]);
 
 
   const favoritedBudgets = useMemo(() => {
