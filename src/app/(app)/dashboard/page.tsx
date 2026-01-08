@@ -167,7 +167,7 @@ export default function DashboardPage() {
               title="Total Savings"
               value={analytics.totalIncome - analytics.totalExpenses}
               icon="PiggyBank"
-              trendValue={analytics.totalIncome - analytics.totalExpenses >= 0 ? "You're in the green" : "You're in the red"}
+              trendValue={`${analytics.totalIncome - analytics.totalExpenses >= 0 ? "You're in the green" : "You're in the red"} for ${activeYear}`}
               variant={analytics.totalIncome - analytics.totalExpenses >= 0 ? 'success' : 'danger'}
             />
           </div>
