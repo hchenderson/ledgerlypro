@@ -43,10 +43,32 @@ function DashboardSkeleton() {
 }
 
 export default function DashboardPage() {
-  const { transactions, loading: userDataLoading, getBudgetDetails, goals, budgets, categories, startingBalance } = useUserData();
-  const { user, showInstructions, loading: authLoading, activeYear } = useAuth();
+  const { allTransactions, transactions, loading: userDataLoading, getBudgetDetails, goals, budgets, categories, startingBalance } = useUserData();
+  const { user, showInstructions, loading: authLoading, activeYear, firstYear } = useAuth();
   const [analytics, setAnalytics] = useState<GetDashboardAnalyticsOutput | null>(null);
   const [isAnalyticsLoading, setIsAnalyticsLoading] = useState(true);
+
+  const effectiveStartingBalance = useMemo(() => {
+    if (userDataLoading || authLoading) return 0;
+    if (activeYear === firstYear) {
+      return startingBalance;
+    }
+    
+    // Calculate the carry-over balance from all previous years
+    const historicalTransactions = allTransactions.filter(t => {
+      const transactionYear = new Date(t.date).getFullYear();
+      return transactionYear >= firstYear && transactionYear < activeYear;
+    });
+
+    const carryOverBalance = historicalTransactions.reduce((balance, t) => {
+      if (t.type === 'income') {
+        return balance + t.amount;
+      }
+      return balance - t.amount;
+    }, startingBalance);
+    
+    return carryOverBalance;
+  }, [userDataLoading, authLoading, activeYear, firstYear, allTransactions, startingBalance]);
 
   useEffect(() => {
     if (!userDataLoading && !authLoading && user) {
@@ -56,13 +78,13 @@ export default function DashboardPage() {
         // Filter transactions for the active year before sending to analytics
         const yearTransactions = transactions.filter(t => new Date(t.date).getFullYear() === activeYear);
 
-        getDashboardAnalytics({ transactions: yearTransactions, startingBalance })
+        getDashboardAnalytics({ transactions: yearTransactions, startingBalance: effectiveStartingBalance })
           .then(setAnalytics)
           .finally(() => setIsAnalyticsLoading(false));
       }
       fetchAnalytics();
     }
-  }, [transactions, userDataLoading, authLoading, user, activeYear, startingBalance]);
+  }, [transactions, userDataLoading, authLoading, user, activeYear, effectiveStartingBalance]);
 
 
   const favoritedBudgets = useMemo(() => {
