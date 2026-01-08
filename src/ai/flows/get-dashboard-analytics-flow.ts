@@ -23,7 +23,7 @@ const GetDashboardAnalyticsInputSchema = z.object({
       })
     )
     .describe('An array of user transactions.'),
-  startingBalance: z.number().describe('The user\'s starting balance.'),
+  startingBalanceForYear: z.number().describe('The user\'s starting balance for the given year.'),
 });
 export type GetDashboardAnalyticsInput = z.infer<
   typeof GetDashboardAnalyticsInputSchema
@@ -62,7 +62,7 @@ const getDashboardAnalyticsFlow = ai.defineFlow(
     inputSchema: GetDashboardAnalyticsInputSchema,
     outputSchema: GetDashboardAnalyticsOutputSchema,
   },
-  async ({transactions, startingBalance}) => {
+  async ({transactions, startingBalanceForYear}) => {
     const now = new Date();
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
@@ -121,7 +121,7 @@ const getDashboardAnalyticsFlow = ai.defineFlow(
       })
       .reduce((sum, t) => sum + t.amount, 0);
 
-    const currentBalance = startingBalance + totalIncome - totalExpenses;
+    const currentBalance = startingBalanceForYear + totalIncome - totalExpenses;
 
     const monthlyData: Record<string, {income: number; expense: number}> = {};
 

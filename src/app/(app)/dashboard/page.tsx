@@ -75,7 +75,7 @@ export default function DashboardPage() {
         // Filter transactions for the active year before sending to analytics
         const yearTransactions = transactions.filter(t => new Date(t.date).getFullYear() === activeYear);
 
-        getDashboardAnalytics({ transactions: yearTransactions, startingBalance: openingBalanceForYear })
+        getDashboardAnalytics({ transactions: yearTransactions, startingBalanceForYear: openingBalanceForYear })
           .then(setAnalytics)
           .finally(() => setIsAnalyticsLoading(false));
       }
