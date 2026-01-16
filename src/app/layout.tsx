@@ -5,6 +5,7 @@ import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 import { AuthProvider } from '@/hooks/use-auth';
 import { ThemeProvider } from 'next-themes';
+import { ChatFab } from "@/components/chat/chat-fab";
 
 export default function RootLayout({
   children,
@@ -34,6 +35,7 @@ export default function RootLayout({
             </ThemeProvider>
           </AuthProvider>
         <Toaster />
+        <ChatFab />
       </body>
     </html>
   );
