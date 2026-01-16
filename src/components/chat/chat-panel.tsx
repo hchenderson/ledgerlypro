@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/use-auth";
 
 type ChatRole = "user" | "assistant";
 
@@ -24,6 +25,7 @@ function uid() {
 }
 
 export function ChatPanel() {
+  const { user } = useAuth();
   const [messages, setMessages] = React.useState<ChatMessage[]>([
     {
       id: uid(),
@@ -48,6 +50,19 @@ export function ChatPanel() {
     const trimmed = input.trim();
     if (!trimmed || isSending) return;
 
+    if (!user) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: uid(),
+          role: "assistant",
+          content: "You must be logged in to use the chat.",
+          createdAt: Date.now(),
+        },
+      ]);
+      return;
+    }
+
     const userMsg: ChatMessage = {
       id: uid(),
       role: "user",
@@ -60,10 +75,14 @@ export function ChatPanel() {
     setIsSending(true);
 
     try {
+      const idToken = await user.getIdToken();
       // For now: call a placeholder endpoint that returns { reply: string }
       const res = await fetch("/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${idToken}`
+        },
         body: JSON.stringify({
           messages: [...messages, userMsg].map(({ role, content }) => ({ role, content })),
         }),
