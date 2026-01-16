@@ -10,6 +10,7 @@ export type Transaction = {
   type: "income" | "expense";
   category: string;
   categoryId?: string;
+  source?: "actual" | "recurring" | "baseline";
 };
 
 export type NavItem = {
