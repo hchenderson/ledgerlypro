@@ -5,12 +5,12 @@ import {
   addDays, addWeeks, addMonths, addYears,
   isAfter, isBefore, startOfDay, endOfDay,
   eachDayOfInterval, differenceInDays,
-  parseISO, format
+  parseISO, format, startOfWeek, isWithinInterval
 } from 'date-fns';
 import type { Transaction, RecurringTransaction } from '@/types';
 
 export interface ForecastDataPoint {
-  date: string; // YYYY-MM-DD
+  date: string; // MMM dd
   balance: number;
   netChange: number;
   scheduledIncome: number;
@@ -24,92 +24,128 @@ export interface Trajectory {
   period: string; // e.g., 'MoM', 'YoY'
 }
 
-/**
- * Projects future occurrences of recurring transactions within a given period.
- */
-function projectRecurringTransactions(
-  recurringTransactions: RecurringTransaction[],
-  startDate: Date,
-  endDate: Date
-): Map<string, { income: number; expense: number }> {
-  const projections = new Map<string, { income: number; expense: number }>();
+export type WeeklyProfile = {
+  weeklyIncomeAvg: number;
+  weeklyExpenseAvg: number;
+  weeklyIncomeSamples: number[];
+  weeklyExpenseSamples: number[];
+};
 
-  recurringTransactions.forEach(rt => {
-    let nextDate = parseISO(rt.startDate);
-
-    // Fast-forward to the start of the forecast period
-    while (isBefore(nextDate, startDate)) {
-      switch (rt.frequency) {
-        case 'daily': nextDate = addDays(nextDate, 1); break;
-        case 'weekly': nextDate = addWeeks(nextDate, 1); break;
-        case 'monthly': nextDate = addMonths(nextDate, 1); break;
-        case 'yearly': nextDate = addYears(nextDate, 1); break;
-      }
-    }
-    
-    // Add occurrences within the forecast period
-    while (isBefore(nextDate, endDate) || nextDate.getTime() === endDate.getTime()) {
-      const dateKey = format(nextDate, 'yyyy-MM-dd');
-      const daily = projections.get(dateKey) || { income: 0, expense: 0 };
-      
-      if (rt.type === 'income') {
-        daily.income += rt.amount;
-      } else {
-        daily.expense += rt.amount;
-      }
-      projections.set(dateKey, daily);
-
-      switch (rt.frequency) {
-        case 'daily': nextDate = addDays(nextDate, 1); break;
-        case 'weekly': nextDate = addWeeks(nextDate, 1); break;
-        case 'monthly': nextDate = addMonths(nextDate, 1); break;
-        case 'yearly': nextDate = addYears(nextDate, 1); break;
-      }
-    }
-  });
-
-  return projections;
+function stepDate(d: Date, frequency: RecurringTransaction["frequency"]) {
+  switch (frequency) {
+    case "daily": return addDays(d, 1);
+    case "weekly": return addWeeks(d, 1);
+    case "monthly": return addMonths(d, 1);
+    case "yearly": return addYears(d, 1);
+  }
 }
 
-/**
- * Calculates the average daily variable income and expense from historical data.
- */
-function calculateAverageVariableFlows(
-  historicalTransactions: Transaction[],
-  recurringTransactions: RecurringTransaction[]
-): { avgDailyVariableIncome: number; avgDailyVariableExpense: number } {
-  const recurringDescriptions = new Set(recurringTransactions.map(rt => `(Recurring) ${rt.description}`));
-  
-  const variableTransactions = historicalTransactions.filter(
-    t => !recurringDescriptions.has(t.description)
-  );
+export function expandRecurringBetween(
+  recurring: RecurringTransaction[],
+  start: Date,
+  end: Date
+): Transaction[] {
+  const startDay = startOfDay(start);
+  const endDay = startOfDay(end);
+  const out: Transaction[] = [];
 
-  if (variableTransactions.length === 0) {
-    return { avgDailyVariableIncome: 0, avgDailyVariableExpense: 0 };
+  for (const rt of recurring) {
+    const rtStart = startOfDay(parseISO(rt.startDate));
+
+    // Anchor: start iterating from the later of rtStart or startDay
+    let cursor = rtStart;
+    while (isBefore(cursor, startDay)) {
+      cursor = stepDate(cursor, rt.frequency);
+    }
+
+    while (isBefore(cursor, endDay) || cursor.getTime() === endDay.getTime()) {
+      out.push({
+        id: `forecast_${rt.id}_${cursor.toISOString()}`,
+        date: cursor.toISOString(),
+        amount: rt.amount,
+        type: rt.type,
+        category: rt.category,
+        description: `(Forecast) ${rt.description}`,
+        source: "recurring",
+      });
+      cursor = stepDate(cursor, rt.frequency);
+    }
   }
-  
-  const sorted = variableTransactions.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  const firstDate = startOfDay(new Date(sorted[0].date));
-  const lastDate = endOfDay(new Date(sorted[sorted.length - 1].date));
-  const totalDays = differenceInDays(lastDate, firstDate) + 1;
-  
-  if (totalDays <= 0) {
-      return { avgDailyVariableIncome: 0, avgDailyVariableExpense: 0 };
+
+  return out;
+}
+
+
+export function buildWeeklyProfile(actuals: Transaction[], lookbackWeeks = 13): WeeklyProfile {
+  const today = startOfDay(new Date());
+  const start = addWeeks(today, -lookbackWeeks);
+
+  const windowTx = actuals.filter(t => {
+    const d = parseISO(t.date);
+    return isWithinInterval(d, { start, end: today }) && !t.description.startsWith("(Recurring)");
+  });
+
+  // bucket by week
+  const weekMap = new Map<string, { income: number; expense: number }>();
+
+  for (const t of windowTx) {
+    const wk = startOfWeek(parseISO(t.date), { weekStartsOn: 1 }).toISOString();
+    const prev = weekMap.get(wk) ?? { income: 0, expense: 0 };
+    if (t.type === "income") prev.income += t.amount;
+    else prev.expense += t.amount;
+    weekMap.set(wk, prev);
   }
-  
-  const totals = variableTransactions.reduce(
-    (acc, t) => {
-      if (t.type === 'income') acc.income += t.amount;
-      else acc.expense += t.amount;
-      return acc;
-    },
-    { income: 0, expense: 0 }
-  );
+
+  const incomeSamples = Array.from(weekMap.values()).map(v => v.income);
+  const expenseSamples = Array.from(weekMap.values()).map(v => v.expense);
+
+  const avg = (xs: number[]) => xs.length ? xs.reduce((a,b)=>a+b,0) / xs.length : 0;
 
   return {
-    avgDailyVariableIncome: totals.income / totalDays,
-    avgDailyVariableExpense: totals.expense / totalDays,
+    weeklyIncomeAvg: avg(incomeSamples),
+    weeklyExpenseAvg: avg(expenseSamples),
+    weeklyIncomeSamples: incomeSamples,
+    weeklyExpenseSamples: expenseSamples,
   };
+}
+
+export function projectWeeklyBaseline(
+  profile: WeeklyProfile,
+  start: Date,
+  end: Date
+): Transaction[] {
+  // distribute weekly avg evenly per day (simple v1)
+  const days = differenceInDays(end, start);
+  const dailyIncome = profile.weeklyIncomeAvg / 7;
+  const dailyExpense = profile.weeklyExpenseAvg / 7;
+
+  const out: Transaction[] = [];
+  for (let i=0; i<=days; i++) {
+    const d = addDays(startOfDay(start), i);
+    if (dailyIncome > 0) {
+      out.push({
+        id: `baseline_income_${d.toISOString()}`,
+        date: d.toISOString(),
+        amount: dailyIncome,
+        type: "income",
+        category: "Baseline",
+        description: "(Baseline) Variable income",
+        source: "baseline",
+      });
+    }
+    if (dailyExpense > 0) {
+      out.push({
+        id: `baseline_expense_${d.toISOString()}`,
+        date: d.toISOString(),
+        amount: dailyExpense,
+        type: "expense",
+        category: "Baseline",
+        description: "(Baseline) Variable expenses",
+        source: "baseline",
+      });
+    }
+  }
+  return out;
 }
 
 
@@ -127,32 +163,52 @@ export function generateForecast({
   const startDate = startOfDay(new Date());
   const endDate = endOfDay(addDays(startDate, days - 1));
 
-  const scheduledFlows = projectRecurringTransactions(recurringTransactions, startDate, endDate);
-  const { avgDailyVariableIncome, avgDailyVariableExpense } = calculateAverageVariableFlows(historicalTransactions, recurringTransactions);
+  // Step 1: Project scheduled transactions
+  const scheduledTxs = expandRecurringBetween(recurringTransactions, startDate, endDate);
 
+  // Step 2: Build profile and project variable baseline
+  const weeklyProfile = buildWeeklyProfile(historicalTransactions);
+  const baselineTxs = projectWeeklyBaseline(weeklyProfile, startDate, endDate);
+
+  // Step 3: Combine and aggregate flows by date
+  const allForecastedTxs = [...scheduledTxs, ...baselineTxs];
+  const dailyFlows = new Map<string, { income: number; expense: number; scheduledIncome: number; scheduledExpense: number; variableIncome: number; variableExpense: number; }>();
+
+  for (const tx of allForecastedTxs) {
+    const dateKey = format(startOfDay(parseISO(tx.date)), 'yyyy-MM-dd');
+    const daily = dailyFlows.get(dateKey) || { income: 0, expense: 0, scheduledIncome: 0, scheduledExpense: 0, variableIncome: 0, variableExpense: 0 };
+    if (tx.type === 'income') {
+      daily.income += tx.amount;
+      if (tx.source === 'recurring') daily.scheduledIncome += tx.amount;
+      else if (tx.source === 'baseline') daily.variableIncome += tx.amount;
+    } else {
+      daily.expense += tx.amount;
+      if (tx.source === 'recurring') daily.scheduledExpense += tx.amount;
+      else if (tx.source === 'baseline') daily.variableExpense += tx.amount;
+    }
+    dailyFlows.set(dateKey, daily);
+  }
+
+  // Step 4: Generate the daily forecast data points
   const forecast: ForecastDataPoint[] = [];
   let runningBalance = currentBalance;
-
   const interval = eachDayOfInterval({ start: startDate, end: endDate });
 
   for (const day of interval) {
     const dateKey = format(day, 'yyyy-MM-dd');
-    const scheduled = scheduledFlows.get(dateKey) || { income: 0, expense: 0 };
+    const dailyFlow = dailyFlows.get(dateKey) || { income: 0, expense: 0, scheduledIncome: 0, scheduledExpense: 0, variableIncome: 0, variableExpense: 0 };
     
-    const netChange = 
-      scheduled.income - scheduled.expense +
-      avgDailyVariableIncome - avgDailyVariableExpense;
-      
+    const netChange = dailyFlow.income - dailyFlow.expense;
     runningBalance += netChange;
 
     forecast.push({
-      date: format(day, 'MMM dd'), // format for chart
+      date: format(day, 'MMM dd'),
       balance: runningBalance,
       netChange,
-      scheduledIncome: scheduled.income,
-      scheduledExpense: scheduled.expense,
-      variableIncome: avgDailyVariableIncome,
-      variableExpense: avgDailyVariableExpense,
+      scheduledIncome: dailyFlow.scheduledIncome,
+      scheduledExpense: dailyFlow.scheduledExpense,
+      variableIncome: dailyFlow.variableIncome,
+      variableExpense: dailyFlow.variableExpense,
     });
   }
 
