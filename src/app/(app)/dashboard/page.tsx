@@ -2,7 +2,7 @@
 
 "use client";
 
-import { DollarSign, TrendingUp, TrendingDown, Wallet, Target, CalendarClock, Star, Flag, Activity, PiggyBank } from "lucide-react";
+import { DollarSign, TrendingUp, TrendingDown, Wallet, Target, CalendarClock, Star, Flag, Activity, PiggyBank, Rocket } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { OverviewChart } from "@/components/dashboard/overview-chart";
@@ -20,7 +20,9 @@ import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { format, subMonths } from "date-fns";
 import { AdBanner } from "@/components/ad-banner";
-
+import { ForecastChart } from "@/components/dashboard/forecast-chart";
+import { generateForecast } from "@/lib/forecasting";
+import type { ForecastDataPoint } from "@/lib/forecasting";
 
 function DashboardSkeleton() {
   return (
@@ -43,10 +45,12 @@ function DashboardSkeleton() {
 }
 
 export default function DashboardPage() {
-  const { allTransactions, transactions, loading: userDataLoading, getBudgetDetails, goals, budgets, categories, startingBalance } = useUserData();
+  const { allTransactions, transactions, loading: userDataLoading, getBudgetDetails, goals, budgets, categories, startingBalance, recurringTransactions } = useUserData();
   const { user, showInstructions, loading: authLoading, activeYear, firstYear } = useAuth();
   const [analytics, setAnalytics] = useState<GetDashboardAnalyticsOutput | null>(null);
   const [isAnalyticsLoading, setIsAnalyticsLoading] = useState(true);
+  const [forecastData, setForecastData] = useState<ForecastDataPoint[]>([]);
+  const [isForecastLoading, setIsForecastLoading] = useState(true);
 
   const openingBalanceForYear = useMemo(() => {
     if (userDataLoading || authLoading) return 0;
@@ -73,7 +77,7 @@ export default function DashboardPage() {
         setIsAnalyticsLoading(true);
 
         // Filter transactions for the active year before sending to analytics
-        const yearTransactions = transactions.filter(t => new Date(t.date).getFullYear() === activeYear);
+        const yearTransactions = allTransactions.filter(t => new Date(t.date).getFullYear() === activeYear);
 
         getDashboardAnalytics({ transactions: yearTransactions, startingBalanceForYear: openingBalanceForYear })
           .then(setAnalytics)
@@ -81,7 +85,21 @@ export default function DashboardPage() {
       }
       fetchAnalytics();
     }
-  }, [transactions, userDataLoading, authLoading, user, activeYear, openingBalanceForYear]);
+  }, [allTransactions, userDataLoading, authLoading, user, activeYear, openingBalanceForYear]);
+
+   useEffect(() => {
+    if (!userDataLoading && !authLoading && user && analytics) {
+        setIsForecastLoading(true);
+        const forecast = generateForecast({
+            recurringTransactions,
+            historicalTransactions: allTransactions,
+            currentBalance: analytics.currentBalance,
+            days: 90,
+        });
+        setForecastData(forecast);
+        setIsForecastLoading(false);
+    }
+  }, [userDataLoading, authLoading, user, analytics, recurringTransactions, allTransactions]);
 
 
   const favoritedBudgets = useMemo(() => {
@@ -259,6 +277,25 @@ export default function DashboardPage() {
           <CardContent>
               <BudgetProgress budgets={favoritedBudgets} />
           </CardContent>
+        </Card>
+      </div>
+
+       <div>
+        <h3 className="text-2xl font-bold tracking-tight font-headline mb-4">
+          Forward-Looking Analytics
+        </h3>
+        <Card>
+            <CardHeader>
+                <CardTitle className="flex items-center gap-2"><Rocket /> Next 90-Day Forecast</CardTitle>
+                <CardDescription>Projected cash flow based on recurring transactions and historical spending habits.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                {isForecastLoading ? (
+                    <Skeleton className="h-[300px] w-full" />
+                ) : (
+                    <ForecastChart data={forecastData} />
+                )}
+            </CardContent>
         </Card>
       </div>
     </div>
