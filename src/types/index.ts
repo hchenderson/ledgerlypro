@@ -153,3 +153,10 @@ export interface EOYReportData {
   categories: any[]; // Adjust if you have a specific type
   mainCategories: any[]; // Add this line
 }
+
+export type ChatMessage = {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt: Date;
+};
