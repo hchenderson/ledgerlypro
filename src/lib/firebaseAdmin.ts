@@ -1,22 +1,30 @@
 // /lib/firebaseAdmin.ts
+import "server-only";
+
 import { cert, getApps, initializeApp, App } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 
-function getAdminApp(): App {
-  if (getApps().length > 0) {
-    return getApps()[0];
-  }
-
+function getServiceAccount() {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-
   if (!raw) {
-    throw new Error(
-      "Missing FIREBASE_SERVICE_ACCOUNT_JSON env var. Add your Firebase service account JSON."
-    );
+    throw new Error("Missing FIREBASE_SERVICE_ACCOUNT_JSON env var.");
   }
 
-  const serviceAccount = JSON.parse(raw);
+  const parsed = JSON.parse(raw);
+
+  // Fix escaped newlines in private_key (very common in env vars)
+  if (typeof parsed.private_key === "string") {
+    parsed.private_key = parsed.private_key.replace(/\\n/g, "\n");
+  }
+
+  return parsed;
+}
+
+function getAdminApp(): App {
+  if (getApps().length) return getApps()[0];
+
+  const serviceAccount = getServiceAccount();
 
   return initializeApp({
     credential: cert(serviceAccount),
