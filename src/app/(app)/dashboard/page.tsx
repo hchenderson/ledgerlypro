@@ -18,11 +18,10 @@ import type { GetDashboardAnalyticsOutput } from "@/ai/flows/get-dashboard-analy
 import { GoalProgress } from "@/components/dashboard/goal-progress";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { format, subMonths } from "date-fns";
+import { format, subMonths, parseISO } from "date-fns";
 import { AdBanner } from "@/components/ad-banner";
 import { ForecastChart } from "@/components/dashboard/forecast-chart";
-import { generateForecast } from "@/lib/forecasting";
-import type { ForecastDataPoint } from "@/lib/forecasting";
+import { useForwardForecast } from "@/hooks/use-forward-forecast";
 
 function DashboardSkeleton() {
   return (
@@ -49,8 +48,8 @@ export default function DashboardPage() {
   const { user, showInstructions, loading: authLoading, activeYear, firstYear } = useAuth();
   const [analytics, setAnalytics] = useState<GetDashboardAnalyticsOutput | null>(null);
   const [isAnalyticsLoading, setIsAnalyticsLoading] = useState(true);
-  const [forecastData, setForecastData] = useState<ForecastDataPoint[]>([]);
-  const [isForecastLoading, setIsForecastLoading] = useState(true);
+  
+  const { series: forecastSeries } = useForwardForecast(90);
 
   const openingBalanceForYear = useMemo(() => {
     if (userDataLoading || authLoading) return 0;
@@ -87,20 +86,15 @@ export default function DashboardPage() {
     }
   }, [allTransactions, userDataLoading, authLoading, user, activeYear, openingBalanceForYear]);
 
-   useEffect(() => {
-    if (!userDataLoading && !authLoading && user && analytics) {
-        setIsForecastLoading(true);
-        const forecast = generateForecast({
-            recurringTransactions,
-            historicalTransactions: allTransactions,
-            currentBalance: analytics.currentBalance,
-            days: 90,
-        });
-        setForecastData(forecast);
-        setIsForecastLoading(false);
+  const forecastData = useMemo(() => {
+    if (isAnalyticsLoading || !analytics || !forecastSeries) {
+      return [];
     }
-  }, [userDataLoading, authLoading, user, analytics, recurringTransactions, allTransactions]);
-
+    return forecastSeries.map(point => ({
+      date: format(parseISO(point.date), 'MMM dd'),
+      balance: analytics.currentBalance + point.cumulativeNet,
+    }));
+  }, [isAnalyticsLoading, analytics, forecastSeries]);
 
   const favoritedBudgets = useMemo(() => {
     const yearBudgets = budgets.filter(b => b.year === activeYear);
@@ -119,6 +113,7 @@ export default function DashboardPage() {
   }, [transactions]);
   
   const isLoading = userDataLoading || authLoading || isAnalyticsLoading || !analytics;
+  const isForecastLoading = isLoading || !forecastSeries;
 
   if (isLoading && transactions.length === 0) {
     return <DashboardSkeleton />;
