@@ -20,9 +20,7 @@ import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { format, subMonths, parseISO } from "date-fns";
 import { AdBanner } from "@/components/ad-banner";
-import { useForwardForecast } from "@/hooks/use-forward-forecast";
-import { ForecastNetChart } from "@/components/dashboard/forecast-net-chart";
-import { RecurringCommitmentsList } from "@/components/dashboard/recurring-commitments-list";
+import { ForwardAnalyticsPanel } from "@/components/dashboard/forward-analytics-panel";
 
 function DashboardSkeleton() {
   return (
@@ -50,8 +48,6 @@ export default function DashboardPage() {
   const [analytics, setAnalytics] = useState<GetDashboardAnalyticsOutput | null>(null);
   const [isAnalyticsLoading, setIsAnalyticsLoading] = useState(true);
   
-  const { series: forecastSeries, recurringFuture } = useForwardForecast(90);
-
   const openingBalanceForYear = useMemo(() => {
     if (userDataLoading || authLoading) return 0;
 
@@ -106,7 +102,6 @@ export default function DashboardPage() {
   }, [transactions]);
   
   const isLoading = userDataLoading || authLoading || isAnalyticsLoading || !analytics;
-  const isForecastLoading = isLoading || !forecastSeries || !recurringFuture;
 
   if (isLoading && transactions.length === 0) {
     return <DashboardSkeleton />;
@@ -268,43 +263,7 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-       <div>
-        <h3 className="text-2xl font-bold tracking-tight font-headline mb-4">
-          Forward-Looking Analytics
-        </h3>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card>
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2"><Rocket /> Next 90-Day Net Forecast</CardTitle>
-                    <CardDescription>Projected cumulative net change based on recurring transactions and historical spending habits.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    {isForecastLoading ? (
-                        <Skeleton className="h-[256px] w-full" />
-                    ) : (
-                        <ForecastNetChart data={forecastSeries} />
-                    )}
-                </CardContent>
-            </Card>
-            <Card>
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2"><Repeat /> Recurring Commitments</CardTitle>
-                    <CardDescription>Scheduled transactions coming up in the next 30 days.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    {isForecastLoading ? (
-                        <div className="space-y-2">
-                            <Skeleton className="h-16 w-full" />
-                            <Skeleton className="h-16 w-full" />
-                            <Skeleton className="h-16 w-full" />
-                        </div>
-                    ) : (
-                        <RecurringCommitmentsList recurringFuture={recurringFuture} />
-                    )}
-                </CardContent>
-            </Card>
-        </div>
-      </div>
+       <ForwardAnalyticsPanel />
     </div>
   );
 }
