@@ -20,8 +20,8 @@ import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { format, subMonths, parseISO } from "date-fns";
 import { AdBanner } from "@/components/ad-banner";
-import { ForecastChart } from "@/components/dashboard/forecast-chart";
 import { useForwardForecast } from "@/hooks/use-forward-forecast";
+import { ForecastNetChart } from "@/components/dashboard/forecast-net-chart";
 
 function DashboardSkeleton() {
   return (
@@ -85,16 +85,6 @@ export default function DashboardPage() {
       fetchAnalytics();
     }
   }, [allTransactions, userDataLoading, authLoading, user, activeYear, openingBalanceForYear]);
-
-  const forecastData = useMemo(() => {
-    if (isAnalyticsLoading || !analytics || !forecastSeries) {
-      return [];
-    }
-    return forecastSeries.map(point => ({
-      date: format(parseISO(point.date), 'MMM dd'),
-      balance: analytics.currentBalance + point.cumulativeNet,
-    }));
-  }, [isAnalyticsLoading, analytics, forecastSeries]);
 
   const favoritedBudgets = useMemo(() => {
     const yearBudgets = budgets.filter(b => b.year === activeYear);
@@ -281,14 +271,14 @@ export default function DashboardPage() {
         </h3>
         <Card>
             <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Rocket /> Next 90-Day Forecast</CardTitle>
-                <CardDescription>Projected cash flow based on recurring transactions and historical spending habits.</CardDescription>
+                <CardTitle className="flex items-center gap-2"><Rocket /> Next 90-Day Net Forecast</CardTitle>
+                <CardDescription>Projected cumulative net change based on recurring transactions and historical spending habits.</CardDescription>
             </CardHeader>
             <CardContent>
                 {isForecastLoading ? (
-                    <Skeleton className="h-[300px] w-full" />
+                    <Skeleton className="h-[256px] w-full" />
                 ) : (
-                    <ForecastChart data={forecastData} />
+                    <ForecastNetChart data={forecastSeries} />
                 )}
             </CardContent>
         </Card>
