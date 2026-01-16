@@ -12,11 +12,6 @@ import type { Transaction, RecurringTransaction } from '@/types';
 export interface ForecastDataPoint {
   date: string; // MMM dd
   balance: number;
-  netChange: number;
-  scheduledIncome: number;
-  scheduledExpense: number;
-  variableIncome: number;
-  variableExpense: number;
 }
 
 export interface Trajectory {
@@ -29,6 +24,14 @@ export type WeeklyProfile = {
   weeklyExpenseAvg: number;
   weeklyIncomeSamples: number[];
   weeklyExpenseSamples: number[];
+};
+
+type ForecastPoint = {
+  date: string; // ISO day
+  income: number;
+  expense: number;
+  net: number;
+  cumulativeNet: number;
 };
 
 function stepDate(d: Date, frequency: RecurringTransaction["frequency"]) {
@@ -148,6 +151,41 @@ export function projectWeeklyBaseline(
   return out;
 }
 
+export function buildForecastSeries(all: Transaction[], start: Date, end: Date): ForecastPoint[] {
+  const dayKey = (iso: string) => iso.slice(0, 10); // YYYY-MM-DD
+  const map = new Map<string, { income: number; expense: number }>();
+
+  for (const t of all) {
+    const k = dayKey(t.date);
+    const prev = map.get(k) ?? { income: 0, expense: 0 };
+    if (t.type === "income") prev.income += t.amount;
+    else prev.expense += t.amount;
+    map.set(k, prev);
+  }
+
+  // Walk days in range
+  const points: ForecastPoint[] = [];
+  let cumulativeNet = 0;
+
+  const startDay = startOfDay(start);
+  const endDay = startOfDay(end);
+  for (let d = startDay; d <= endDay; d = addDays(d, 1)) {
+    const k = d.toISOString().slice(0, 10);
+    const v = map.get(k) ?? { income: 0, expense: 0 };
+    const net = v.income - v.expense;
+    cumulativeNet += net;
+    points.push({
+      date: d.toISOString(),
+      income: v.income,
+      expense: v.expense,
+      net,
+      cumulativeNet,
+    });
+  }
+
+  return points;
+}
+
 
 export function generateForecast({
   recurringTransactions,
@@ -170,47 +208,13 @@ export function generateForecast({
   const weeklyProfile = buildWeeklyProfile(historicalTransactions);
   const baselineTxs = projectWeeklyBaseline(weeklyProfile, startDate, endDate);
 
-  // Step 3: Combine and aggregate flows by date
+  // Step 3: Combine and build the series
   const allForecastedTxs = [...scheduledTxs, ...baselineTxs];
-  const dailyFlows = new Map<string, { income: number; expense: number; scheduledIncome: number; scheduledExpense: number; variableIncome: number; variableExpense: number; }>();
-
-  for (const tx of allForecastedTxs) {
-    const dateKey = format(startOfDay(parseISO(tx.date)), 'yyyy-MM-dd');
-    const daily = dailyFlows.get(dateKey) || { income: 0, expense: 0, scheduledIncome: 0, scheduledExpense: 0, variableIncome: 0, variableExpense: 0 };
-    if (tx.type === 'income') {
-      daily.income += tx.amount;
-      if (tx.source === 'recurring') daily.scheduledIncome += tx.amount;
-      else if (tx.source === 'baseline') daily.variableIncome += tx.amount;
-    } else {
-      daily.expense += tx.amount;
-      if (tx.source === 'recurring') daily.scheduledExpense += tx.amount;
-      else if (tx.source === 'baseline') daily.variableExpense += tx.amount;
-    }
-    dailyFlows.set(dateKey, daily);
-  }
-
-  // Step 4: Generate the daily forecast data points
-  const forecast: ForecastDataPoint[] = [];
-  let runningBalance = currentBalance;
-  const interval = eachDayOfInterval({ start: startDate, end: endDate });
-
-  for (const day of interval) {
-    const dateKey = format(day, 'yyyy-MM-dd');
-    const dailyFlow = dailyFlows.get(dateKey) || { income: 0, expense: 0, scheduledIncome: 0, scheduledExpense: 0, variableIncome: 0, variableExpense: 0 };
-    
-    const netChange = dailyFlow.income - dailyFlow.expense;
-    runningBalance += netChange;
-
-    forecast.push({
-      date: format(day, 'MMM dd'),
-      balance: runningBalance,
-      netChange,
-      scheduledIncome: dailyFlow.scheduledIncome,
-      scheduledExpense: dailyFlow.scheduledExpense,
-      variableIncome: dailyFlow.variableIncome,
-      variableExpense: dailyFlow.variableExpense,
-    });
-  }
-
-  return forecast;
+  const forecastSeries = buildForecastSeries(allForecastedTxs, startDate, endDate);
+  
+  // Step 4: Convert to the format the chart expects
+  return forecastSeries.map(point => ({
+    date: format(parseISO(point.date), 'MMM dd'),
+    balance: currentBalance + point.cumulativeNet
+  }));
 }
