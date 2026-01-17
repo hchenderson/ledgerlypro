@@ -32,10 +32,10 @@ export default function RootLayout({
               disableTransitionOnChange
             >
               {children}
+              <Toaster />
+              <ChatFab />
             </ThemeProvider>
           </AuthProvider>
-        <Toaster />
-        <ChatFab />
       </body>
     </html>
   );
