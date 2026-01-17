@@ -7,21 +7,29 @@ import { RecurringCommitmentsList } from "@/components/dashboard/recurring-commi
 import { Skeleton } from "@/components/ui/skeleton";
 import { Rocket, Repeat } from "lucide-react";
 import { useUserData } from "@/hooks/use-user-data";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Segmented } from "./forecast-controls";
+import { TrajectoryCard } from "./trajectory-card";
+import type { ForecastTx } from "@/forecast/expandRecurringBetween";
 
 export function ForwardAnalyticsPanel() {
-  const { loading: userDataLoading } = useUserData();
+  const { allTransactions, loading: userDataLoading } = useUserData();
   const { series, recurringFuture } = useForwardForecast(90);
   const isForecastLoading = userDataLoading || !series || !recurringFuture;
   const [chartMode, setChartMode] = useState<'net' | 'cumulativeNet'>('cumulativeNet');
 
+  const actuals: ForecastTx[] = useMemo(() => allTransactions.map(t => ({...t, source: 'actual'})), [allTransactions]);
+  const givingCategories = ["Donations", "Tithes", "Offerings"]; // Hardcoded for now
+
   return (
     <div>
       <h3 className="text-2xl font-bold tracking-tight font-headline mb-4">
-        Forward-Looking Analytics
+        Financial Analytics
       </h3>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="lg:col-span-2">
+            <TrajectoryCard actuals={actuals} givingCategories={givingCategories} />
+        </div>
         <Card>
           <CardHeader>
             <div className="flex items-start justify-between">
