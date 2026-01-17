@@ -4,6 +4,9 @@ import { adminDb } from "@/lib/firebaseAdmin";
 
 export async function POST(req: Request) {
   try {
+    if (!adminDb) {
+      throw new Error("Firebase Admin SDK is not initialized. Check server configuration and environment variables.");
+    }
     const uid = await requireUid(req);
 
     // Hard scope: everything begins at users/{uid}
@@ -21,9 +24,13 @@ export async function POST(req: Request) {
       reply: `✅ Auth OK${displayName ? `, ${displayName}` : ""}.\n\nYou said: "${text}"`,
     });
   } catch (err: any) {
-    return NextResponse.json(
-      { error: err?.message ?? "Unauthorized" },
-      { status: 401 }
-    );
+    console.error("[/api/chat Error]", err);
+    // Distinguish between auth errors (client's fault) and server errors
+    const isAuthError = err.code && typeof err.code === 'string' && err.code.startsWith('auth/');
+    if (isAuthError) {
+      return NextResponse.json({ error: err.message }, { status: 401 });
+    }
+    // For other errors, especially our custom initialization error, it's a server problem.
+    return NextResponse.json({ error: err.message ?? "An unexpected server error occurred." }, { status: 500 });
   }
 }

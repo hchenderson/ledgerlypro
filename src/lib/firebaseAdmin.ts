@@ -2,35 +2,34 @@
 import "server-only";
 
 import { cert, getApps, initializeApp, App } from "firebase-admin/app";
-import { getAuth } from "firebase-admin/auth";
-import { getFirestore } from "firebase-admin/firestore";
+import { getAuth, Auth } from "firebase-admin/auth";
+import { getFirestore, Firestore } from "firebase-admin/firestore";
 
-function getServiceAccount() {
-  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-  if (!raw) {
-    throw new Error("Missing FIREBASE_SERVICE_ACCOUNT_JSON env var.");
+let adminApp: App | null = null;
+let adminAuth: Auth | null = null;
+let adminDb: Firestore | null = null;
+
+try {
+  if (getApps().length) {
+    adminApp = getApps()[0];
+  } else {
+    const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+    if (!raw) {
+      throw new Error("Firebase Admin SDK initialization failed: Missing FIREBASE_SERVICE_ACCOUNT_JSON environment variable. Please check your server configuration.");
+    }
+    const serviceAccount = JSON.parse(raw);
+    if (typeof serviceAccount.private_key === "string") {
+      serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, "\n");
+    }
+    adminApp = initializeApp({ credential: cert(serviceAccount) });
   }
 
-  const parsed = JSON.parse(raw);
-
-  // Fix escaped newlines in private_key (very common in env vars)
-  if (typeof parsed.private_key === "string") {
-    parsed.private_key = parsed.private_key.replace(/\\n/g, "\n");
+  if (adminApp) {
+    adminAuth = getAuth(adminApp);
+    adminDb = getFirestore(adminApp);
   }
-
-  return parsed;
+} catch (e: any) {
+  console.error("Firebase Admin SDK initialization failed:", e);
 }
 
-function getAdminApp(): App {
-  if (getApps().length) return getApps()[0];
-
-  const serviceAccount = getServiceAccount();
-
-  return initializeApp({
-    credential: cert(serviceAccount),
-  });
-}
-
-export const adminApp = getAdminApp();
-export const adminDb = getFirestore(adminApp);
-export const adminAuth = getAuth(adminApp);
+export { adminApp, adminDb, adminAuth };
