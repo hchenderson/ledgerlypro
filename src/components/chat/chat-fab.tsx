@@ -1,3 +1,4 @@
+
 "use client";
 
 import * as React from "react";
@@ -131,10 +132,13 @@ function ChatBody() {
         }),
       });
 
-      if (!res.ok) throw new Error(`Chat request failed (${res.status})`);
+      const data = await res.json();
 
-      const data: { reply?: string } = await res.json();
-
+      if (!res.ok) {
+        const errorMessage = data.error || `Chat request failed with status ${res.status}`;
+        throw new Error(errorMessage);
+      }
+      
       setMessages((prev) => [
         ...prev,
         {
@@ -144,17 +148,16 @@ function ChatBody() {
           createdAt: Date.now(),
         },
       ]);
-    } catch (e) {
+    } catch (e: any) {
       setMessages((prev) => [
         ...prev,
         {
           id: uid(),
           role: "assistant",
-          content: "Something went wrong. Check /api/chat logs.",
+          content: e.message || "An unknown error occurred.",
           createdAt: Date.now(),
         },
       ]);
-      // eslint-disable-next-line no-console
       console.error(e);
     } finally {
       setIsSending(false);

@@ -1,3 +1,4 @@
+
 "use client";
 
 import * as React from "react";
@@ -75,7 +76,6 @@ export function ChatPanel() {
 
     try {
       const idToken = await user.getIdToken();
-      // For now: call a placeholder endpoint that returns { reply: string }
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { 
@@ -87,11 +87,12 @@ export function ChatPanel() {
         }),
       });
 
+      const data = await res.json();
+      
       if (!res.ok) {
-        throw new Error(`Chat request failed (${res.status})`);
+        const errorMessage = data.error || `Chat request failed with status ${res.status}`;
+        throw new Error(errorMessage);
       }
-
-      const data: { reply?: string } = await res.json();
 
       const assistantMsg: ChatMessage = {
         id: uid(),
@@ -101,16 +102,14 @@ export function ChatPanel() {
       };
 
       setMessages((prev) => [...prev, assistantMsg]);
-    } catch (err) {
+    } catch (err: any) {
       const assistantMsg: ChatMessage = {
         id: uid(),
         role: "assistant",
-        content:
-          "Sorry — something went wrong on my side. If this keeps happening, check your server logs for /api/chat.",
+        content: err.message || "An unknown error occurred.",
         createdAt: Date.now(),
       };
       setMessages((prev) => [...prev, assistantMsg]);
-      // eslint-disable-next-line no-console
       console.error(err);
     } finally {
       setIsSending(false);
