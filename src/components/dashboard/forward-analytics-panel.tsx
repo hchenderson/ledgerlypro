@@ -5,7 +5,6 @@ import { useForwardForecast } from "@/hooks/use-forward-forecast";
 import { ForecastNetChart } from "@/components/dashboard/forecast-net-chart";
 import { RecurringCommitmentsList } from "@/components/dashboard/recurring-commitments-list";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Rocket, Repeat } from "lucide-react";
 import { useUserData } from "@/hooks/use-user-data";
 import { useMemo, useState } from "react";
 import { Segmented } from "./forecast-controls";
@@ -18,8 +17,8 @@ export function ForwardAnalyticsPanel() {
   const isForecastLoading = userDataLoading || !series || !recurringFuture;
   const [chartMode, setChartMode] = useState<'net' | 'cumulativeNet'>('cumulativeNet');
 
-  const actuals: ForecastTx[] = useMemo(() => allTransactions.map(t => ({...t, source: 'actual'})), [allTransactions]);
-  const givingCategories = ["Donations", "Tithes", "Offerings"]; // Hardcoded for now
+  const actuals: ForecastTx[] = useMemo(() => allTransactions.map(t => ({...t, source: 'actual' as const})), [allTransactions]);
+  const givingCategories = ["Giving", "Tithes", "Offerings", "Donations"];
 
   return (
     <div>
@@ -27,15 +26,12 @@ export function ForwardAnalyticsPanel() {
         Financial Analytics
       </h3>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="lg:col-span-2">
-            <TrajectoryCard actuals={actuals} givingCategories={givingCategories} />
-        </div>
         <Card>
           <CardHeader>
             <div className="flex items-start justify-between">
                 <div>
-                    <CardTitle className="flex items-center gap-2"><Rocket /> Next 90-Day Net Forecast</CardTitle>
-                    <CardDescription>Projected net change based on recurring transactions and historical spending habits.</CardDescription>
+                    <CardTitle>Next 90 Days Net</CardTitle>
+                    <CardDescription>Recurring certainty + category/weekday baseline</CardDescription>
                 </div>
                  <Segmented
                     value={chartMode}
@@ -57,8 +53,8 @@ export function ForwardAnalyticsPanel() {
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Repeat /> Recurring Commitments</CardTitle>
-            <CardDescription>Scheduled transactions coming up in the next 30 days.</CardDescription>
+            <CardTitle>Recurring Commitments</CardTitle>
+            <CardDescription>Upcoming (next 30 days)</CardDescription>
           </CardHeader>
           <CardContent>
             {isForecastLoading ? (
@@ -72,6 +68,9 @@ export function ForwardAnalyticsPanel() {
             )}
           </CardContent>
         </Card>
+        <div className="lg:col-span-2">
+            <TrajectoryCard actuals={actuals} givingCategories={givingCategories} />
+        </div>
       </div>
     </div>
   );
