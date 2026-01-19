@@ -5,13 +5,19 @@ import { useMemo } from "react";
 import { addDays, startOfDay } from "date-fns";
 import { useUserData } from "@/hooks/use-user-data";
 import { expandRecurringBetween, type ForecastTx, type RecurringTxLike } from "@/forecast/expandRecurringBetween";
-import { buildWeeklyProfile, projectWeeklyBaselineEvenDaily } from "@/forecast/baseline";
 import { buildForecastSeries } from "@/forecast/series";
 import { buildWeeklyNetBand } from "@/forecast/confidence";
+import { useAuth } from "./use-auth";
+import { buildCategoryWeekdayProfile, projectCategoryWeekdayBaseline } from "@/forecast/baseline-category-weekday";
+import { buildMerchantProfile } from "@/forecast/merchant-profile";
+import { projectMerchantBaseline } from "@/forecast/merchant-project";
+import type { Category, SubCategory } from "@/types";
+
 
 // Assumes your Transaction shape includes: id, date, amount, type, category, description
 export function useForwardForecast(horizonDays = 90) {
-  const { allTransactions, recurringTransactions } = useUserData(); // provided by context
+  const { allTransactions, recurringTransactions, categories: allCategoriesFromUserData } = useUserData(); // provided by context
+  const { forecastSettings } = useAuth();
 
   return useMemo(() => {
     const start = startOfDay(new Date());
@@ -28,9 +34,45 @@ export function useForwardForecast(horizonDays = 90) {
     }));
 
     const recurringFuture = expandRecurringBetween(recurringTransactions as RecurringTxLike[], start, end);
+    
+    // --- START NEW HYBRID LOGIC ---
+    const baselineExclusions = forecastSettings.baselineExclusions ?? {};
 
-    const profile = buildWeeklyProfile(actuals, 13);
-    const baseline = projectWeeklyBaselineEvenDaily(profile, start, end);
+    // 1. Merchant-first baseline
+    const merchantProfile = buildMerchantProfile(actuals, 26, 4, { baselineExclusions });
+    const merchantBaseline = projectMerchantBaseline(merchantProfile, start, end);
+
+    // 2. Category baseline as fallback
+    const merchantDominantCategories = new Set(
+      Object.values(merchantProfile.merchants).map(m => m.category)
+    );
+
+    const allCategoryNames = new Set<string>();
+    const recurseCats = (cats: (Category | SubCategory)[]) => {
+        if (!cats) return;
+        cats.forEach(c => {
+            allCategoryNames.add(c.name);
+            if (c.subCategories) {
+                recurseCats(c.subCategories);
+            }
+        })
+    };
+    recurseCats(allCategoriesFromUserData);
+
+    const categoryBaselineInclusions = Array.from(allCategoryNames).filter(catName => 
+        !merchantDominantCategories.has(catName) &&
+        !(baselineExclusions.categories?.includes(catName))
+    );
+
+    const catProfile = buildCategoryWeekdayProfile(actuals, 13, 4);
+    const catBaseline = projectCategoryWeekdayBaseline(catProfile, start, end, {
+      includeCategories: categoryBaselineInclusions,
+    });
+    
+    // 3. Combine baselines
+    const baseline = [...merchantBaseline, ...catBaseline];
+    // --- END NEW HYBRID LOGIC ---
+
 
     // v1 forecast series = recurring certainty + baseline variable expectation
     const forecastTxs = [...recurringFuture, ...baseline];
@@ -38,9 +80,10 @@ export function useForwardForecast(horizonDays = 90) {
     const series = buildForecastSeries(forecastTxs, start, end);
     
     // --- Confidence Band Calculation ---
-    const { p25, p50, p75 } = buildWeeklyNetBand(actuals, 26);
-    const weeklyAverageNet = profile.weeklyIncomeAvg - profile.weeklyExpenseAvg;
-    const medianAdjustment = p50 - weeklyAverageNet; // Diff between average (mean) and median
+    const { p25, p50, p75, weeklyNetSamples } = buildWeeklyNetBand(actuals, 26);
+    
+    const weeklyAverageNet = weeklyNetSamples.length > 0 ? weeklyNetSamples.reduce((a, b) => a + b, 0) / weeklyNetSamples.length : 0;
+    const medianAdjustment = p50 - weeklyAverageNet; // Diff between historical mean and historical median
 
     const seriesWithBand = series.map((point, i) => {
         const daysFromStart = i;
@@ -71,7 +114,6 @@ export function useForwardForecast(horizonDays = 90) {
       series: seriesWithBand,
       recurringFuture,
       baseline,
-      profile,
     };
-  }, [allTransactions, recurringTransactions, horizonDays]);
+  }, [allTransactions, recurringTransactions, horizonDays, forecastSettings, allCategoriesFromUserData]);
 }
