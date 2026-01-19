@@ -160,3 +160,12 @@ export type ChatMessage = {
   content: string;
   createdAt: Date;
 };
+
+export interface ForecastSettings {
+  baselineExclusions?: {
+    categories?: string[];
+    merchants?: string[];
+  };
+  givingCategories?: string[];
+  baselineMode?: "category" | "merchant" | "hybrid";
+}

@@ -6,6 +6,7 @@ import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import type { ForecastSettings } from '@/types';
 
 interface AuthContextType {
   user: User | null;
@@ -17,6 +18,8 @@ interface AuthContextType {
   activeYear: number;
   setActiveYear: (year: number) => void;
   firstYear: number;
+  forecastSettings: ForecastSettings;
+  setForecastSettings: (settings: Partial<ForecastSettings>) => void;
 }
 
 const AuthContext = createContext<AuthContextType>({ 
@@ -29,6 +32,8 @@ const AuthContext = createContext<AuthContextType>({
   activeYear: new Date().getFullYear(),
   setActiveYear: () => {},
   firstYear: new Date().getFullYear(),
+  forecastSettings: {},
+  setForecastSettings: () => {},
 });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -38,6 +43,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [showInstructions, setShowInstructionsState] = useState(false);
   const [activeYear, setActiveYearState] = useState(new Date().getFullYear());
   const [firstYear, setFirstYearState] = useState(new Date().getFullYear());
+  const [forecastSettings, setForecastSettingsState] = useState<ForecastSettings>({});
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -51,6 +57,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           showInstructions: false,
           activeYear: new Date().getFullYear(),
           firstYear: new Date().getFullYear(),
+          forecastSettings: {},
         };
 
         if (userDoc.exists()) {
@@ -65,6 +72,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setShowInstructionsState(prev => prev !== settingsData.showInstructions ? settingsData.showInstructions : prev);
         setActiveYearState(prev => prev !== settingsData.activeYear ? settingsData.activeYear : prev);
         setFirstYearState(prev => prev !== settingsData.firstYear ? settingsData.firstYear : prev);
+        setForecastSettingsState(settingsData.forecastSettings || {});
 
       } else {
         // No user, reset to defaults
@@ -72,6 +80,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setShowInstructionsState(false);
         setActiveYearState(new Date().getFullYear());
         setFirstYearState(new Date().getFullYear());
+        setForecastSettingsState({});
       }
       setLoading(false);
     });
@@ -102,9 +111,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await setDoc(userDocRef, { activeYear: year }, { merge: true });
     }
   }, [user]);
+  
+   const setForecastSettings = useCallback(async (settings: Partial<ForecastSettings>) => {
+    if (user) {
+        const userDocRef = doc(db, 'users', user.uid, 'settings', 'main');
+        
+        const newSettings = {
+            ...forecastSettings,
+            ...settings,
+            baselineExclusions: {
+                ...(forecastSettings.baselineExclusions || {}),
+                ...(settings.baselineExclusions || {}),
+            }
+        };
+
+        if (!newSettings.baselineExclusions?.categories?.length && !newSettings.baselineExclusions?.merchants?.length) {
+            delete newSettings.baselineExclusions;
+        }
+
+        setForecastSettingsState(newSettings);
+        await setDoc(userDocRef, { forecastSettings: newSettings }, { merge: true });
+    }
+  }, [user, forecastSettings]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, onboardingComplete, setOnboardingComplete, showInstructions, setShowInstructions, activeYear, setActiveYear, firstYear }}>
+    <AuthContext.Provider value={{ user, loading, onboardingComplete, setOnboardingComplete, showInstructions, setShowInstructions, activeYear, setActiveYear, firstYear, forecastSettings, setForecastSettings }}>
       {children}
     </AuthContext.Provider>
   );
