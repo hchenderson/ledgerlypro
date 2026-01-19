@@ -299,7 +299,7 @@ function BudgetsPageContent() {
   }
   
   const handleNextMonth = () => {
-    setCurrentMonth(prev => prev === 11 ? 0 : prev + 1);
+    setCurrentMonth(prev => prev === 11 ? 0 : prev - 1);
   }
 
   const handleDragStart = (e: React.DragEvent<HTMLDivElement>, item: any, index: number) => {
@@ -349,13 +349,13 @@ function BudgetsPageContent() {
       </div>
 
        <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
+            <CardHeader className="flex flex-col items-center gap-4 sm:flex-row sm:justify-between">
                 <CardTitle>Viewing Budgets For</CardTitle>
                 <div className="flex items-center gap-2">
                     <Button variant="outline" size="icon" onClick={handlePrevMonth}>
                         <ChevronLeft className="h-4 w-4" />
                     </Button>
-                    <span className="font-semibold text-lg w-36 text-center">{format(selectedDate, "MMMM yyyy")}</span>
+                    <span className="font-semibold text-lg min-w-[150px] text-center">{format(selectedDate, "MMMM yyyy")}</span>
                     <Button variant="outline" size="icon" onClick={handleNextMonth}>
                         <ChevronRight className="h-4 w-4" />
                     </Button>
