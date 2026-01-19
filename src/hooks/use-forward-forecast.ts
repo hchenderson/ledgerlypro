@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useMemo } from "react";
@@ -6,6 +7,7 @@ import { useUserData } from "@/hooks/use-user-data";
 import { expandRecurringBetween, type ForecastTx, type RecurringTxLike } from "@/forecast/expandRecurringBetween";
 import { buildWeeklyProfile, projectWeeklyBaselineEvenDaily } from "@/forecast/baseline";
 import { buildForecastSeries } from "@/forecast/series";
+import { buildWeeklyNetBand } from "@/forecast/confidence";
 
 // Assumes your Transaction shape includes: id, date, amount, type, category, description
 export function useForwardForecast(horizonDays = 90) {
@@ -34,11 +36,39 @@ export function useForwardForecast(horizonDays = 90) {
     const forecastTxs = [...recurringFuture, ...baseline];
 
     const series = buildForecastSeries(forecastTxs, start, end);
+    
+    // --- Confidence Band Calculation ---
+    const { p25, p50, p75 } = buildWeeklyNetBand(actuals, 26);
+    const weeklyAverageNet = profile.weeklyIncomeAvg - profile.weeklyExpenseAvg;
+    const medianAdjustment = p50 - weeklyAverageNet; // Diff between average (mean) and median
+
+    const seriesWithBand = series.map((point, i) => {
+        const daysFromStart = i;
+        const weeksFromStart = daysFromStart / 7;
+
+        // Adjust the main cumulative line to be based on the median weekly net (p50) instead of the average.
+        const cumulativeMedianAdjustment = weeksFromStart * medianAdjustment;
+        const p50CumulativeNet = point.cumulativeNet + cumulativeMedianAdjustment;
+
+        // The deviation of p25 and p75 from the median (p50)
+        const p25Offset = p25 - p50;
+        const p75Offset = p75 - p50;
+
+        // The uncertainty grows with sqrt of time.
+        const bandWidthScalar = Math.sqrt(weeksFromStart);
+
+        return {
+            ...point,
+            cumulativeNet_p50: p50CumulativeNet,
+            cumulativeNet_p25: p50CumulativeNet + bandWidthScalar * p25Offset,
+            cumulativeNet_p75: p50CumulativeNet + bandWidthScalar * p75Offset,
+        };
+    });
 
     return {
       start,
       end,
-      series,
+      series: seriesWithBand,
       recurringFuture,
       baseline,
       profile,
