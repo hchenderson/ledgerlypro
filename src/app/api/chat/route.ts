@@ -1,6 +1,6 @@
 
 import { NextResponse } from "next/server";
-import { requireUid } from "@/lib/requireUid";
+import { AuthenticationError, requireUid } from "@/lib/requireUid";
 import { adminDb } from "@/lib/firebaseAdmin";
 
 export async function POST(req: Request) {
@@ -27,7 +27,7 @@ export async function POST(req: Request) {
   } catch (err: any) {
     console.error("[/api/chat Error]", err);
     // Distinguish between auth errors (client's fault) and server errors
-    const isAuthError = err.code && typeof err.code === 'string' && err.code.startsWith('auth/');
+    const isAuthError = err instanceof AuthenticationError || (err.code && typeof err.code === 'string' && err.code.startsWith('auth/'));
     if (isAuthError) {
       return NextResponse.json({ error: err.message }, { status: 401 });
     }

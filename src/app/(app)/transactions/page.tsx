@@ -331,7 +331,7 @@ export default function TransactionsPage() {
                     onClick={() => handleEdit(transaction)}
                     className={cn(!isReadOnly && "cursor-pointer")}
                   >
-                    <TableCell className="font-medium">
+                    <TableCell className="font-medium max-w-[120px] sm:max-w-xs truncate">
                       {transaction.description}
                     </TableCell>
                     <TableCell>

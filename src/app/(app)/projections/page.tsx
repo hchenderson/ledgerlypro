@@ -4,8 +4,8 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { getCashFlowProjections, GetCashFlowProjectionsInput } from "@/ai/flows/cash-flow-projections";
 import { useUserData } from "@/hooks/use-user-data";
+import { useAuth } from "@/hooks/use-auth";
 import { Rocket, Sparkles, AlertTriangle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -19,6 +19,7 @@ function ProjectionsPageContent() {
   const [error, setError] = useState<string | null>(null);
   const [userPrompt, setUserPrompt] = useState("");
   const { allTransactions } = useUserData();
+  const { user } = useAuth();
 
   const handleGenerateProjection = async () => {
     setLoading(true);
@@ -32,11 +33,24 @@ function ProjectionsPageContent() {
     }
 
     try {
-      const input: GetCashFlowProjectionsInput = {
+      if (!user) throw new Error("You must be signed in.");
+      const idToken = await user.getIdToken();
+      const input = {
         historicalData: JSON.stringify(allTransactions),
         userPrompt: userPrompt || undefined,
       };
-      const result = await getCashFlowProjections(input);
+      const response = await fetch('/api/ai/projections', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify(input),
+      });
+      const result = (await response.json()) as { projection?: string; error?: string };
+      if (!response.ok || !result.projection) {
+        throw new Error(result.error ?? 'Projection request failed');
+      }
       setProjection(result.projection);
     } catch (e) {
       setError("Failed to generate projection. Please try again.");

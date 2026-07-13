@@ -79,13 +79,15 @@ const CustomPieTooltip = ({ active, payload }: any) => {
 };
 
 const renderCategoryLabel = (props: PieLabelRenderProps) => {
-  const { cx, cy, midAngle, innerRadius, outerRadius, percent, name, value } = props;
+  const cx = Number(props.cx ?? 0);
+  const cy = Number(props.cy ?? 0);
+  const midAngle = Number(props.midAngle ?? 0);
+  const innerRadius = Number(props.innerRadius ?? 0);
+  const outerRadius = Number(props.outerRadius ?? 0);
+  const percent = Number(props.percent ?? 0);
   const RADIAN = Math.PI / 180;
-  // @ts-ignore
   const radius = innerRadius + (outerRadius - innerRadius) * 0.6;
-  // @ts-ignore
   const x = cx + radius * Math.cos(-midAngle * RADIAN);
-  // @ts-ignore
   const y = cy + radius * Math.sin(-midAngle * RADIAN);
 
   if (typeof percent !== 'number' || percent < 0.05) return null; // Don't render label for small slices
@@ -95,7 +97,6 @@ const renderCategoryLabel = (props: PieLabelRenderProps) => {
       x={x}
       y={y}
       fill="#ffffff"
-      // @ts-ignore
       textAnchor={x > cx ? "start" : "end"}
       dominantBaseline="central"
       style={{ fontSize: 10, fontWeight: 'bold' }}

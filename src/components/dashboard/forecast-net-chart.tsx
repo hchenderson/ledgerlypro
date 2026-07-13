@@ -22,14 +22,14 @@ export function ForecastNetChart({
     band: hasBand && mode === 'cumulativeNet' ? [p.cumulativeNet_p25, p.cumulativeNet_p75] : undefined,
   }));
 
-  const formatTooltipValue = (value: any) => {
+  const formatTooltipValue = (value: unknown): string => {
     if (typeof value === 'number') {
       return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value);
     }
     if (Array.isArray(value) && value.length === 2) {
       return `${formatTooltipValue(value[0])} - ${formatTooltipValue(value[1])}`;
     }
-    return value;
+    return String(value ?? '');
   }
 
   return (
@@ -56,7 +56,7 @@ export function ForecastNetChart({
             <Area
               type="monotone"
               dataKey="band"
-              stroke={false}
+              stroke="none"
               fill="url(#bandGradient)"
               isAnimationActive={false}
               name="Confidence Band (p25-p75)"

@@ -76,13 +76,14 @@ const formSchema = z.object({
 })
 
 type FormValues = z.infer<typeof formSchema>
+export type SubmittedTransactionValues = Omit<FormValues, 'category'> & { category: string };
 
 interface NewTransactionSheetProps {
     isOpen?: boolean;
     onOpenChange?: (isOpen: boolean) => void;
     transaction?: Partial<Omit<Transaction, 'id'>> & { id: string } | null;
-    onTransactionCreated?: (values: FormValues) => void;
-    onTransactionUpdated?: (id: string, values: FormValues) => void;
+    onTransactionCreated?: (values: SubmittedTransactionValues) => void;
+    onTransactionUpdated?: (id: string, values: SubmittedTransactionValues) => void;
     children?: React.ReactNode;
     categories: Category[];
 }

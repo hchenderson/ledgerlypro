@@ -4,12 +4,11 @@ import type {NextConfig} from 'next';
 const nextConfig: NextConfig = {
   /* config options here */
   trailingSlash: false,
-  typescript: {
-    ignoreBuildErrors: true,
-  },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
+  serverExternalPackages: [
+    'genkit',
+    '@genkit-ai/google-genai',
+    'firebase-admin',
+  ],
   images: {
     remotePatterns: [
       {

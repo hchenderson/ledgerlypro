@@ -2,24 +2,20 @@
 
 "use client";
 
-import { DollarSign, TrendingUp, TrendingDown, Wallet, Target, CalendarClock, Star, Flag, Activity, PiggyBank, Rocket, Repeat } from "lucide-react";
+import { Star, Flag } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { OverviewChart } from "@/components/dashboard/overview-chart";
 import { RecentTransactions } from "@/components/dashboard/recent-transactions";
 import { BudgetProgress } from "@/components/dashboard/budget-progress";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useUserData } from "@/hooks/use-user-data";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/use-auth";
 import { InstructionsGuide } from "@/components/dashboard/instructions-guide";
-import { getDashboardAnalytics } from "@/ai/flows/get-dashboard-analytics-flow";
-import type { GetDashboardAnalyticsOutput } from "@/ai/flows/get-dashboard-analytics-flow";
+import { computeDashboardAnalytics } from "@/lib/dashboard-analytics";
 import { GoalProgress } from "@/components/dashboard/goal-progress";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
-import { format, subMonths, parseISO } from "date-fns";
-import { AdBanner } from "@/components/ad-banner";
+import { format, subMonths } from "date-fns";
 import { ForwardAnalyticsPanel } from "@/components/dashboard/forward-analytics-panel";
 
 function DashboardSkeleton() {
@@ -43,10 +39,8 @@ function DashboardSkeleton() {
 }
 
 export default function DashboardPage() {
-  const { allTransactions, transactions, loading: userDataLoading, getBudgetDetails, goals, budgets, categories, startingBalance, recurringTransactions } = useUserData();
-  const { user, showInstructions, loading: authLoading, activeYear, firstYear } = useAuth();
-  const [analytics, setAnalytics] = useState<GetDashboardAnalyticsOutput | null>(null);
-  const [isAnalyticsLoading, setIsAnalyticsLoading] = useState(true);
+  const { allTransactions, transactions, loading: userDataLoading, getBudgetDetails, goals, budgets, categories, startingBalance } = useUserData();
+  const { showInstructions, loading: authLoading, activeYear } = useAuth();
   
   const openingBalanceForYear = useMemo(() => {
     if (userDataLoading || authLoading) return 0;
@@ -69,21 +63,17 @@ export default function DashboardPage() {
     return startingBalance + netDelta;
   }, [allTransactions, startingBalance, activeYear, userDataLoading, authLoading]);
 
-  useEffect(() => {
-    if (!userDataLoading && !authLoading && user) {
-      const fetchAnalytics = async () => {
-        setIsAnalyticsLoading(true);
-
-        // Filter transactions for the active year before sending to analytics
-        const yearTransactions = allTransactions.filter(t => new Date(t.date).getFullYear() === activeYear);
-
-        getDashboardAnalytics({ transactions: yearTransactions, startingBalanceForYear: openingBalanceForYear })
-          .then(setAnalytics)
-          .finally(() => setIsAnalyticsLoading(false));
-      }
-      fetchAnalytics();
-    }
-  }, [allTransactions, userDataLoading, authLoading, user, activeYear, openingBalanceForYear]);
+  const analytics = useMemo(() => {
+    const yearTransactions = allTransactions.filter(
+      (transaction) => new Date(transaction.date).getFullYear() === activeYear
+    );
+    const referenceDate = new Date(activeYear, new Date().getMonth(), 1);
+    return computeDashboardAnalytics(
+      yearTransactions,
+      openingBalanceForYear,
+      referenceDate
+    );
+  }, [allTransactions, activeYear, openingBalanceForYear]);
 
   const favoritedBudgets = useMemo(() => {
     const yearBudgets = budgets.filter(b => b.year === activeYear);
@@ -91,7 +81,7 @@ export default function DashboardPage() {
       activeBudgets: yearBudgets,
       transactions: transactions,
       categories: categories,
-      forDate: new Date(),
+      forDate: new Date(activeYear, new Date().getMonth(), 1),
     }).filter(b => b.isFavorite);
   }, [getBudgetDetails, budgets, activeYear, transactions, categories]);
 
@@ -101,7 +91,7 @@ export default function DashboardPage() {
     return new Date(transactions[0].date);
   }, [transactions]);
   
-  const isLoading = userDataLoading || authLoading || isAnalyticsLoading || !analytics;
+  const isLoading = userDataLoading || authLoading;
 
   if (isLoading && transactions.length === 0) {
     return <DashboardSkeleton />;

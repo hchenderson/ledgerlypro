@@ -1,7 +1,7 @@
 
 import type { Budget, Category, Goal, RecurringTransaction, Transaction } from "@/types";
 
-export const defaultCategories: Omit<Category, 'id'>[] = [
+export const defaultCategories: Category[] = [
     {
         id: "cat_inc_1",
         name: "Income",

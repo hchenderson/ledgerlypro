@@ -2,7 +2,7 @@
 
 "use client";
 
-import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   collection,
   doc,
@@ -16,21 +16,12 @@ import {
   orderBy,
   where,
   QueryConstraint,
-  startAt,
-  endAt,
 } from 'firebase/firestore';
 import type { Transaction, Category, SubCategory, Budget, RecurringTransaction, Goal, ProcessedGoal } from '@/types';
 import { useAuth } from './use-auth';
 import { db } from '@/lib/firebase';
+import { chunkArray } from '@/lib/batching';
 import {
-  addDays,
-  addWeeks,
-  addMonths,
-  addYears,
-  isBefore,
-  startOfDay,
-  parseISO,
-  isToday,
   startOfYear,
   endOfYear,
   getYear,
@@ -58,6 +49,9 @@ interface UserDataContextType {
   updateBudget: (id: string, values: Partial<Omit<Budget, 'id'>>) => Promise<void>;
   deleteBudget: (id: string) => Promise<void>;
   toggleFavoriteBudget: (id: string) => Promise<void>;
+  addRecurringTransaction: (transaction: Omit<RecurringTransaction, 'id'>) => Promise<void>;
+  updateRecurringTransaction: (id: string, values: Partial<Omit<RecurringTransaction, 'id'>>) => Promise<void>;
+  deleteRecurringTransaction: (id: string) => Promise<void>;
   getBudgetDetails: (params: {
     activeBudgets: Budget[];
     comparisonBudgets?: Budget[];
@@ -170,6 +164,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [goals, setGoals] = useState<Goal[]>([]);
   const [startingBalance, setStartingBalance] = useState(0);
   const [loading, setLoading] = useState(true);
+  const recurrenceProcessingRef = useRef(false);
 
   const getCollectionRef = useCallback(
     (collectionName: string) => {
@@ -227,91 +222,26 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const processRecurringTransactions = useCallback(async () => {
     const systemYear = new Date().getFullYear();
     if (activeYear !== systemYear) return;
+    if (!user || recurringTransactions.length === 0 || recurrenceProcessingRef.current) return;
 
-    if (!user || recurringTransactions.length === 0) return;
-
-    const today = startOfDay(new Date());
-    const batch = writeBatch(db);
-    let transactionsAdded = false;
-    const transactionsCollRef = getCollectionRef('transactions');
-    const recurringCollRef = getCollectionRef('recurringTransactions');
-
-    if (!transactionsCollRef || !recurringCollRef) return;
-
-    for (const rt of recurringTransactions) {
-      try {
-        const startDate = startOfDay(parseISO(rt.startDate));
-        let lastAdded = rt.lastAddedDate ? startOfDay(parseISO(rt.lastAddedDate)) : null;
-
-        let nextDate = lastAdded;
-
-        if (!nextDate) {
-          nextDate = startDate;
-        } else {
-          switch (rt.frequency) {
-            case 'daily':
-              nextDate = addDays(nextDate, 1);
-              break;
-            case 'weekly':
-              nextDate = addWeeks(nextDate, 1);
-              break;
-            case 'monthly':
-              nextDate = addMonths(nextDate, 1);
-              break;
-            case 'yearly':
-              nextDate = addYears(nextDate, 1);
-              break;
-          }
-        }
-
-        while (isBefore(nextDate, today) || isToday(nextDate)) {
-          const newTransactionDoc = doc(transactionsCollRef);
-          batch.set(newTransactionDoc, {
-            id: newTransactionDoc.id,
-            date: nextDate.toISOString(),
-            description: `(Recurring) ${rt.description}`,
-            amount: rt.amount,
-            type: rt.type,
-            category: rt.category,
-            categoryId: rt.categoryId ?? undefined,
-          });
-          transactionsAdded = true;
-
-          lastAdded = nextDate;
-
-          switch (rt.frequency) {
-            case 'daily':
-              nextDate = addDays(nextDate, 1);
-              break;
-            case 'weekly':
-              nextDate = addWeeks(nextDate, 1);
-              break;
-            case 'monthly':
-              nextDate = addMonths(nextDate, 1);
-              break;
-            case 'yearly':
-              nextDate = addYears(nextDate, 1);
-              break;
-          }
-        }
-
-        if (lastAdded && (!rt.lastAddedDate || lastAdded.getTime() !== parseISO(rt.lastAddedDate).getTime())) {
-          const recurringDocToUpdate = doc(recurringCollRef, rt.id);
-          batch.update(recurringDocToUpdate, { lastAddedDate: lastAdded.toISOString() });
-        }
-      } catch (e) {
-        console.error(`Error processing recurring transaction ID ${rt.id} with date ${rt.startDate}:`, e);
-      }
-    }
-
+    recurrenceProcessingRef.current = true;
     try {
-      if (transactionsAdded) {
-        await batch.commit();
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const idToken = await user.getIdToken();
+        const response = await fetch('/api/recurring/process', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${idToken}` },
+        });
+        if (!response.ok) throw new Error('Recurring transaction processing failed');
+        const result = (await response.json()) as { hasMore?: boolean };
+        if (!result.hasMore) break;
       }
-    } catch (e) {
-      console.error('Error processing recurring transactions batch: ', e);
+    } catch (error) {
+      console.error('Error processing recurring transactions:', error);
+    } finally {
+      recurrenceProcessingRef.current = false;
     }
-  }, [user, recurringTransactions, getCollectionRef, activeYear]);
+  }, [user, recurringTransactions.length, activeYear]);
 
   useEffect(() => {
     if (user && !loading && recurringTransactions.length > 0) {
@@ -766,7 +696,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     const parentDoc = await getDoc(docRef);
     if (parentDoc.exists()) {
-      let data = parentDoc.data();
+      const data = parentDoc.data();
 
       const addNested = (items: SubCategory[], path: string[]): SubCategory[] => {
         if (path.length === 0) {
@@ -807,7 +737,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const categoryDocRef = doc(categoriesCollRef, categoryId);
     const parentDoc = await getDoc(categoryDocRef);
     if (parentDoc.exists()) {
-      let subCategories = parentDoc.data().subCategories || [];
+      const subCategories = parentDoc.data().subCategories || [];
 
       const updateNested = (items: SubCategory[], path: string[]): SubCategory[] => {
         const [currentId, ...restPath] = path;
@@ -847,7 +777,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const docRef = doc(collRef, categoryId);
     const parentDoc = await getDoc(docRef);
     if (parentDoc.exists()) {
-      let subCategories = parentDoc.data().subCategories || [];
+      const subCategories = parentDoc.data().subCategories || [];
 
       const deleteNested = (items: SubCategory[], path: string[]): SubCategory[] => {
         const [currentId, ...restPath] = path;
@@ -961,11 +891,12 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!collRef) return;
     const q = query(collRef, ...constraints);
     const snapshot = await getDocs(q);
-    const batch = writeBatch(db);
-    snapshot.docs.forEach((docSnap) => {
-      batch.delete(docSnap.ref);
-    });
-    await batch.commit();
+    const chunks = chunkArray(snapshot.docs, 450);
+    await Promise.all(chunks.map(async (docs) => {
+      const batch = writeBatch(db);
+      docs.forEach((docSnap) => batch.delete(docSnap.ref));
+      await batch.commit();
+    }));
   };
 
   const clearTransactions = async () => {
@@ -1064,6 +995,9 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     updateBudget,
     deleteBudget,
     toggleFavoriteBudget,
+    addRecurringTransaction,
+    updateRecurringTransaction,
+    deleteRecurringTransaction,
     getBudgetDetails,
     addGoal,
     updateGoal,

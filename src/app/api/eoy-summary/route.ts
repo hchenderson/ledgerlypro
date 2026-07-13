@@ -1,5 +1,6 @@
 // /app/api/eoy-summary/route.ts
 import { NextResponse } from "next/server";
+import type { EOYCategorySummary } from "@/lib/eoy";
 
 /**
  * Body expected:
@@ -20,13 +21,13 @@ export async function POST(req: Request) {
     totalIncome,
     totalExpenses,
     net,
-    topCategories = [],
+    topCategories = [] as EOYCategorySummary[],
   } = body;
 
   const topThree = topCategories.slice(0, 3);
   const topDescriptions = topThree
     .map(
-      (c) =>
+      (c: EOYCategorySummary) =>
         `${c.name} at $${c.total.toFixed(2)} (${c.percentageOfTotal.toFixed(
           1
         )}% of expenses)`

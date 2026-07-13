@@ -278,10 +278,10 @@ function RecurringPageContent() {
             <TableHeader>
               <TableRow>
                 <TableHead>Description</TableHead>
-                <TableHead>Amount</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>Frequency</TableHead>
+                <TableHead className="hidden md:table-cell">Category</TableHead>
+                <TableHead className="hidden md:table-cell">Frequency</TableHead>
                 <TableHead>Next Date</TableHead>
+                <TableHead className="text-right">Amount</TableHead>
                 <TableHead><span className="sr-only">Actions</span></TableHead>
               </TableRow>
             </TableHeader>
@@ -289,13 +289,13 @@ function RecurringPageContent() {
               {sortedRecurringTransactions.length > 0 ? (
                 sortedRecurringTransactions.map(rt => (
                   <TableRow key={rt.id}>
-                    <TableCell className="font-medium">{rt.description}</TableCell>
-                    <TableCell className={rt.type === 'income' ? 'text-emerald-500' : 'text-red-500'}>
+                    <TableCell className="font-medium max-w-[120px] truncate sm:max-w-xs">{rt.description}</TableCell>
+                    <TableCell className="hidden md:table-cell"><Badge variant="outline">{rt.category}</Badge></TableCell>
+                    <TableCell className="hidden md:table-cell capitalize">{rt.frequency}</TableCell>
+                    <TableCell>{format(calculateNextOccurrence(rt), "MMM d, yyyy")}</TableCell>
+                    <TableCell className={cn("text-right", rt.type === 'income' ? 'text-emerald-500' : 'text-red-500')}>
                       {rt.type === 'income' ? '+' : '-'}{new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(rt.amount)}
                     </TableCell>
-                    <TableCell><Badge variant="outline">{rt.category}</Badge></TableCell>
-                    <TableCell className="capitalize">{rt.frequency}</TableCell>
-                    <TableCell>{format(calculateNextOccurrence(rt), "MMM d, yyyy")}</TableCell>
                     <TableCell className="text-right">
                       <RecurringDialog transaction={rt} onSave={handleSave} isReadOnly={isReadOnly}>
                         <Button variant="ghost" size="icon" disabled={isReadOnly}><Edit className="h-4 w-4" /></Button>

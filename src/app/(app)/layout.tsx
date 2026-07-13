@@ -28,7 +28,8 @@ import { Button } from "@/components/ui/button";
 import { AdBanner } from "@/components/ad-banner";
 import { cn } from "@/lib/utils";
 import { YearSwitcher } from "@/components/year-switcher";
-import { ComparisonProvider } from "@/hooks/use-comparison";
+import { ComparisonProvider, useComparison } from "@/hooks/use-comparison";
+import { ComparisonSwitcher } from "@/components/comparison-switcher";
 
 
 function AppLayoutSkeleton() {
@@ -63,11 +64,12 @@ function AppLayoutSkeleton() {
 function MainAppShell({ children }: { children: React.ReactNode }) {
     const { addTransaction, categories } = useUserData();
     const { user, activeYear } = useAuth();
+    const { isComparing } = useComparison();
     const [isImportSheetOpen, setIsImportSheetOpen] = useState(false);
     const [isNewTxSheetOpen, setIsNewTxSheetOpen] = useState(false);
     
     const systemYear = new Date().getFullYear();
-    const isReadOnly = activeYear < systemYear;
+    const isReadOnly = activeYear < systemYear || isComparing;
 
     const handleTransactionsImported = (transactions: Omit<Transaction, 'id'>[]) => {
         transactions.forEach(addTransaction);
@@ -93,9 +95,12 @@ function MainAppShell({ children }: { children: React.ReactNode }) {
             </Sidebar>
 
             <SidebarInset className="flex flex-col">
-                 <header className="flex h-16 shrink-0 items-center border-b px-6 gap-4">
+                 <header className="flex h-16 shrink-0 items-center border-b px-4 gap-2">
                     <SidebarTrigger />
                     <YearSwitcher />
+                    <div className="hidden md:block">
+                        <ComparisonSwitcher />
+                    </div>
 
                     <div className="ml-auto flex items-center gap-2">
                         <ImportTransactionsDialog
@@ -103,9 +108,9 @@ function MainAppShell({ children }: { children: React.ReactNode }) {
                             onOpenChange={setIsImportSheetOpen}
                             onTransactionsImported={handleTransactionsImported}
                         >
-                            <Button variant="outline" size="sm" disabled={isReadOnly} title={isReadOnly ? "You cannot import transactions into a past year." : "Import transactions"}>
-                                <Download className="mr-2 h-4 w-4"/>
-                                Import
+                            <Button variant="outline" size="sm" disabled={isReadOnly} title={isReadOnly ? "You cannot import transactions into a past year." : "Import transactions"} className="flex items-center">
+                                <Download className="h-4 w-4 sm:mr-2" />
+                                <span className="hidden sm:inline">Import</span>
                             </Button>
                         </ImportTransactionsDialog>
 
@@ -117,9 +122,9 @@ function MainAppShell({ children }: { children: React.ReactNode }) {
                             }} 
                             categories={categories}
                         >
-                            <Button size="sm" disabled={isReadOnly} title={isReadOnly ? "You cannot add transactions to a past year." : "Add new transaction"}>
-                                <PlusCircle className="mr-2 h-4 w-4" />
-                                New Transaction
+                            <Button size="sm" disabled={isReadOnly} title={isReadOnly ? "You cannot add transactions to a past year." : "Add new transaction"} className="flex items-center">
+                                <PlusCircle className="h-4 w-4 sm:mr-2" />
+                                <span className="hidden sm:inline">New</span>
                             </Button>
                         </NewTransactionSheet>
                         <UserNav />

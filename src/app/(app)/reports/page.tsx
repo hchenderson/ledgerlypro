@@ -23,16 +23,14 @@ import {
   ArrowUp,
   ArrowDown,
   BookMarked,
-  Loader2,
   Filter,
   Trash2,
   CalendarCheck,
   ArrowRight,
-  PlusCircle,
 } from 'lucide-react';
-import type { Category, SubCategory, QuarterlyReport, Budget } from '@/types';
+import type { Category, SubCategory, QuarterlyReport } from '@/types';
 import { DateRange } from 'react-day-picker';
-import { subMonths, startOfMonth, endOfMonth, startOfYear, endOfYear, getYear, format, startOfQuarter, endOfQuarter, subQuarters, getQuarter } from 'date-fns';
+import { subMonths, startOfMonth, endOfMonth, startOfYear, endOfYear, format } from 'date-fns';
 import Link from 'next/link';
 
 import { OverviewChart } from '@/components/dashboard/overview-chart';
@@ -56,16 +54,6 @@ import {
 } from "@/components/ui/table"
 import { Progress } from '@/components/ui/progress';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogClose,
-  DialogFooter,
-} from '@/components/ui/dialog';
-import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -78,12 +66,12 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
 import { SearchableMultiSelect } from '@/components/ui/searchable-multi-select';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Calendar as CalendarIcon } from 'lucide-react';
 import { ExportQuarterlyReportDialog } from '@/components/reports/export-quarterly-report-dialog';
+import { GenerateQuarterlyReportDialog } from '@/components/reports/generate-quarterly-report-dialog';
 
 const PRESET_RANGES = [
   { label: 'This Month', value: 'this-month' },
@@ -592,107 +580,6 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
   );
 }
 
-function GenerateReportDialog({ onGenerate }: { onGenerate: (referenceDate: Date, notes: string | undefined, budgetIds: string[]) => void }) {
-    const { toast } = useToast();
-    const { budgets } = useUserData();
-    const [isOpen, setIsOpen] = useState(false);
-    const [referenceDate, setReferenceDate] = useState<Date | undefined>(subQuarters(new Date(), 1));
-    const [notes, setNotes] = useState<string | undefined>();
-    const [selectedBudgetIds, setSelectedBudgetIds] = useState<string[]>([]);
-    const [isLoading, setIsLoading] = useState(false);
-    
-    const budgetOptions = useMemo(() => {
-        return budgets.map(b => ({
-            value: b.id,
-            label: `${b.categoryName} (${b.year})`,
-        })).sort((a, b) => a.label.localeCompare(b.label));
-    }, [budgets]);
-    
-    const handleGenerate = async () => {
-        if (!referenceDate) {
-            toast({
-                variant: "destructive",
-                title: "Date Required",
-                description: "Please select a reference date for the report."
-            });
-            return;
-        }
-
-        setIsLoading(true);
-        try {
-            await onGenerate(referenceDate, notes, selectedBudgetIds);
-            setIsOpen(false);
-            setNotes(undefined);
-            setSelectedBudgetIds([]);
-        } finally {
-            setIsLoading(false);
-        }
-    };
-    
-    return (
-        <Dialog open={isOpen} onOpenChange={setIsOpen}>
-            <DialogTrigger asChild>
-                <Button>
-                    <PlusCircle className="mr-2 h-4 w-4" />
-                    New Quarterly Report
-                </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-lg">
-                <DialogHeader>
-                    <DialogTitle>Generate Quarterly Report</DialogTitle>
-                    <DialogDescription>
-                        Select a date within the quarter you want to report on. You can also include specific budgets.
-                    </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                    <div className="space-y-2">
-                        <Label>Reference Date</Label>
-                        <Popover>
-                            <PopoverTrigger asChild>
-                                <Button variant="outline" className="w-full justify-start text-left font-normal">
-                                    <CalendarIcon className="mr-2 h-4 w-4" />
-                                    {referenceDate ? format(referenceDate, 'PPP') : 'Select a date'}
-                                </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0">
-                                <Calendar mode="single" selected={referenceDate} onSelect={setReferenceDate} initialFocus />
-                            </PopoverContent>
-                        </Popover>
-                        {referenceDate && (
-                            <p className="text-sm text-muted-foreground">This will generate a report for <strong>Q{getQuarter(referenceDate)} {getYear(referenceDate)}</strong>.</p>
-                        )}
-                    </div>
-                     <div className="space-y-2">
-                        <Label>Budgets to Include (Optional)</Label>
-                        <SearchableMultiSelect
-                            options={budgetOptions}
-                            selected={selectedBudgetIds}
-                            onChange={setSelectedBudgetIds}
-                            placeholder="Select budgets..."
-                        />
-                    </div>
-                    <div className="space-y-2">
-                        <Label>Notes (Optional)</Label>
-                        <Textarea
-                            placeholder="Add any notes or commentary for this report..."
-                            value={notes}
-                            onChange={(e) => setNotes(e.target.value)}
-                            rows={3}
-                        />
-                    </div>
-                </div>
-                <DialogFooter>
-                    <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                    <Button onClick={handleGenerate} disabled={isLoading}>
-                        {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Generating...</> : "Generate Report"}
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
-    );
-}
-
-
 function AdvancedReportView() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -882,7 +769,7 @@ function AdvancedReportView() {
                             <TableHead>Category</TableHead>
                             <TableHead className="text-right">Budget</TableHead>
                             <TableHead className="text-right">Actual</TableHead>
-                            <TableHead className="text-right">Variance</TableHead>
+                            <TableHead className="text-right hidden sm:table-cell">Variance</TableHead>
                             <TableHead className="text-right">% Used</TableHead>
                         </TableRow>
                     </TableHeader>
@@ -892,7 +779,7 @@ function AdvancedReportView() {
                                 <TableCell>{item.categoryName}</TableCell>
                                 <TableCell className="text-right">{formatCurrency(item.budget)}</TableCell>
                                 <TableCell className="text-right">{formatCurrency(item.actual)}</TableCell>
-                                <TableCell className={cn("text-right", item.variance >= 0 ? 'text-emerald-600' : 'text-destructive')}>
+                                <TableCell className={cn("text-right hidden sm:table-cell", item.variance >= 0 ? 'text-emerald-600' : 'text-destructive')}>
                                     {formatCurrency(item.variance)}
                                 </TableCell>
                                 <TableCell className="text-right">
@@ -900,7 +787,7 @@ function AdvancedReportView() {
                                         <span>{item.percentUsed.toFixed(0)}%</span>
                                         <Progress
                                             value={Math.min(item.percentUsed, 100)}
-                                            className={cn("w-20 h-2", {
+                                            className={cn("w-12 sm:w-20 h-2", {
                                                 '[&>div]:bg-destructive': item.percentUsed > 100,
                                             })}
                                         />
@@ -915,7 +802,7 @@ function AdvancedReportView() {
                                 <TableCell className="font-bold">Total</TableCell>
                                 <TableCell className="text-right font-bold">{formatCurrency(selectedReport.budgetComparisonTotals.budget)}</TableCell>
                                 <TableCell className="text-right font-bold">{formatCurrency(selectedReport.budgetComparisonTotals.actual)}</TableCell>
-                                <TableCell className={cn("text-right font-bold", selectedReport.budgetComparisonTotals.variance >= 0 ? 'text-emerald-600' : 'text-destructive')}>
+                                <TableCell className={cn("text-right font-bold hidden sm:table-cell", selectedReport.budgetComparisonTotals.variance >= 0 ? 'text-emerald-600' : 'text-destructive')}>
                                     {formatCurrency(selectedReport.budgetComparisonTotals.variance)}
                                 </TableCell>
                                 <TableCell className="text-right font-bold">
@@ -923,7 +810,7 @@ function AdvancedReportView() {
                                         <span>{selectedReport.budgetComparisonTotals.percentUsed.toFixed(0)}%</span>
                                         <Progress
                                             value={Math.min(selectedReport.budgetComparisonTotals.percentUsed, 100)}
-                                            className={cn("w-20 h-2", {
+                                            className={cn("w-12 sm:w-20 h-2", {
                                                 '[&>div]:bg-destructive': selectedReport.budgetComparisonTotals.percentUsed > 100,
                                             })}
                                         />
@@ -958,7 +845,7 @@ function AdvancedReportView() {
                                 <TableCell className="text-right">
                                     <div className="flex items-center justify-end gap-2">
                                         <span>{item.progress.toFixed(0)}%</span>
-                                        <Progress value={item.progress} className="w-20 h-2 [&>div]:bg-primary"/>
+                                        <Progress value={item.progress} className="w-12 sm:w-20 h-2 [&>div]:bg-primary"/>
                                     </div>
                                 </TableCell>
                             </TableRow>
@@ -1027,7 +914,7 @@ function AdvancedReportView() {
                     <CardTitle>Generate Report</CardTitle>
                     <CardDescription>Create a financial snapshot for a specific quarter.</CardDescription>
                 </div>
-                <GenerateReportDialog onGenerate={handleGenerateReport} />
+              <GenerateQuarterlyReportDialog onGenerate={handleGenerateReport} />
                 </CardHeader>
             </Card>
         </div>

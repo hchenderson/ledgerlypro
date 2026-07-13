@@ -116,7 +116,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (user) {
         const userDocRef = doc(db, 'users', user.uid, 'settings', 'main');
         
-        const newSettings = {
+        const newSettings: ForecastSettings = {
             ...forecastSettings,
             ...settings,
             baselineExclusions: {

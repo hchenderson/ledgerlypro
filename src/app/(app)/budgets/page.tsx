@@ -146,7 +146,7 @@ function BudgetDialog({ budget, onSave, children, isReadOnly }: { budget?: Budge
       };
       
       const getExpenseCategories = (cats: Category[]) => {
-          let expenseCats: (Category | SubCategory)[] = [];
+          const expenseCats: (Category | SubCategory)[] = [];
           cats.forEach(c => {
               if (c.type === 'expense') {
                   expenseCats.push(c);

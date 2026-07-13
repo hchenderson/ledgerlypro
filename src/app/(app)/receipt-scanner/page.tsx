@@ -5,14 +5,15 @@ import { useState, useRef, useEffect } from 'react';
 import { Camera, Loader2, Sparkles, Upload, CheckCircle, AlertTriangle, Video, Power } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { scanReceipt, ScanReceiptOutput } from '@/ai/flows/scan-receipt-flow';
+import type { ScanReceiptOutput } from '@/ai/flows/scan-receipt-flow';
 import { useToast } from '@/hooks/use-toast';
 import { NewTransactionSheet } from '@/components/new-transaction-sheet';
-import type { Transaction } from '@/types';
+import type { SubmittedTransactionValues } from '@/components/new-transaction-sheet';
 import { useUserData } from '@/hooks/use-user-data';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { cn } from '@/lib/utils';
 import { FeatureGate } from '@/components/feature-gate';
+import { useAuth } from '@/hooks/use-auth';
 
 function ReceiptScannerPageContent() {
     const [file, setFile] = useState<File | null>(null);
@@ -26,8 +27,9 @@ function ReceiptScannerPageContent() {
 
     const videoRef = useRef<HTMLVideoElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    
+
     const { addTransaction, categories } = useUserData();
+    const { user } = useAuth();
     const { toast } = useToast();
 
     useEffect(() => {
@@ -115,7 +117,18 @@ function ReceiptScannerPageContent() {
         setExtractedData(null);
 
         try {
-            const result = await scanReceipt({ receiptImage: preview });
+            if (!user) throw new Error('You must be signed in.');
+            const idToken = await user.getIdToken();
+            const response = await fetch('/api/ai/receipt', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${idToken}`,
+                },
+                body: JSON.stringify({ receiptImage: preview }),
+            });
+            const result = (await response.json()) as ScanReceiptOutput & { error?: string };
+            if (!response.ok) throw new Error(result.error ?? 'Receipt scan failed');
             setExtractedData(result);
             toast({
                 title: 'Scan Successful!',
@@ -130,7 +143,7 @@ function ReceiptScannerPageContent() {
         }
     };
     
-    const handleTransactionCreated = (values: Omit<Transaction, 'id' | 'type'> & { type: "income" | "expense" }) => {
+    const handleTransactionCreated = (values: SubmittedTransactionValues) => {
         addTransaction({
          ...values,
          date: values.date.toISOString()
@@ -291,5 +304,3 @@ export default function ReceiptScannerPage() {
         </FeatureGate>
     )
 }
-
-    

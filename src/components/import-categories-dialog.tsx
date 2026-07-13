@@ -78,10 +78,10 @@ export function ImportCategoriesDialog({ onImport }: ImportCategoriesDialogProps
         }
         
         // Normalize data, parent_name is optional
-        const data = (results.data as any[]).map(row => ({
-            name: row.name,
+        const data: { name: string; type: 'income' | 'expense'; parent_name: string }[] = (results.data as Record<string, unknown>[]).map(row => ({
+            name: String(row.name ?? ''),
             type: row.type === 'income' ? 'income' : 'expense',
-            parent_name: row.parent_name || ''
+            parent_name: String(row.parent_name ?? '')
         }));
 
         onImport(data);

@@ -38,7 +38,7 @@ const formSchema = z.object({
 })
 
 interface NewCategorySheetProps {
-    onAddCategory: (name: string, type?: 'income' | 'expense') => void;
+    onAddCategory: (name: string, type: 'income' | 'expense') => void;
     children?: ReactNode;
     isSubCategory?: boolean;
     parentCategoryName?: string;
@@ -64,7 +64,7 @@ export function NewCategorySheet({
   })
 
   function onSubmit(values: z.infer<typeof formSchema>) {
-    onAddCategory(values.name, values.type);
+    onAddCategory(values.name, values.type ?? 'expense');
     toast({
       title: isSubCategory ? "Sub-category Created" : "Category Created",
       description: `The "${values.name}" category has been successfully added.`,
