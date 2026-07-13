@@ -146,7 +146,7 @@ export function ImportTransactionsDialog({
     if (step !== "review") return;
 
     const processAndSetTransactions = async () => {
-        let uncategorizedExists = allCategoryNames.has("Uncategorized");
+        const uncategorizedExists = allCategoryNames.has("Uncategorized");
         if (!uncategorizedExists) {
             // Check again in case it was just added in another async operation
             const currentCats = categories;

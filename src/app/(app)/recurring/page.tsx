@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useMemo } from 'react';
@@ -40,6 +41,8 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { FeatureGate } from '@/components/feature-gate';
+import { useAuth } from '@/hooks/use-auth';
+import { useComparison } from '@/hooks/use-comparison';
 
 const recurringFormSchema = z.object({
   description: z.string().min(2, 'Description must be at least 2 characters.'),
@@ -52,7 +55,7 @@ const recurringFormSchema = z.object({
 
 type RecurringFormValues = z.infer<typeof recurringFormSchema>;
 
-function RecurringForm({ transaction, onSave, categories, closeDialog }: { transaction?: RecurringTransaction, onSave: (values: RecurringFormValues, id?: string) => void, categories: Category[], closeDialog: () => void }) {
+function RecurringForm({ transaction, onSave, categories, closeDialog, isReadOnly }: { transaction?: RecurringTransaction, onSave: (values: RecurringFormValues, id?: string) => void, categories: Category[], closeDialog: () => void, isReadOnly: boolean }) {
   const form = useForm<RecurringFormValues>({
     resolver: zodResolver(recurringFormSchema),
     defaultValues: transaction ? { ...transaction, startDate: new Date(transaction.startDate) } : {
@@ -83,11 +86,11 @@ function RecurringForm({ transaction, onSave, categories, closeDialog }: { trans
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-        <FormField control={form.control} name="description" render={({ field }) => (<FormItem><FormLabel>Description</FormLabel><FormControl><Input placeholder="e.g., Netflix Subscription" {...field} /></FormControl><FormMessage /></FormItem>)} />
-        <FormField control={form.control} name="amount" render={({ field }) => (<FormItem><FormLabel>Amount</FormLabel><FormControl><Input type="number" placeholder="15.99" {...field} /></FormControl><FormMessage /></FormItem>)} />
+        <FormField control={form.control} name="description" render={({ field }) => (<FormItem><FormLabel>Description</FormLabel><FormControl><Input placeholder="e.g., Netflix Subscription" {...field} disabled={isReadOnly} /></FormControl><FormMessage /></FormItem>)} />
+        <FormField control={form.control} name="amount" render={({ field }) => (<FormItem><FormLabel>Amount</FormLabel><FormControl><Input type="number" placeholder="15.99" {...field} disabled={isReadOnly} /></FormControl><FormMessage /></FormItem>)} />
         <FormField control={form.control} name="type" render={({ field }) => (
           <FormItem className="space-y-3"><FormLabel>Type</FormLabel><FormControl>
-            <RadioGroup onValueChange={field.onChange} defaultValue={field.value} className="flex space-x-4">
+            <RadioGroup onValueChange={field.onChange} defaultValue={field.value} className="flex space-x-4" disabled={isReadOnly}>
               <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="income" /></FormControl><FormLabel className="font-normal">Income</FormLabel></FormItem>
               <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="expense" /></FormControl><FormLabel className="font-normal">Expense</FormLabel></FormItem>
             </RadioGroup>
@@ -95,13 +98,13 @@ function RecurringForm({ transaction, onSave, categories, closeDialog }: { trans
         )} />
         <FormField control={form.control} name="category" render={({ field }) => (
           <FormItem><FormLabel>Category</FormLabel>
-            <Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select a category" /></SelectTrigger></FormControl>
+            <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isReadOnly}><FormControl><SelectTrigger><SelectValue placeholder="Select a category" /></SelectTrigger></FormControl>
               <SelectContent>{availableCategories.map(cat => (<SelectItem key={cat} value={cat}>{cat}</SelectItem>))}</SelectContent>
             </Select><FormMessage /></FormItem>
         )} />
         <FormField control={form.control} name="frequency" render={({ field }) => (
           <FormItem><FormLabel>Frequency</FormLabel>
-            <Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select frequency" /></SelectTrigger></FormControl>
+            <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isReadOnly}><FormControl><SelectTrigger><SelectValue placeholder="Select frequency" /></SelectTrigger></FormControl>
               <SelectContent>
                 <SelectItem value="daily">Daily</SelectItem>
                 <SelectItem value="weekly">Weekly</SelectItem>
@@ -125,6 +128,7 @@ function RecurringForm({ transaction, onSave, categories, closeDialog }: { trans
                         "w-full pl-3 text-left font-normal",
                         !field.value && "text-muted-foreground"
                       )}
+                      disabled={isReadOnly}
                     >
                       {field.value ? (
                         format(field.value, "PPP")
@@ -141,6 +145,7 @@ function RecurringForm({ transaction, onSave, categories, closeDialog }: { trans
                     selected={field.value}
                     onSelect={field.onChange}
                     initialFocus
+                    disabled={isReadOnly}
                   />
                 </PopoverContent>
               </Popover>
@@ -150,14 +155,14 @@ function RecurringForm({ transaction, onSave, categories, closeDialog }: { trans
         />
         <DialogFooter>
           <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
-          <Button type="submit">Save</Button>
+          <Button type="submit" disabled={isReadOnly}>Save</Button>
         </DialogFooter>
       </form>
     </Form>
   );
 }
 
-function RecurringDialog({ transaction, onSave, children }: { transaction?: RecurringTransaction, onSave: (values: RecurringFormValues, id?: string) => void, children: React.ReactNode }) {
+function RecurringDialog({ transaction, onSave, children, isReadOnly }: { transaction?: RecurringTransaction, onSave: (values: RecurringFormValues, id?: string) => void, children: React.ReactNode, isReadOnly: boolean }) {
   const [isOpen, setIsOpen] = useState(false);
   const { categories } = useUserData();
   const { toast } = useToast();
@@ -186,6 +191,7 @@ function RecurringDialog({ transaction, onSave, children }: { transaction?: Recu
           onSave={handleSave}
           categories={categories}
           closeDialog={() => setIsOpen(false)}
+          isReadOnly={isReadOnly}
         />
       </DialogContent>
     </Dialog>
@@ -198,10 +204,8 @@ function calculateNextOccurrence(rt: RecurringTransaction): Date {
 
   let nextDate = startDate;
   
-  // If a lastAddedDate exists, start the calculation from there
   if (rt.lastAddedDate) {
     nextDate = parseISO(rt.lastAddedDate);
-    // Move to the next period after the last one was added
     switch (rt.frequency) {
         case 'daily':   nextDate = addDays(nextDate, 1); break;
         case 'weekly':  nextDate = addWeeks(nextDate, 1); break;
@@ -210,7 +214,6 @@ function calculateNextOccurrence(rt: RecurringTransaction): Date {
     }
   }
 
-  // Fast-forward to the first occurrence that is on or after today.
   while (isBefore(nextDate, today)) {
     switch (rt.frequency) {
       case 'daily':   nextDate = addDays(nextDate, 1); break;
@@ -225,8 +228,13 @@ function calculateNextOccurrence(rt: RecurringTransaction): Date {
 
 function RecurringPageContent() {
   const { recurringTransactions, addRecurringTransaction, updateRecurringTransaction, deleteRecurringTransaction, loading } = useUserData();
+  const { activeYear } = useAuth();
+  const { isComparing } = useComparison();
+  const systemYear = new Date().getFullYear();
+  const isReadOnly = activeYear < systemYear || isComparing;
 
   const handleSave = (values: RecurringFormValues, id?: string) => {
+    if (isReadOnly) return;
     const data = { ...values, startDate: values.startDate.toISOString() };
     if (id) {
       updateRecurringTransaction(id, data);
@@ -257,8 +265,8 @@ function RecurringPageContent() {
             Automate your regular income and expenses.
           </p>
         </div>
-        <RecurringDialog onSave={handleSave}>
-          <Button>
+        <RecurringDialog onSave={handleSave} isReadOnly={isReadOnly}>
+          <Button disabled={isReadOnly} title={isReadOnly ? "You cannot add recurring transactions in a past year." : "Add new recurring transaction"}>
             <PlusCircle className="mr-2 h-4 w-4" />
             New Recurring Transaction
           </Button>
@@ -270,10 +278,10 @@ function RecurringPageContent() {
             <TableHeader>
               <TableRow>
                 <TableHead>Description</TableHead>
-                <TableHead>Amount</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>Frequency</TableHead>
+                <TableHead className="hidden md:table-cell">Category</TableHead>
+                <TableHead className="hidden md:table-cell">Frequency</TableHead>
                 <TableHead>Next Date</TableHead>
+                <TableHead className="text-right">Amount</TableHead>
                 <TableHead><span className="sr-only">Actions</span></TableHead>
               </TableRow>
             </TableHeader>
@@ -281,18 +289,18 @@ function RecurringPageContent() {
               {sortedRecurringTransactions.length > 0 ? (
                 sortedRecurringTransactions.map(rt => (
                   <TableRow key={rt.id}>
-                    <TableCell className="font-medium">{rt.description}</TableCell>
-                    <TableCell className={rt.type === 'income' ? 'text-emerald-500' : 'text-red-500'}>
+                    <TableCell className="font-medium max-w-[120px] truncate sm:max-w-xs">{rt.description}</TableCell>
+                    <TableCell className="hidden md:table-cell"><Badge variant="outline">{rt.category}</Badge></TableCell>
+                    <TableCell className="hidden md:table-cell capitalize">{rt.frequency}</TableCell>
+                    <TableCell>{format(calculateNextOccurrence(rt), "MMM d, yyyy")}</TableCell>
+                    <TableCell className={cn("text-right", rt.type === 'income' ? 'text-emerald-500' : 'text-red-500')}>
                       {rt.type === 'income' ? '+' : '-'}{new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(rt.amount)}
                     </TableCell>
-                    <TableCell><Badge variant="outline">{rt.category}</Badge></TableCell>
-                    <TableCell className="capitalize">{rt.frequency}</TableCell>
-                    <TableCell>{format(calculateNextOccurrence(rt), "MMM d, yyyy")}</TableCell>
                     <TableCell className="text-right">
-                      <RecurringDialog transaction={rt} onSave={handleSave}>
-                        <Button variant="ghost" size="icon"><Edit className="h-4 w-4" /></Button>
+                      <RecurringDialog transaction={rt} onSave={handleSave} isReadOnly={isReadOnly}>
+                        <Button variant="ghost" size="icon" disabled={isReadOnly}><Edit className="h-4 w-4" /></Button>
                       </RecurringDialog>
-                      <Button variant="ghost" size="icon" onClick={() => deleteRecurringTransaction(rt.id)}>
+                      <Button variant="ghost" size="icon" onClick={() => !isReadOnly && deleteRecurringTransaction(rt.id)} disabled={isReadOnly}>
                         <Trash2 className="h-4 w-4 text-red-500" />
                       </Button>
                     </TableCell>

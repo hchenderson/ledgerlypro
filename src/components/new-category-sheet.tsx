@@ -38,17 +38,19 @@ const formSchema = z.object({
 })
 
 interface NewCategorySheetProps {
-    onAddCategory: (name: string, type?: 'income' | 'expense') => void;
+    onAddCategory: (name: string, type: 'income' | 'expense') => void;
     children?: ReactNode;
     isSubCategory?: boolean;
     parentCategoryName?: string;
+    isReadOnly?: boolean;
 }
 
 export function NewCategorySheet({ 
     onAddCategory, 
     children,
     isSubCategory = false,
-    parentCategoryName
+    parentCategoryName,
+    isReadOnly = false,
 }: NewCategorySheetProps) {
   const [isOpen, setIsOpen] = useState(false)
   const { toast } = useToast()
@@ -62,7 +64,7 @@ export function NewCategorySheet({
   })
 
   function onSubmit(values: z.infer<typeof formSchema>) {
-    onAddCategory(values.name, values.type);
+    onAddCategory(values.name, values.type ?? 'expense');
     toast({
       title: isSubCategory ? "Sub-category Created" : "Category Created",
       description: `The "${values.name}" category has been successfully added.`,
@@ -85,7 +87,7 @@ export function NewCategorySheet({
         {children ? (
             <div onClick={(e) => { e.stopPropagation(); setIsOpen(true) }}>{children}</div>
         ) : (
-            <Button>
+            <Button disabled={isReadOnly} title={isReadOnly ? "You cannot add categories in a past year." : "Add new category"}>
                 <PlusCircle className="mr-2 h-4 w-4" />
                 {buttonText}
             </Button>
@@ -107,7 +109,7 @@ export function NewCategorySheet({
                 <FormItem>
                   <FormLabel>Name</FormLabel>
                   <FormControl>
-                    <Input placeholder={placeholder} {...field} />
+                    <Input placeholder={placeholder} {...field} disabled={isReadOnly} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -125,6 +127,7 @@ export function NewCategorySheet({
                         onValueChange={field.onChange}
                         defaultValue={field.value}
                         className="flex items-center space-x-4"
+                        disabled={isReadOnly}
                       >
                         <FormItem className="flex items-center space-x-2 space-y-0">
                           <FormControl>
@@ -149,7 +152,7 @@ export function NewCategorySheet({
                 <SheetClose asChild>
                     <Button type="button" variant="outline">Cancel</Button>
                 </SheetClose>
-                <Button type="submit">Save</Button>
+                <Button type="submit" disabled={isReadOnly}>Save</Button>
             </SheetFooter>
           </form>
         </Form>

@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,11 +20,13 @@ import { Calendar } from '@/components/ui/calendar';
 import { DateRange } from 'react-day-picker';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { SearchableMultiSelect, type OptionType } from '@/components/ui/searchable-multi-select';
+import { normalizeMerchant } from '@/forecast/merchant-normalize';
 
 export default function SettingsPage() {
     const { toast } = useToast();
-    const { user, showInstructions, setShowInstructions } = useAuth();
-    const { clearTransactions, clearAllData, clearTransactionsByDateRange } = useUserData();
+    const { user, showInstructions, setShowInstructions, forecastSettings, setForecastSettings } = useAuth();
+    const { allTransactions, categories, clearTransactions, clearAllData, clearTransactionsByDateRange } = useUserData();
     const [name, setName] = useState('');
     const [startingBalance, setStartingBalance] = useState('');
     const [email, setEmail] = useState('');
@@ -113,6 +115,42 @@ export default function SettingsPage() {
         });
         setDateRange(undefined);
     }
+    
+    const categoryOptions = useMemo(() => {
+        const mainCategories = categories.filter(c => c.type === 'expense');
+        return mainCategories.map(c => ({ value: c.name, label: c.name }));
+    }, [categories]);
+
+    const merchantOptions = useMemo(() => {
+        const merchantCounts: Record<string, { key: string, name: string, count: number }> = {};
+        allTransactions.forEach(t => {
+            if (t.type === 'expense') {
+                const { merchantKey, merchantName } = normalizeMerchant(t.description);
+                if (merchantKey !== 'unknown') {
+                    if (!merchantCounts[merchantKey]) {
+                        merchantCounts[merchantKey] = { key: merchantKey, name: merchantName, count: 0 };
+                    }
+                    merchantCounts[merchantKey].count++;
+                }
+            }
+        });
+
+        return Object.values(merchantCounts)
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 50)
+            .map(m => ({ value: m.key, label: m.name }));
+    }, [allTransactions]);
+
+    const handleExcludedCategoriesChange = (selected: string[]) => {
+        setForecastSettings({ baselineExclusions: { categories: selected } });
+    }
+
+    const handleExcludedMerchantsChange = (selected: string[]) => {
+        setForecastSettings({ baselineExclusions: { merchants: selected } });
+    }
+
+    const excludedCategories = forecastSettings?.baselineExclusions?.categories || [];
+    const excludedMerchants = forecastSettings?.baselineExclusions?.merchants || [];
 
     return (
         <div className="space-y-6 max-w-4xl mx-auto">
@@ -175,6 +213,35 @@ export default function SettingsPage() {
                         />
                     </div>
                 </CardContent>
+                </Card>
+                 <Card>
+                    <CardHeader>
+                        <CardTitle>Forecast Settings</CardTitle>
+                        <CardDescription>Exclude specific categories or merchants from baseline forecasting to improve accuracy for non-recurring expenses.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                        <div className="space-y-2">
+                            <Label>Exclude Categories</Label>
+                            <SearchableMultiSelect
+                                options={categoryOptions}
+                                selected={excludedCategories}
+                                onChange={handleExcludedCategoriesChange}
+                                placeholder="Select categories to exclude..."
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Exclude Merchants</Label>
+                            <p className="text-sm text-muted-foreground">
+                                Exclude frequent merchants that represent sporadic, non-recurring spending (e.g., a hardware store for a one-off project).
+                            </p>
+                            <SearchableMultiSelect
+                                options={merchantOptions}
+                                selected={excludedMerchants}
+                                onChange={handleExcludedMerchantsChange}
+                                placeholder="Select merchants to exclude..."
+                            />
+                        </div>
+                    </CardContent>
                 </Card>
                 <Card>
                 <CardHeader>

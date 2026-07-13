@@ -11,7 +11,8 @@ import { Calendar } from '@/components/ui/calendar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SearchableMultiSelect } from '@/components/ui/searchable-multi-select';
 import { cn } from '@/lib/utils';
-import { format, type DateRange } from 'date-fns';
+import { format } from 'date-fns';
+import type { DateRange } from 'react-day-picker';
 
 interface GlobalFiltersProps {
     presetRanges: { label: string; value: string }[];

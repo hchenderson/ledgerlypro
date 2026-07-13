@@ -1,7 +1,7 @@
 
 import type { Budget, Category, Goal, RecurringTransaction, Transaction } from "@/types";
 
-export const defaultCategories: Omit<Category, 'id'>[] = [
+export const defaultCategories: Category[] = [
     {
         id: "cat_inc_1",
         name: "Income",
@@ -105,18 +105,21 @@ export const defaultBudgets: Omit<Budget, 'id'>[] = [
         amount: 400,
         period: "monthly",
         isFavorite: true,
+        year: now.getFullYear(),
     },
     {
         categoryId: "sub_exp_6", // Restaurants
         amount: 200,
         period: "monthly",
         isFavorite: false,
+        year: now.getFullYear(),
     },
      {
         categoryId: "sub_exp_8", // Clothing
         amount: 150,
         period: "monthly",
         isFavorite: false,
+        year: now.getFullYear(),
     }
 ];
 

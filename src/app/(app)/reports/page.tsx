@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
@@ -24,15 +23,14 @@ import {
   ArrowUp,
   ArrowDown,
   BookMarked,
-  Loader2,
   Filter,
   Trash2,
   CalendarCheck,
   ArrowRight,
 } from 'lucide-react';
-import type { Category, SubCategory, QuarterlyReport, Budget } from '@/types';
+import type { Category, SubCategory, QuarterlyReport } from '@/types';
 import { DateRange } from 'react-day-picker';
-import { subMonths, startOfMonth, endOfMonth, startOfYear, endOfYear, getYear, format, startOfQuarter, endOfQuarter, subQuarters, getQuarter } from 'date-fns';
+import { subMonths, startOfMonth, endOfMonth, startOfYear, endOfYear, format } from 'date-fns';
 import Link from 'next/link';
 
 import { OverviewChart } from '@/components/dashboard/overview-chart';
@@ -56,16 +54,6 @@ import {
 } from "@/components/ui/table"
 import { Progress } from '@/components/ui/progress';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogClose,
-  DialogFooter,
-} from '@/components/ui/dialog';
-import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -78,12 +66,12 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
 import { SearchableMultiSelect } from '@/components/ui/searchable-multi-select';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Calendar as CalendarIcon } from 'lucide-react';
 import { ExportQuarterlyReportDialog } from '@/components/reports/export-quarterly-report-dialog';
+import { GenerateQuarterlyReportDialog } from '@/components/reports/generate-quarterly-report-dialog';
 
 const PRESET_RANGES = [
   { label: 'This Month', value: 'this-month' },
@@ -99,52 +87,60 @@ const PRESET_RANGES = [
 
 function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
   const { allTransactions, categories } = useUserData();
+  const { activeYear } = useAuth();
   
   const defaultDateRange = useMemo(() => {
-    const now = new Date();
+    const baseDate = new Date(activeYear, new Date().getMonth(), 1);
     if (period === 'monthly') {
       return {
-        from: startOfMonth(now),
-        to: endOfMonth(now),
+        from: startOfMonth(baseDate),
+        to: endOfMonth(baseDate),
       };
     } else {
       return {
-        from: startOfYear(now),
-        to: endOfYear(now),
+        from: startOfYear(baseDate),
+        to: endOfYear(baseDate),
       };
     }
-  }, [period]);
+  }, [period, activeYear]);
 
   const [dateRange, setDateRange] = useState<DateRange | undefined>(defaultDateRange);
   const [selectedIncomeCategories, setSelectedIncomeCategories] = useState<string[]>([]);
   const [selectedExpenseCategories, setSelectedExpenseCategories] = useState<string[]>([]);
+  
+  useEffect(() => {
+    setDateRange(defaultDateRange);
+  }, [activeYear, defaultDateRange]);
 
   const handlePresetChange = (value: string) => {
     const now = new Date();
-    const currentYear = getYear(now);
+    // Use activeYear for calculations, but retain current month/day for presets like "This Month"
+    const baseDate = new Date(activeYear, now.getMonth(), now.getDate());
+    const currentYear = activeYear;
+
     let fromDate: Date;
     let toDate: Date;
     switch (value) {
       case 'this-month':
-        fromDate = startOfMonth(now);
-        toDate = endOfMonth(now);
+        fromDate = startOfMonth(baseDate);
+        toDate = endOfMonth(baseDate);
         break;
       case 'last-month':
-        const lastMonth = subMonths(now, 1);
+        const lastMonth = subMonths(baseDate, 1);
         fromDate = startOfMonth(lastMonth);
         toDate = endOfMonth(lastMonth);
         break;
       case 'this-year':
-         fromDate = startOfYear(now);
-         toDate = endOfYear(now);
+         fromDate = startOfYear(baseDate);
+         toDate = endOfYear(baseDate);
         break;
       case 'last-30':
-         fromDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29);
-         toDate = now;
+         fromDate = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate() - 29);
+         toDate = baseDate;
         break;
       case 'last-90':
-        fromDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 89);
-        toDate = now;
+        fromDate = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate() - 89);
+        toDate = baseDate;
         break;
       case 'q1':
         fromDate = new Date(currentYear, 0, 1);
@@ -584,139 +580,6 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
   );
 }
 
-function GenerateReportDialog({
-  onGenerate,
-}: {
-  onGenerate: (referenceDate: Date, notes: string | undefined, budgetIds: string[]) => void;
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-  const { budgets, categories } = useUserData();
-  const currentYear = getYear(new Date());
-  const currentQuarter = getQuarter(new Date());
-
-  const [year, setYear] = useState(currentYear.toString());
-  const [quarter, setQuarter] = useState(currentQuarter.toString());
-  const [notes, setNotes] = useState("");
-  const [selectedBudgets, setSelectedBudgets] = useState<string[]>([]);
-  const [isGenerating, setIsGenerating] = useState(false);
-
-  const budgetOptions = useMemo(() => {
-    const findCategoryName = (id: string, cats: (Category | SubCategory)[]): string | undefined => {
-      for (const cat of cats) {
-        if (cat.id === id) return cat.name;
-        if (cat.subCategories) {
-          const found = findCategoryName(id, cat.subCategories);
-          if (found) return found;
-        }
-      }
-      return undefined;
-    };
-    
-    return budgets.map(b => ({
-      value: b.id,
-      label: findCategoryName(b.categoryId, categories) || 'Unknown Category',
-    }))
-  }, [budgets, categories]);
-
-  useEffect(() => {
-    if (isOpen) {
-      // Default to all budgets selected when dialog opens
-      setSelectedBudgets(budgets.map(b => b.id));
-    }
-  }, [isOpen, budgets]);
-
-  const handleGenerate = async () => {
-    setIsGenerating(true);
-    const quarterMonth = (parseInt(quarter) - 1) * 3;
-    const referenceDate = startOfQuarter(new Date(parseInt(year), quarterMonth, 1));
-    
-    await onGenerate(referenceDate, notes, selectedBudgets);
-
-    setIsGenerating(false);
-    setIsOpen(false);
-    setNotes("");
-  };
-
-  const years = Array.from({ length: 5 }, (_, i) => (currentYear - i).toString());
-
-  return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>
-        <Button>Generate New Report</Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-xl">
-        <DialogHeader>
-          <DialogTitle>Generate Quarterly Report</DialogTitle>
-          <DialogDescription>
-            Select the period and budgets to include. The report will be saved for future reference.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4 py-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="year">Year</Label>
-              <Select value={year} onValueChange={setYear}>
-                <SelectTrigger id="year">
-                  <SelectValue placeholder="Select year" />
-                </SelectTrigger>
-                <SelectContent>
-                  {years.map(y => <SelectItem key={y} value={y}>{y}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="quarter">Quarter</Label>
-              <Select value={quarter} onValueChange={setQuarter}>
-                <SelectTrigger id="quarter">
-                  <SelectValue placeholder="Select quarter" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1">Q1</SelectItem>
-                  <SelectItem value="2">Q2</SelectItem>
-                  <SelectItem value="3">Q3</SelectItem>
-                  <SelectItem value="4">Q4</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="budgets">Budgets to Include</Label>
-            <SearchableMultiSelect
-                options={budgetOptions}
-                selected={selectedBudgets}
-                onChange={setSelectedBudgets}
-                placeholder="Select budgets for analysis..."
-            />
-             <p className="text-xs text-muted-foreground pt-1">
-                Select which budgets to include in the 'Budget vs. Actual' section.
-            </p>
-          </div>
-           <div className="space-y-2">
-              <Label htmlFor="notes">Notes (Optional)</Label>
-              <Textarea
-                id="notes"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Add any commentary or summary notes for this report..."
-                rows={3}
-              />
-            </div>
-        </div>
-        <DialogFooter>
-          <DialogClose asChild>
-            <Button variant="outline">Cancel</Button>
-          </DialogClose>
-          <Button onClick={handleGenerate} disabled={isGenerating}>
-            {isGenerating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {isGenerating ? 'Generating...' : 'Generate Report'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-
 function AdvancedReportView() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -906,7 +769,7 @@ function AdvancedReportView() {
                             <TableHead>Category</TableHead>
                             <TableHead className="text-right">Budget</TableHead>
                             <TableHead className="text-right">Actual</TableHead>
-                            <TableHead className="text-right">Variance</TableHead>
+                            <TableHead className="text-right hidden sm:table-cell">Variance</TableHead>
                             <TableHead className="text-right">% Used</TableHead>
                         </TableRow>
                     </TableHeader>
@@ -916,7 +779,7 @@ function AdvancedReportView() {
                                 <TableCell>{item.categoryName}</TableCell>
                                 <TableCell className="text-right">{formatCurrency(item.budget)}</TableCell>
                                 <TableCell className="text-right">{formatCurrency(item.actual)}</TableCell>
-                                <TableCell className={cn("text-right", item.variance >= 0 ? 'text-emerald-600' : 'text-destructive')}>
+                                <TableCell className={cn("text-right hidden sm:table-cell", item.variance >= 0 ? 'text-emerald-600' : 'text-destructive')}>
                                     {formatCurrency(item.variance)}
                                 </TableCell>
                                 <TableCell className="text-right">
@@ -924,7 +787,7 @@ function AdvancedReportView() {
                                         <span>{item.percentUsed.toFixed(0)}%</span>
                                         <Progress
                                             value={Math.min(item.percentUsed, 100)}
-                                            className={cn("w-20 h-2", {
+                                            className={cn("w-12 sm:w-20 h-2", {
                                                 '[&>div]:bg-destructive': item.percentUsed > 100,
                                             })}
                                         />
@@ -939,7 +802,7 @@ function AdvancedReportView() {
                                 <TableCell className="font-bold">Total</TableCell>
                                 <TableCell className="text-right font-bold">{formatCurrency(selectedReport.budgetComparisonTotals.budget)}</TableCell>
                                 <TableCell className="text-right font-bold">{formatCurrency(selectedReport.budgetComparisonTotals.actual)}</TableCell>
-                                <TableCell className={cn("text-right font-bold", selectedReport.budgetComparisonTotals.variance >= 0 ? 'text-emerald-600' : 'text-destructive')}>
+                                <TableCell className={cn("text-right font-bold hidden sm:table-cell", selectedReport.budgetComparisonTotals.variance >= 0 ? 'text-emerald-600' : 'text-destructive')}>
                                     {formatCurrency(selectedReport.budgetComparisonTotals.variance)}
                                 </TableCell>
                                 <TableCell className="text-right font-bold">
@@ -947,7 +810,7 @@ function AdvancedReportView() {
                                         <span>{selectedReport.budgetComparisonTotals.percentUsed.toFixed(0)}%</span>
                                         <Progress
                                             value={Math.min(selectedReport.budgetComparisonTotals.percentUsed, 100)}
-                                            className={cn("w-20 h-2", {
+                                            className={cn("w-12 sm:w-20 h-2", {
                                                 '[&>div]:bg-destructive': selectedReport.budgetComparisonTotals.percentUsed > 100,
                                             })}
                                         />
@@ -982,7 +845,7 @@ function AdvancedReportView() {
                                 <TableCell className="text-right">
                                     <div className="flex items-center justify-end gap-2">
                                         <span>{item.progress.toFixed(0)}%</span>
-                                        <Progress value={item.progress} className="w-20 h-2 [&>div]:bg-primary"/>
+                                        <Progress value={item.progress} className="w-12 sm:w-20 h-2 [&>div]:bg-primary"/>
                                     </div>
                                 </TableCell>
                             </TableRow>
@@ -1051,7 +914,7 @@ function AdvancedReportView() {
                     <CardTitle>Generate Report</CardTitle>
                     <CardDescription>Create a financial snapshot for a specific quarter.</CardDescription>
                 </div>
-                <GenerateReportDialog onGenerate={handleGenerateReport} />
+              <GenerateQuarterlyReportDialog onGenerate={handleGenerateReport} />
                 </CardHeader>
             </Card>
         </div>
@@ -1144,3 +1007,5 @@ export default function ReportsPage() {
         </Tabs>
     )
 }
+
+    

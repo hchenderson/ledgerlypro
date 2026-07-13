@@ -3,10 +3,10 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { useUserData } from '@/hooks/use-user-data';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { PlusCircle, Target, Trash2, Edit, Star, ChevronLeft, ChevronRight } from 'lucide-react';
+import { PlusCircle, Target, Trash2, Edit, Star, ChevronLeft, ChevronRight, ArrowUp, ArrowDown } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -36,6 +36,8 @@ import { FeatureGate } from '@/components/feature-gate';
 import { cn } from '@/lib/utils';
 import { addMonths, subMonths, format } from 'date-fns';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { useAuth } from '@/hooks/use-auth';
+import { useComparison } from '@/hooks/use-comparison';
 
 const budgetFormSchema = z.object({
   categoryId: z.string().min(1, 'Please select a category.'),
@@ -45,9 +47,48 @@ const budgetFormSchema = z.object({
 
 type BudgetFormValues = z.infer<typeof budgetFormSchema>;
 
-function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (values: BudgetFormValues, id?: string) => void, children: React.ReactNode }) {
+function ComparisonCard({ deltas, comparisonPeriod }: { deltas: any, comparisonPeriod: string }) {
+    if (!deltas) return null;
+
+    const formatDelta = (value: number, isCurrency = true) => {
+        const sign = value > 0 ? '+' : '−';
+        const formattedValue = isCurrency ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Math.abs(value)) : Math.abs(value);
+        return `${sign}${formattedValue}`;
+    };
+
+    return (
+        <Card className="bg-muted/50 mt-4">
+            <CardHeader className="p-4">
+                <CardDescription>Comparison vs. {comparisonPeriod}</CardDescription>
+            </CardHeader>
+            <CardContent className="p-4 pt-0 text-sm">
+                 <div className="flex justify-between">
+                    <span className="flex items-center gap-1">
+                        {deltas.spent > 0 ? <ArrowUp className="h-4 w-4 text-red-500" /> : <ArrowDown className="h-4 w-4 text-emerald-500" />}
+                        Spent
+                    </span>
+                    <span className={cn(deltas.spent > 0 ? "text-red-500" : "text-emerald-500", "font-medium")}>
+                        {formatDelta(deltas.spent)}
+                    </span>
+                </div>
+                <div className="flex justify-between mt-2">
+                    <span className="flex items-center gap-1">
+                         {deltas.remaining < 0 ? <ArrowUp className="h-4 w-4 text-red-500" /> : <ArrowDown className="h-4 w-4 text-emerald-500" />}
+                        Remaining
+                    </span>
+                     <span className={cn(deltas.remaining < 0 ? "text-red-500" : "text-emerald-500", "font-medium")}>
+                        {formatDelta(deltas.remaining)}
+                    </span>
+                </div>
+            </CardContent>
+        </Card>
+    )
+}
+
+function BudgetDialog({ budget, onSave, children, isReadOnly }: { budget?: Budget, onSave: (values: BudgetFormValues, id?: string) => void, children: React.ReactNode, isReadOnly: boolean }) {
   const [isOpen, setIsOpen] = useState(false);
   const { categories, budgets } = useUserData();
+  const { activeYear } = useAuth();
   const { toast } = useToast();
 
   const form = useForm<BudgetFormValues>({
@@ -78,17 +119,20 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
   }, [isOpen, budget, form]);
 
   const onSubmit = (data: BudgetFormValues) => {
+    if (isReadOnly) return;
     onSave(data, budget?.id);
     const categoryName = categories.find(c => c.id === data.categoryId)?.name || 'the';
     toast({
       title: budget ? 'Budget Updated' : 'Budget Created',
-      description: `Your budget for the "${categoryName}" category has been successfully saved.`,
+      description: `Your budget for the "${categoryName}" category has been successfully saved for ${activeYear}.`,
     });
     setIsOpen(false);
   };
+  
+  const budgetsForActiveYear = useMemo(() => budgets.filter(b => b.year === activeYear), [budgets, activeYear]);
 
   const expenseCategories = useMemo(() => {
-      const budgetedCategoryIds = new Set(budgets.filter(b => b.id !== budget?.id).map(b => b.categoryId));
+      const budgetedCategoryIds = new Set(budgetsForActiveYear.filter(b => b.id !== budget?.id).map(b => b.categoryId));
       
       const flatten = (cats: (Category | SubCategory)[]): { id: string; name: string, disabled: boolean }[] => {
           return cats.reduce<{ id: string; name: string, disabled: boolean }[]>((acc, cat) => {
@@ -101,19 +145,8 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
           }, []);
       };
       
-      const findCategory = (id: string, cats: (Category|SubCategory)[]): Category | SubCategory | undefined => {
-          for (const cat of cats) {
-              if (cat.id === id) return cat;
-              if (cat.subCategories) {
-                  const found = findCategory(id, cat.subCategories);
-                  if (found) return found;
-              }
-          }
-          return undefined;
-      };
-
       const getExpenseCategories = (cats: Category[]) => {
-          let expenseCats: (Category | SubCategory)[] = [];
+          const expenseCats: (Category | SubCategory)[] = [];
           cats.forEach(c => {
               if (c.type === 'expense') {
                   expenseCats.push(c);
@@ -123,14 +156,14 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
       }
       
       return flatten(getExpenseCategories(categories));
-  }, [categories, budgets, budget]);
+  }, [categories, budgetsForActiveYear, budget]);
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{budget ? 'Edit' : 'Create'} Budget</DialogTitle>
+          <DialogTitle>{budget ? 'Edit' : 'Create'} Budget for {activeYear}</DialogTitle>
           <DialogDescription>
             Set a spending limit for a specific category.
           </DialogDescription>
@@ -143,7 +176,7 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Category</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value} disabled={!!budget}>
+                  <Select onValueChange={field.onChange} defaultValue={field.value} disabled={!!budget || isReadOnly}>
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="Select an expense category" />
@@ -159,7 +192,7 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
                 </FormItem>
               )}
             />
-            <FormField control={form.control} name="amount" render={({ field }) => (<FormItem><FormLabel>Budget Amount</FormLabel><FormControl><Input type="number" placeholder="e.g., 500" {...field} /></FormControl><FormMessage /></FormItem>)} />
+            <FormField control={form.control} name="amount" render={({ field }) => (<FormItem><FormLabel>Budget Amount</FormLabel><FormControl><Input type="number" placeholder="e.g., 500" {...field} disabled={isReadOnly} /></FormControl><FormMessage /></FormItem>)} />
             
             <FormField
               control={form.control}
@@ -172,7 +205,7 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
                       onValueChange={field.onChange}
                       defaultValue={field.value}
                       className="flex space-x-4"
-                      disabled={!!budget}
+                      disabled={!!budget || isReadOnly}
                     >
                       <FormItem className="flex items-center space-x-2">
                         <FormControl>
@@ -195,7 +228,7 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
 
             <DialogFooter>
               <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
-              <Button type="submit">Save Budget</Button>
+              <Button type="submit" disabled={isReadOnly}>Save Budget</Button>
             </DialogFooter>
           </form>
         </Form>
@@ -206,61 +239,92 @@ function BudgetDialog({ budget, onSave, children }: { budget?: Budget, onSave: (
 
 
 function BudgetsPageContent() {
-  const { addBudget, updateBudget, deleteBudget, toggleFavoriteBudget, loading, getBudgetDetails } = useUserData();
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const { allTransactions, budgets, addBudget, updateBudget, deleteBudget, toggleFavoriteBudget, loading, getBudgetDetails, categories } = useUserData();
+  const { activeYear } = useAuth();
+  const { isComparing, comparisonYear } = useComparison();
   
-  const initialBudgetDetails = useMemo(() => {
-    return getBudgetDetails(selectedDate);
-  }, [getBudgetDetails, selectedDate]);
+  const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
+  const systemYear = new Date().getFullYear();
+  const isReadOnly = activeYear < systemYear || isComparing;
 
-  const [budgetDetails, setBudgetDetails] = useState(initialBudgetDetails);
-  const [draggedItem, setDraggedItem] = useState<any>(null);
+  const selectedDate = useMemo(() => {
+    return new Date(activeYear, currentMonth, 1);
+  }, [activeYear, currentMonth]);
+  
+  const activeYearBudgets = useMemo(() => budgets.filter(b => b.year === activeYear), [budgets, activeYear]);
+  const comparisonYearBudgets = useMemo(() => comparisonYear ? budgets.filter(b => b.year === comparisonYear) : [], [budgets, comparisonYear]);
+
+  const budgetDetails = useMemo(() => {
+    if (!activeYearBudgets) return [];
+    return getBudgetDetails({
+      activeBudgets: activeYearBudgets,
+      comparisonBudgets: comparisonYearBudgets,
+      transactions: allTransactions,
+      categories: categories,
+      forDate: selectedDate,
+      comparisonYear: comparisonYear,
+    });
+  }, [getBudgetDetails, activeYearBudgets, comparisonYearBudgets, allTransactions, categories, selectedDate, comparisonYear]);
+
+  const [order, setOrder] = useState<string[]>([]);
+  const [draggedItem, setDraggedItem] = useState<{item: any, index: number} | null>(null);
 
   useEffect(() => {
-    setBudgetDetails(initialBudgetDetails);
-  }, [initialBudgetDetails]);
+    if (budgetDetails) {
+        setOrder(budgetDetails.map(b => b.id));
+    }
+  }, [budgetDetails]);
 
+  const orderedBudgets = useMemo(() => {
+    if (!order.length || !budgetDetails) return budgetDetails;
+    const budgetMap = new Map(budgetDetails.map(b => [b.id, b]));
+    return order.map(id => budgetMap.get(id)).filter(b => b !== undefined) as typeof budgetDetails;
+  }, [order, budgetDetails]);
 
   const handleSaveBudget = (values: BudgetFormValues, id?: string) => {
+    if (isReadOnly) return;
     if (id) {
         updateBudget(id, values);
     } else {
         addBudget({
             ...values,
+            year: activeYear,
             isFavorite: false,
         });
     }
   };
 
-
   const handlePrevMonth = () => {
-    setSelectedDate(prev => subMonths(prev, 1));
+    setCurrentMonth(prev => prev === 0 ? 11 : prev - 1);
   }
   
   const handleNextMonth = () => {
-    setSelectedDate(prev => addMonths(prev, 1));
+    setCurrentMonth(prev => prev === 11 ? 0 : prev - 1);
   }
 
   const handleDragStart = (e: React.DragEvent<HTMLDivElement>, item: any, index: number) => {
+    if (isReadOnly) return;
     setDraggedItem({ item, index });
     e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/html', e.currentTarget.outerHTML);
+    e.dataTransfer.setData('text/plain', item.id);
   };
   
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>, index: number) => {
     e.preventDefault();
-    const draggedOverItem = budgetDetails[index];
-    if (draggedItem && draggedOverItem.id === draggedItem.item.id) return;
+    if (isReadOnly || !draggedItem) return;
     
-    let items = budgetDetails.filter(item => item.id !== draggedItem.item.id);
-    items.splice(index, 0, draggedItem.item);
-    
-    setBudgetDetails(items);
+    if (!orderedBudgets) return;
+    const draggedOverId = orderedBudgets[index].id;
+    if (draggedItem.item.id === draggedOverId) return;
+
+    const items = order.filter(id => id !== draggedItem.item.id);
+    items.splice(index, 0, draggedItem.item.id);
+    setOrder(items);
   };
 
   const handleDragEnd = () => {
+    if (isReadOnly) return;
     setDraggedItem(null);
-    // Here you would typically save the new order to a database
   };
   
   if (loading) return <div>Loading...</div>
@@ -273,11 +337,11 @@ function BudgetsPageContent() {
             <Target/> Budgets
           </h2>
           <p className="text-muted-foreground">
-            Track your spending against your goals. You can drag and drop cards to reorder them.
+            Track your spending against your goals for {activeYear}. You can drag and drop cards to reorder them.
           </p>
         </div>
-        <BudgetDialog onSave={handleSaveBudget}>
-             <Button>
+        <BudgetDialog onSave={handleSaveBudget} isReadOnly={isReadOnly}>
+             <Button disabled={isReadOnly} title={isReadOnly ? "You cannot add a budget to a past year." : "Create new budget"}>
                 <PlusCircle className="mr-2 h-4 w-4" />
                 New Budget
             </Button>
@@ -285,13 +349,13 @@ function BudgetsPageContent() {
       </div>
 
        <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
+            <CardHeader className="flex flex-col items-center gap-4 sm:flex-row sm:justify-between">
                 <CardTitle>Viewing Budgets For</CardTitle>
                 <div className="flex items-center gap-2">
                     <Button variant="outline" size="icon" onClick={handlePrevMonth}>
                         <ChevronLeft className="h-4 w-4" />
                     </Button>
-                    <span className="font-semibold text-lg w-36 text-center">{format(selectedDate, "MMMM yyyy")}</span>
+                    <span className="font-semibold text-lg min-w-[150px] text-center">{format(selectedDate, "MMMM yyyy")}</span>
                     <Button variant="outline" size="icon" onClick={handleNextMonth}>
                         <ChevronRight className="h-4 w-4" />
                     </Button>
@@ -299,16 +363,16 @@ function BudgetsPageContent() {
             </CardHeader>
        </Card>
 
-      {budgetDetails.length === 0 ? (
+      {!orderedBudgets || orderedBudgets.length === 0 ? (
         <Card className="flex flex-col items-center justify-center py-12">
              <CardHeader className="text-center">
                  <Target className="mx-auto h-12 w-12 text-muted-foreground" />
-                <CardTitle className="mt-4">No Budgets Created</CardTitle>
-                <CardDescription>Get started by creating your first budget.</CardDescription>
+                <CardTitle className="mt-4">No Budgets For {activeYear}</CardTitle>
+                <CardDescription>Get started by creating your first budget for this year.</CardDescription>
             </CardHeader>
             <CardContent>
-                <BudgetDialog onSave={handleSaveBudget}>
-                    <Button>
+                <BudgetDialog onSave={handleSaveBudget} isReadOnly={isReadOnly}>
+                    <Button disabled={isReadOnly} title={isReadOnly ? "You cannot add a budget to a past year." : "Create a budget"}>
                         <PlusCircle className="mr-2 h-4 w-4" />
                         Create a Budget
                     </Button>
@@ -317,14 +381,14 @@ function BudgetsPageContent() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {budgetDetails.map((budget, index) => (
+          {orderedBudgets.map((budget, index) => (
             <div
                 key={budget.id}
-                draggable
+                draggable={!isReadOnly}
                 onDragStart={(e) => handleDragStart(e, budget, index)}
                 onDragOver={(e) => handleDragOver(e, index)}
                 onDragEnd={handleDragEnd}
-                className={cn("cursor-move", draggedItem?.item.id === budget.id && "opacity-50")}
+                className={cn(isReadOnly ? "cursor-default" : "cursor-move", draggedItem?.item.id === budget.id && "opacity-50")}
             >
                 <Card>
                 <CardHeader>
@@ -336,13 +400,13 @@ function BudgetsPageContent() {
                             </CardDescription>
                         </div>
                         <div className="flex gap-1">
-                            <Button variant="ghost" size="icon" onClick={() => toggleFavoriteBudget(budget.id)}>
+                            <Button variant="ghost" size="icon" onClick={() => !isReadOnly && toggleFavoriteBudget(budget.id)} disabled={isReadOnly}>
                                 <Star className={cn("h-4 w-4", budget.isFavorite ? "text-yellow-400 fill-yellow-400" : "text-muted-foreground")}/>
                             </Button>
-                            <BudgetDialog budget={budget} onSave={handleSaveBudget}>
-                                <Button variant="ghost" size="icon"><Edit className="h-4 w-4"/></Button>
+                            <BudgetDialog budget={budget} onSave={handleSaveBudget} isReadOnly={isReadOnly}>
+                                <Button variant="ghost" size="icon" disabled={isReadOnly}><Edit className="h-4 w-4"/></Button>
                             </BudgetDialog>
-                            <Button variant="ghost" size="icon" onClick={() => deleteBudget(budget.id)}>
+                            <Button variant="ghost" size="icon" onClick={() => !isReadOnly && deleteBudget(budget.id)} disabled={isReadOnly}>
                                 <Trash2 className="h-4 w-4 text-red-500"/>
                             </Button>
                         </div>
@@ -364,6 +428,12 @@ function BudgetsPageContent() {
                         </span>
                     </div>
                     </div>
+                    {isComparing && budget.deltas && (
+                         <ComparisonCard
+                            deltas={budget.deltas}
+                            comparisonPeriod={budget.period === 'yearly' ? 'Year' : format(selectedDate, 'MMMM')}
+                        />
+                    )}
                 </CardContent>
                 </Card>
             </div>
@@ -381,5 +451,3 @@ export default function BudgetsPage() {
         </FeatureGate>
     )
 }
-
-    

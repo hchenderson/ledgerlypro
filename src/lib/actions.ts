@@ -2,9 +2,10 @@
 'use server';
 
 import { getQuarter, startOfQuarter, endOfQuarter, getYear } from 'date-fns';
-import type { Transaction, Category, Budget, Goal, SubCategory, QuarterlyReport } from '@/types';
+import type { Transaction, Category, Budget, Goal, QuarterlyReport } from '@/types';
 import { adminDb } from '@/lib/firebaseAdmin';
 import * as admin from 'firebase-admin';
+import { calculateQuarterlyReportMetrics } from '@/lib/quarterly-report';
 
 
 async function getUserData(userId: string, collectionName: string) {
@@ -13,47 +14,6 @@ async function getUserData(userId: string, collectionName: string) {
     const snapshot = await collRef.get();
     return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
 }
-
-function summarizeByCategory(transactions: Transaction[], type: 'income' | 'expense', categories: Category[]) {
-    const findMainCategory = (subCategoryName: string, allCategories: Category[]): string => {
-        for (const mainCat of allCategories) {
-            if (mainCat.name === subCategoryName) return mainCat.name;
-            const findInSubs = (subs: SubCategory[], mainCatName: string): string | null => {
-                for (const sub of subs) {
-                    if (sub.name === subCategoryName) return mainCatName;
-                    if (sub.subCategories) {
-                        const found = findInSubs(sub.subCategories, mainCatName);
-                        if (found) return found;
-                    }
-                }
-                return null;
-            };
-            if (mainCat.subCategories) {
-                const found = findInSubs(mainCat.subCategories, mainCat.name);
-                if (found) return found;
-            }
-        }
-        return 'Uncategorized';
-    };
-
-    const filtered = transactions.filter(t => t.type === type);
-    const totals: Record<string, number> = {};
-    filtered.forEach(t => {
-        const mainCategory = findMainCategory(t.category, categories);
-        totals[mainCategory] = (totals[mainCategory] || 0) + t.amount;
-    });
-    return totals;
-}
-
-const getSubCategoryNames = (category: Category | SubCategory): string[] => {
-    let names = [category.name];
-    if (category.subCategories) {
-        category.subCategories.forEach(sub => {
-            names = [...names, ...getSubCategoryNames(sub)];
-        });
-    }
-    return names;
-};
 
 export async function deleteReport({ userId, reportId }: { userId: string, reportId: string }): Promise<{ success: boolean; error?: string }> {
     try {
@@ -115,90 +75,20 @@ export async function generateAndSaveQuarterlyReport({
 
     const transactionsInQuarter = transactionsDocs.docs.map(doc => doc.data() as Transaction);
 
-    const income = transactionsInQuarter
-      .filter(t => t.type === 'income')
-      .reduce((sum, t) => sum + t.amount, 0);
-
-    const expenses = transactionsInQuarter
-      .filter(t => t.type === 'expense')
-      .reduce((sum, t) => sum + t.amount, 0);
-
-    const netIncome = income - expenses;
-
-    const incomeSummary = summarizeByCategory(transactionsInQuarter, 'income', categories);
-    const expenseSummary = summarizeByCategory(transactionsInQuarter, 'expense', categories);
-    
-    const findCategoryById = (id: string, cats: (Category | SubCategory)[]): (Category | SubCategory | undefined) => {
-        for (const cat of cats) {
-            if (cat.id === id) return cat;
-            if (cat.subCategories) {
-                const found = findCategoryById(id, cat.subCategories);
-                if (found) return found;
-            }
-        }
-        return undefined;
-    }
-
-    const actualsByCategory: Record<string, number> = {};
-    transactionsInQuarter.forEach(t => {
-      if (t.type !== "expense") return;
-      actualsByCategory[t.category] = (actualsByCategory[t.category] || 0) + t.amount;
+    const {
+      incomeSummary,
+      expenseSummary,
+      netIncome,
+      budgetComparison,
+      budgetComparisonTotals,
+      goalsProgress,
+      kpis,
+    } = calculateQuarterlyReportMetrics({
+      transactions: transactionsInQuarter,
+      categories,
+      budgets,
+      goals,
     });
-
-    const budgetComparison = budgets
-      .map(budget => {
-        const category = findCategoryById(budget.categoryId, categories);
-        if (!category) return null;
-
-        const mainCategory = (categories.find(c => c.id === category.id || c.subCategories?.some(sc => sc.id === category.id)) || {type: 'expense'});
-        if(mainCategory.type !== 'expense') return null;
-        
-        let budgetAmountForPeriod: number;
-        if (budget.period === 'monthly') {
-            budgetAmountForPeriod = budget.amount * 3;
-        } else { // yearly
-            budgetAmountForPeriod = budget.amount / 4;
-        }
-
-        const allSubCategoryNames = getSubCategoryNames(category);
-        const actual = allSubCategoryNames.reduce((sum, catName) => sum + (actualsByCategory[catName] || 0), 0);
-        
-        const variance = budgetAmountForPeriod - actual;
-        const percentUsed = budgetAmountForPeriod > 0 ? (actual / budgetAmountForPeriod) * 100 : 0;
-
-        return {
-          categoryName: category.name,
-          budget: budgetAmountForPeriod,
-          actual,
-          variance,
-          percentUsed
-        };
-    }).filter((item): item is NonNullable<typeof item> => item !== null);
-
-    const budgetComparisonTotals = budgetComparison.reduce(
-        (acc, item) => {
-            acc.budget += item.budget;
-            acc.actual += item.actual;
-            return acc;
-        },
-        { budget: 0, actual: 0, variance: 0, percentUsed: 0 }
-    );
-    budgetComparisonTotals.variance = budgetComparisonTotals.budget - budgetComparisonTotals.actual;
-    budgetComparisonTotals.percentUsed = budgetComparisonTotals.budget > 0 ? (budgetComparisonTotals.actual / budgetComparisonTotals.budget) * 100 : 0;
-
-
-    const goalsProgress = goals.map(goal => ({
-        name: goal.name,
-        targetAmount: goal.targetAmount,
-        savedAmount: goal.savedAmount,
-        progress: goal.targetAmount > 0 ? (goal.savedAmount / goal.targetAmount) * 100 : 0,
-    }));
-
-
-    const kpis = {
-      profitMargin: income > 0 ? (netIncome / income) * 100 : 0,
-      expenseToIncomeRatio: income > 0 ? (expenses / income) * 100 : 0,
-    };
 
     const reportDoc = {
       period,

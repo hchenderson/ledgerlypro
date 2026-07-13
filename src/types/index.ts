@@ -1,5 +1,4 @@
 
-
 import type { LucideIcon } from "lucide-react";
 import { Timestamp } from "firebase/firestore";
 
@@ -11,6 +10,7 @@ export type Transaction = {
   type: "income" | "expense";
   category: string;
   categoryId?: string;
+  source?: "actual" | "recurring" | "baseline";
 };
 
 export type NavItem = {
@@ -41,6 +41,7 @@ export type Budget = {
   categoryId: string;
   amount: number;
   period: "monthly" | "yearly";
+  year: number;
   isFavorite?: boolean;
 };
 
@@ -151,4 +152,20 @@ export interface EOYReportData {
   monthly: any[]; // Adjust if you have a specific type
   categories: any[]; // Adjust if you have a specific type
   mainCategories: any[]; // Add this line
+}
+
+export type ChatMessage = {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt: Date;
+};
+
+export interface ForecastSettings {
+  baselineExclusions?: {
+    categories?: string[];
+    merchants?: string[];
+  };
+  givingCategories?: string[];
+  baselineMode?: "category" | "merchant" | "hybrid";
 }

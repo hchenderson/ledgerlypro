@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
-import { MoreHorizontal, Upload, Calendar as CalendarIcon, X, Loader2 } from "lucide-react";
+import { MoreHorizontal, Upload, Calendar as CalendarIcon, X, Loader2, Edit, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { NewTransactionSheet } from "@/components/new-transaction-sheet";
@@ -23,6 +23,8 @@ import { cn } from "@/lib/utils";
 import { Calendar } from "@/components/ui/calendar";
 import { ExportTransactionsDialog } from "@/components/export-transactions-dialog";
 import { Pagination } from "@/components/ui/pagination";
+import { useAuth } from "@/hooks/use-auth";
+import { useComparison } from "@/hooks/use-comparison";
 
 
 const TRANSACTIONS_PAGE_SIZE = 25;
@@ -54,6 +56,8 @@ export default function TransactionsPage() {
     categories = [],
     loading: userDataLoading,
   } = useUserData();
+  const { activeYear } = useAuth();
+  const { isComparing } = useComparison();
   
   const [paginatedTransactions, setPaginatedTransactions] = useState<Transaction[]>([]);
   const [page, setPage] = useState(1);
@@ -62,29 +66,28 @@ export default function TransactionsPage() {
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const { toast } = useToast();
 
-  // Filter states
   const [descriptionFilter, setDescriptionFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [minAmount, setMinAmount] = useState('');
   const [maxAmount, setMaxAmount] = useState('');
 
+  const systemYear = new Date().getFullYear();
+  const isReadOnly = activeYear < systemYear || isComparing;
+
   const filteredTransactions = useMemo(() => {
     let transactions = [...allTransactions];
 
-    // Apply description filter
     if (descriptionFilter) {
       transactions = transactions.filter(t => 
         t.description.toLowerCase().includes(descriptionFilter.toLowerCase())
       );
     }
     
-    // Apply category filter
     if (categoryFilter !== 'all') {
       transactions = transactions.filter(t => t.category === categoryFilter);
     }
 
-    // Apply date range filter
     if (dateRange?.from) {
       transactions = transactions.filter(t => new Date(t.date) >= dateRange.from!);
     }
@@ -94,7 +97,6 @@ export default function TransactionsPage() {
       transactions = transactions.filter(t => new Date(t.date) <= toDate);
     }
 
-    // Apply amount filters
     const min = minAmount ? parseFloat(minAmount) : -Infinity;
     const max = maxAmount ? parseFloat(maxAmount) : Infinity;
     if (minAmount || maxAmount) {
@@ -105,7 +107,7 @@ export default function TransactionsPage() {
   }, [allTransactions, descriptionFilter, categoryFilter, dateRange, minAmount, maxAmount]);
   
    useEffect(() => {
-    setPage(1); // Reset page to 1 when filters change
+    setPage(1);
   }, [filteredTransactions]);
 
   useEffect(() => {
@@ -137,9 +139,10 @@ export default function TransactionsPage() {
   }, []);
 
   const handleEdit = useCallback((transaction: Transaction) => {
+    if (isReadOnly) return;
     setSelectedTransaction(transaction);
     setIsSheetOpen(true);
-  }, []);
+  }, [isReadOnly]);
   
   const handleSheetClose = useCallback((open: boolean) => {
     if (!open) {
@@ -323,8 +326,12 @@ export default function TransactionsPage() {
                 </TableRow>
               ) : paginatedTransactions.length > 0 ? (
                 paginatedTransactions.map((transaction) => (
-                  <TableRow key={transaction.id} className="cursor-pointer" onClick={() => handleEdit(transaction)}>
-                    <TableCell className="font-medium">
+                  <TableRow 
+                    key={transaction.id} 
+                    onClick={() => handleEdit(transaction)}
+                    className={cn(!isReadOnly && "cursor-pointer")}
+                  >
+                    <TableCell className="font-medium max-w-[120px] sm:max-w-xs truncate">
                       {transaction.description}
                     </TableCell>
                     <TableCell>
@@ -340,10 +347,9 @@ export default function TransactionsPage() {
                       {formatCurrency(transaction.amount)}
                     </TableCell>
                     <TableCell>
-                      <AlertDialog>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button aria-haspopup="true" size="icon" variant="ghost" onClick={(e) => e.stopPropagation()}>
+                            <Button aria-haspopup="true" size="icon" variant="ghost" disabled={isReadOnly} onClick={(e) => e.stopPropagation()}>
                               <MoreHorizontal className="h-4 w-4" />
                               <span className="sr-only">Toggle menu</span>
                             </Button>
@@ -351,36 +357,37 @@ export default function TransactionsPage() {
                           <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Actions</DropdownMenuLabel>
                             <DropdownMenuItem onSelect={() => handleEdit(transaction)}>
-                              Edit
+                              <Edit className="mr-2 h-4 w-4" /> Edit
                             </DropdownMenuItem>
-                            <AlertDialogTrigger asChild>
-                              <DropdownMenuItem 
-                                className="text-red-600 focus:text-red-600"
-                                onSelect={(e) => e.preventDefault()}
-                              >
-                                Delete
-                              </DropdownMenuItem>
-                            </AlertDialogTrigger>
+                             <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <DropdownMenuItem 
+                                    className="text-red-600 focus:text-red-600"
+                                    onSelect={(e) => e.preventDefault()}
+                                  >
+                                    <Trash2 className="mr-2 h-4 w-4" /> Delete
+                                  </DropdownMenuItem>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      This action cannot be undone. This will permanently delete this transaction.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction 
+                                      onClick={() => handleDelete(transaction.id)}
+                                      className="bg-red-600 hover:bg-red-700"
+                                    >
+                                      Delete
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This action cannot be undone. This will permanently delete this transaction.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction 
-                              onClick={() => handleDelete(transaction.id)}
-                              className="bg-red-600 hover:bg-red-700"
-                            >
-                              Delete
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
                     </TableCell>
                   </TableRow>
                 ))

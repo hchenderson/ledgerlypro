@@ -1,25 +1,22 @@
 
+
 "use client";
 
-import { DollarSign, TrendingUp, TrendingDown, Wallet, Target, CalendarClock, Star, Flag, Activity, PiggyBank } from "lucide-react";
+import { Star, Flag } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { OverviewChart } from "@/components/dashboard/overview-chart";
 import { RecentTransactions } from "@/components/dashboard/recent-transactions";
 import { BudgetProgress } from "@/components/dashboard/budget-progress";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useUserData } from "@/hooks/use-user-data";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/use-auth";
 import { InstructionsGuide } from "@/components/dashboard/instructions-guide";
-import { getDashboardAnalytics } from "@/ai/flows/get-dashboard-analytics-flow";
-import type { GetDashboardAnalyticsOutput } from "@/ai/flows/get-dashboard-analytics-flow";
+import { computeDashboardAnalytics } from "@/lib/dashboard-analytics";
 import { GoalProgress } from "@/components/dashboard/goal-progress";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import { format, subMonths } from "date-fns";
-import { AdBanner } from "@/components/ad-banner";
-
+import { ForwardAnalyticsPanel } from "@/components/dashboard/forward-analytics-panel";
 
 function DashboardSkeleton() {
   return (
@@ -42,49 +39,65 @@ function DashboardSkeleton() {
 }
 
 export default function DashboardPage() {
-  const { allTransactions, loading: userDataLoading, getBudgetDetails, goals } = useUserData();
-  const { user, showInstructions, loading: authLoading } = useAuth();
-  const [analytics, setAnalytics] = useState<GetDashboardAnalyticsOutput | null>(null);
-  const [isAnalyticsLoading, setIsAnalyticsLoading] = useState(true);
+  const { allTransactions, transactions, loading: userDataLoading, getBudgetDetails, goals, budgets, categories, startingBalance } = useUserData();
+  const { showInstructions, loading: authLoading, activeYear } = useAuth();
+  
+  const openingBalanceForYear = useMemo(() => {
+    if (userDataLoading || authLoading) return 0;
 
-  useEffect(() => {
-    if (!userDataLoading && !authLoading && user) {
-      const fetchAnalytics = async () => {
-        setIsAnalyticsLoading(true);
-        
-        let startingBalance = 0;
-        const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'main');
-        const docSnap = await getDoc(settingsDocRef);
-        if (docSnap.exists()) {
-          startingBalance = docSnap.data().startingBalance || 0;
-        }
+    const priorTransactions = allTransactions.filter(t => {
+        const year = new Date(t.date).getFullYear();
+        return year < activeYear;
+    });
 
-        getDashboardAnalytics({ transactions: allTransactions, startingBalance })
-          .then(setAnalytics)
-          .finally(() => setIsAnalyticsLoading(false));
-      }
-      fetchAnalytics();
+    if (priorTransactions.length === 0) {
+        return startingBalance;
     }
-  }, [allTransactions, userDataLoading, authLoading, user]);
 
+    const netDelta = priorTransactions.reduce((sum, t) => {
+        return t.type === 'income'
+            ? sum + t.amount
+            : sum - t.amount;
+    }, 0);
+
+    return startingBalance + netDelta;
+  }, [allTransactions, startingBalance, activeYear, userDataLoading, authLoading]);
+
+  const analytics = useMemo(() => {
+    const yearTransactions = allTransactions.filter(
+      (transaction) => new Date(transaction.date).getFullYear() === activeYear
+    );
+    const referenceDate = new Date(activeYear, new Date().getMonth(), 1);
+    return computeDashboardAnalytics(
+      yearTransactions,
+      openingBalanceForYear,
+      referenceDate
+    );
+  }, [allTransactions, activeYear, openingBalanceForYear]);
 
   const favoritedBudgets = useMemo(() => {
-    return getBudgetDetails().filter(b => b.isFavorite);
-  }, [getBudgetDetails]);
+    const yearBudgets = budgets.filter(b => b.year === activeYear);
+    return getBudgetDetails({
+      activeBudgets: yearBudgets,
+      transactions: transactions,
+      categories: categories,
+      forDate: new Date(activeYear, new Date().getMonth(), 1),
+    }).filter(b => b.isFavorite);
+  }, [getBudgetDetails, budgets, activeYear, transactions, categories]);
 
   const lastUpdatedDate = useMemo(() => {
-    if (allTransactions.length === 0) return null;
+    if (transactions.length === 0) return null;
     // Assuming transactions are sorted descending by date
-    return new Date(allTransactions[0].date);
-  }, [allTransactions]);
+    return new Date(transactions[0].date);
+  }, [transactions]);
   
-  const isLoading = userDataLoading || authLoading || isAnalyticsLoading || !analytics;
+  const isLoading = userDataLoading || authLoading;
 
-  if (isLoading && allTransactions.length === 0) {
+  if (isLoading && transactions.length === 0) {
     return <DashboardSkeleton />;
   }
   
-  if (isLoading && allTransactions.length > 0) {
+  if (isLoading && transactions.length > 0) {
      // Show skeleton but keep previous data if available
   } else if (isLoading) {
      return <DashboardSkeleton />;
@@ -96,7 +109,7 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      {(allTransactions.length === 0 || showInstructions) && <InstructionsGuide />}
+      {(transactions.length === 0 || showInstructions) && <InstructionsGuide />}
       
       {analytics ? (
         <>
@@ -131,21 +144,21 @@ export default function DashboardPage() {
               title="Total Income"
               value={analytics.totalIncome}
               icon="TrendingUp"
-              trendValue="All-time income"
+              trendValue={`All-time income for ${activeYear}`}
               variant="success"
             />
             <StatCard
               title="Total Expenses"
               value={analytics.totalExpenses}
               icon="TrendingDown"
-              trendValue="All-time expenses"
+              trendValue={`All-time expenses for ${activeYear}`}
               variant="danger"
             />
              <StatCard
               title="Total Savings"
               value={analytics.totalIncome - analytics.totalExpenses}
               icon="PiggyBank"
-              trendValue={analytics.totalIncome - analytics.totalExpenses >= 0 ? "You're in the green" : "You're in the red"}
+              trendValue={`${analytics.totalIncome - analytics.totalExpenses >= 0 ? "You're in the green" : "You're in the red"} for ${activeYear}`}
               variant={analytics.totalIncome - analytics.totalExpenses >= 0 ? 'success' : 'danger'}
             />
           </div>
@@ -169,7 +182,7 @@ export default function DashboardPage() {
               title="Savings Rate"
               value={analytics.savingsRate}
               icon="DollarSign"
-              trendValue="Based on all-time data"
+              trendValue={`Based on ${activeYear} data`}
               isPercentage
             />
           </div>
@@ -194,7 +207,7 @@ export default function DashboardPage() {
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
             <Card className="lg:col-span-3">
               <CardHeader>
-                <CardTitle>Income vs. Expense</CardTitle>
+                <CardTitle>Income vs. Expense ({activeYear})</CardTitle>
               </CardHeader>
               <CardContent>
                 <OverviewChart data={analytics.overviewData}/>
@@ -202,14 +215,14 @@ export default function DashboardPage() {
             </Card>
             <Card className="lg:col-span-2">
               <CardHeader>
-                <CardTitle>Recent Transactions</CardTitle>
+                <CardTitle>Recent Transactions ({activeYear})</CardTitle>
               </CardHeader>
               <CardContent>
-                {allTransactions.length > 0 ? (
-                    <RecentTransactions transactions={allTransactions.slice(0, 5)} />
+                {transactions.length > 0 ? (
+                    <RecentTransactions transactions={transactions.slice(0, 5)} />
                 ) : (
                     <div className="flex flex-col items-center justify-center h-full text-center">
-                        <p className="text-muted-foreground">No transactions yet.</p>
+                        <p className="text-muted-foreground">No transactions yet for {activeYear}.</p>
                         <p className="text-sm text-muted-foreground">Add your first transaction to get started.</p>
                     </div>
                 )}
@@ -231,7 +244,7 @@ export default function DashboardPage() {
         </Card>
         <Card>
           <CardHeader>
-              <CardTitle className="flex items-center gap-2"><Star className="text-yellow-400 fill-yellow-400" /> Favorite Budgets</CardTitle>
+              <CardTitle className="flex items-center gap-2"><Star className="text-yellow-400 fill-yellow-400" /> Favorite Budgets ({activeYear})</CardTitle>
               <CardDescription>Your hand-picked budgets for quick insights.</CardDescription>
           </CardHeader>
           <CardContent>
@@ -239,6 +252,8 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+       <ForwardAnalyticsPanel />
     </div>
   );
 }

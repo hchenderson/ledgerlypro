@@ -25,7 +25,7 @@ import { cn } from "@/lib/utils";
 
 interface ExportReportDialogProps {
   transactions: Transaction[];
-  dateRange?: { from: Date | undefined, to: Date | undefined };
+  dateRange?: { from?: Date, to?: Date };
   chartId?: string;
   chartTitle?: string;
 }

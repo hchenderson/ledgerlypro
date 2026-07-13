@@ -1,4 +1,3 @@
-'use server';
 /**
  * @fileOverview An AI agent for scanning receipts.
  *
@@ -10,9 +9,11 @@
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
-const ScanReceiptInputSchema = z.object({
+export const ScanReceiptInputSchema = z.object({
   receiptImage: z
     .string()
+    .max(12_000_000)
+    .regex(/^data:image\/(jpeg|png|webp);base64,/i)
     .describe(
       "A photo of a receipt, as a data URI that must include a MIME type and use Base64 encoding. Expected format: 'data:<mimetype>;base64,<encoded_data>'."
     ),
@@ -51,6 +52,7 @@ const scanReceiptFlow = ai.defineFlow(
   },
   async input => {
     const {output} = await prompt(input);
-    return output!;
+    if (!output) throw new Error('The receipt response did not match the expected schema.');
+    return output;
   }
 );
