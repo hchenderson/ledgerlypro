@@ -1,7 +1,8 @@
 import {
+  categorySubtreeIds,
   categorySubtreeNames,
   findCategoryPathById,
-  findMainCategoryName,
+  findMainCategoryForTransaction,
   normalizeCategoryLabel,
 } from "./category-tree";
 import type { Budget, Category, Goal, Transaction } from "@/types";
@@ -43,7 +44,7 @@ function summarizeByCategory(
   return transactions
     .filter((transaction) => transaction.type === type)
     .reduce<Record<string, number>>((totals, transaction) => {
-      const mainCategory = findMainCategoryName(transaction.category, categories);
+      const mainCategory = findMainCategoryForTransaction(transaction, categories);
       totals[mainCategory] = (totals[mainCategory] ?? 0) + transaction.amount;
       return totals;
     }, {});
@@ -68,14 +69,6 @@ export function calculateQuarterlyReportMetrics({
     .reduce((sum, transaction) => sum + transaction.amount, 0);
   const netIncome = income - expenses;
 
-  const actualsByCategory = transactions
-    .filter((transaction) => transaction.type === "expense")
-    .reduce<Record<string, number>>((totals, transaction) => {
-      const category = normalizeCategoryLabel(transaction.category);
-      totals[category] = (totals[category] ?? 0) + transaction.amount;
-      return totals;
-    }, {});
-
   const budgetComparison = budgets.flatMap((budget) => {
     const path = findCategoryPathById(budget.categoryId, categories);
     const category = path?.at(-1);
@@ -84,10 +77,19 @@ export function calculateQuarterlyReportMetrics({
 
     const budgetAmount =
       budget.period === "monthly" ? budget.amount * 3 : budget.amount / 4;
-    const actual = categorySubtreeNames(category).reduce(
-      (sum, categoryName) => sum + (actualsByCategory[categoryName] ?? 0),
-      0
+    const categoryIds = new Set(categorySubtreeIds(category));
+    const categoryNames = new Set(
+      categorySubtreeNames(category).map(normalizeCategoryLabel)
     );
+    const actual = transactions
+      .filter((transaction) => {
+        if (transaction.type !== "expense") return false;
+        if (transaction.categoryId) {
+          return categoryIds.has(transaction.categoryId);
+        }
+        return categoryNames.has(normalizeCategoryLabel(transaction.category));
+      })
+      .reduce((sum, transaction) => sum + transaction.amount, 0);
     const variance = budgetAmount - actual;
 
     return [{

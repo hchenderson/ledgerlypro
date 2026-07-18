@@ -21,11 +21,11 @@ import type { Transaction, Category, SubCategory, Budget, RecurringTransaction, 
 import { useAuth } from './use-auth';
 import { db } from '@/lib/firebase';
 import { chunkArray } from '@/lib/batching';
+import { getYear } from 'date-fns';
 import {
-  startOfYear,
-  endOfYear,
-  getYear,
-} from 'date-fns';
+  prepareTransactionImport,
+  type TransactionImportSummary,
+} from '@/lib/transaction-import';
 
 interface UserDataContextType {
   allTransactions: Transaction[];
@@ -36,7 +36,14 @@ interface UserDataContextType {
   goals: ProcessedGoal[];
   startingBalance: number;
   loading: boolean;
+  recurringSync: {
+    status: 'idle' | 'syncing' | 'success' | 'error';
+    message?: string;
+    lastSyncedAt?: Date;
+  };
+  syncRecurringTransactions: () => Promise<void>;
   addTransaction: (transaction: Omit<Transaction, 'id'>) => Promise<void>;
+  importTransactions: (transactions: Omit<Transaction, 'id'>[]) => Promise<TransactionImportSummary>;
   updateTransaction: (id: string, values: Partial<Omit<Transaction, 'id'>>) => Promise<void>;
   deleteTransaction: (id: string) => Promise<void>;
   addCategory: (category: Omit<Category, 'id'>) => Promise<Category>;
@@ -106,7 +113,8 @@ const findCategoryByIdRecursive = (
 
 const findCategoryByPath = (
   path: string,
-  cats: Category[]
+  cats: Category[],
+  type?: Transaction['type']
 ): Category | SubCategory | undefined => {
   const parts = path
     .split('>')
@@ -127,7 +135,20 @@ const findCategoryByPath = (
     return undefined;
   };
 
-  return search(cats, 0);
+  const rootCategories = type ? cats.filter((category) => category.type === type) : cats;
+  const exactPathMatch = search(rootCategories, 0);
+  if (exactPathMatch) return exactPathMatch;
+
+  const targetLeaf = parts.at(-1)?.toLocaleLowerCase();
+  const findLeaf = (items: (Category | SubCategory)[]): Category | SubCategory | undefined => {
+    for (const item of items) {
+      if (item.name.toLocaleLowerCase() === targetLeaf) return item;
+      const nested = item.subCategories ? findLeaf(item.subCategories) : undefined;
+      if (nested) return nested;
+    }
+    return undefined;
+  };
+  return findLeaf(rootCategories);
 };
 
 const findCategoryWithPathById = (
@@ -157,14 +178,25 @@ const buildCategoryPathLabel = (id: string, categories: Category[]): string | un
 export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, activeYear, firstYear } = useAuth();
   const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [recurringTransactions, setRecurringTransactions] = useState<RecurringTransaction[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [startingBalance, setStartingBalance] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [recurringSync, setRecurringSync] = useState<UserDataContextType['recurringSync']>({
+    status: 'idle',
+  });
   const recurrenceProcessingRef = useRef(false);
+  const categoryMigrationRef = useRef(false);
+
+  const transactions = useMemo(
+    () => allTransactions.filter((transaction) => {
+      const date = new Date(transaction.date);
+      return !Number.isNaN(date.getTime()) && getYear(date) === activeYear;
+    }),
+    [allTransactions, activeYear]
+  );
 
   const getCollectionRef = useCallback(
     (collectionName: string) => {
@@ -192,10 +224,18 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
         for (const budget of budgetsToMigrate) {
             const budgetCategory = findCategoryByIdRecursive(budget.categoryId, categories);
-            const allCategoryNamesForBudget = budgetCategory ? getCategorySubtreeIdsAndNames(budgetCategory).names : [];
+            const budgetCategoryTree = budgetCategory
+              ? getCategorySubtreeIdsAndNames(budgetCategory)
+              : { ids: [], names: [] };
             
             const budgetTxs = allTransactions
-                .filter(t => t.type === 'expense' && allCategoryNamesForBudget.includes(t.category))
+                .filter((transaction) => {
+                  if (transaction.type !== 'expense') return false;
+                  if (transaction.categoryId) {
+                    return budgetCategoryTree.ids.includes(transaction.categoryId);
+                  }
+                  return budgetCategoryTree.names.includes(transaction.category);
+                })
                 .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
             
             const inferredYear = budgetTxs.length > 0 ? getYear(new Date(budgetTxs[0].date)) : firstYear;
@@ -221,23 +261,55 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const processRecurringTransactions = useCallback(async () => {
     const systemYear = new Date().getFullYear();
-    if (activeYear !== systemYear) return;
-    if (!user || recurringTransactions.length === 0 || recurrenceProcessingRef.current) return;
+    if (activeYear !== systemYear) {
+      setRecurringSync({ status: 'error', message: 'Switch to the current year to sync schedules.' });
+      return;
+    }
+    if (!user) throw new Error('User not authenticated');
+    if (recurrenceProcessingRef.current) return;
+
+    if (recurringTransactions.length === 0) {
+      setRecurringSync({
+        status: 'success',
+        message: 'No recurring schedules need processing.',
+        lastSyncedAt: new Date(),
+      });
+      return;
+    }
 
     recurrenceProcessingRef.current = true;
+    setRecurringSync({ status: 'syncing', message: 'Checking scheduled transactions…' });
     try {
-      for (let attempt = 0; attempt < 3; attempt += 1) {
+      let totalUpserted = 0;
+      let hasMore = false;
+      for (let batchNumber = 0; batchNumber < 3; batchNumber += 1) {
         const idToken = await user.getIdToken();
         const response = await fetch('/api/recurring/process', {
           method: 'POST',
           headers: { Authorization: `Bearer ${idToken}` },
         });
-        if (!response.ok) throw new Error('Recurring transaction processing failed');
-        const result = (await response.json()) as { hasMore?: boolean };
+        const result = (await response.json()) as { hasMore?: boolean; upserted?: number; error?: string };
+        if (!response.ok) throw new Error(result.error ?? 'Recurring transaction processing failed');
+        totalUpserted += result.upserted ?? 0;
+        hasMore = Boolean(result.hasMore);
         if (!result.hasMore) break;
       }
+      setRecurringSync({
+        status: 'success',
+        message: hasMore
+          ? `${totalUpserted} scheduled transactions added. More remain; select Sync now again.`
+          : totalUpserted > 0
+          ? `${totalUpserted} scheduled transaction${totalUpserted === 1 ? '' : 's'} added.`
+          : 'Recurring transactions are up to date.',
+        lastSyncedAt: new Date(),
+      });
     } catch (error) {
       console.error('Error processing recurring transactions:', error);
+      setRecurringSync({
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Recurring sync failed.',
+      });
+      throw error;
     } finally {
       recurrenceProcessingRef.current = false;
     }
@@ -245,7 +317,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   useEffect(() => {
     if (user && !loading && recurringTransactions.length > 0) {
-      processRecurringTransactions();
+      void processRecurringTransactions().catch(() => undefined);
     }
   }, [recurringTransactions, loading, processRecurringTransactions, user]);
   
@@ -253,7 +325,6 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!user) {
       setLoading(false);
       setAllTransactions([]);
-      setTransactions([]);
       setCategories([]);
       setBudgets([]);
       setRecurringTransactions([]);
@@ -264,12 +335,33 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     setLoading(true);
 
+    const pendingSources = new Set([
+      'settings',
+      'categories',
+      'budgets',
+      'recurringTransactions',
+      'goals',
+      'transactions',
+    ]);
+    const markReady = (source: string) => {
+      pendingSources.delete(source);
+      if (pendingSources.size === 0) setLoading(false);
+    };
+
     const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'main');
-    const unsubSettings = onSnapshot(settingsDocRef, (docSnap) => {
-      if (docSnap.exists()) {
-        setStartingBalance(docSnap.data().startingBalance || 0);
+    const unsubSettings = onSnapshot(
+      settingsDocRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          setStartingBalance(docSnap.data().startingBalance || 0);
+        }
+        markReady('settings');
+      },
+      (error) => {
+        console.error('Error fetching settings:', error);
+        markReady('settings');
       }
-    });
+    );
 
     const collectionsToSync = ['categories', 'budgets', 'recurringTransactions', 'goals'] as const;
 
@@ -295,9 +387,11 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               setGoals(data as Goal[]);
               break;
           }
+          markReady(name);
         },
         (error) => {
           console.error(`Error fetching ${name}:`, error);
+          markReady(name);
         }
       );
     });
@@ -307,37 +401,22 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const unsubAllTransactions = onSnapshot(
         query(allTransactionsCollRef, orderBy('date', 'desc')),
         (snapshot) => {
-          setAllTransactions(snapshot.docs.map(d => d.data() as Transaction));
+          setAllTransactions(
+            snapshot.docs.map((document) => ({
+              ...document.data(),
+              id: document.id,
+            })) as Transaction[]
+          );
+          markReady('transactions');
         },
-        (error) => console.error('Error fetching all transactions:', error)
+        (error) => {
+          console.error('Error fetching all transactions:', error);
+          markReady('transactions');
+        }
       );
       unsubscribers.push(unsubAllTransactions);
-    }
-
-    const transactionsCollRef = getCollectionRef('transactions');
-    if (transactionsCollRef) {
-        const yearStartDate = startOfYear(new Date(activeYear, 0, 1)).toISOString();
-        const yearEndDate = endOfYear(new Date(activeYear, 11, 31)).toISOString();
-
-        const q = query(
-            transactionsCollRef,
-            orderBy('date', 'desc'),
-            where('date', '>=', yearStartDate),
-            where('date', '<=', yearEndDate)
-        );
-
-        const unsubTransactions = onSnapshot(
-            q,
-            (snapshot) => {
-                setTransactions(snapshot.docs.map(d => d.data() as Transaction));
-                setLoading(false);
-            },
-            (error) => {
-                console.error(`Error fetching transactions for year ${activeYear}:`, error);
-                setLoading(false);
-            }
-        );
-        unsubscribers.push(unsubTransactions);
+    } else {
+      markReady('transactions');
     }
 
 
@@ -345,39 +424,56 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       unsubSettings();
       unsubscribers.forEach((unsub) => unsub());
     };
-  }, [user, getCollectionRef, activeYear]);
+  }, [user, getCollectionRef]);
 
   useEffect(() => {
-    if (!user || loading || categories.length === 0 || allTransactions.length === 0) return;
-
-    const transactionsNeedingCategoryId = allTransactions.filter(
-      (t) => !t.categoryId && t.category
-    );
-    if (transactionsNeedingCategoryId.length === 0) return;
+    if (
+      !user ||
+      loading ||
+      categories.length === 0 ||
+      categoryMigrationRef.current
+    ) return;
 
     const run = async () => {
       const collRef = getCollectionRef('transactions');
       if (!collRef) return;
+      categoryMigrationRef.current = true;
 
-      const batch = writeBatch(db);
+      const settingsRef = doc(db, 'users', user.uid, 'settings', 'main');
+      const settingsSnapshot = await getDoc(settingsRef);
+      if ((settingsSnapshot.data()?.dataSchemaVersion ?? 0) >= 2) return;
+
+      const transactionsNeedingCategoryId = allTransactions.filter(
+        (transaction) => !transaction.categoryId && transaction.category
+      );
       let updatedCount = 0;
 
-      for (const t of transactionsNeedingCategoryId.slice(0, 100)) {
-        const matched = findCategoryByPath(t.category, categories);
-        if (matched) {
-          const txRef = doc(collRef, t.id);
-          batch.update(txRef, { categoryId: matched.id });
-          updatedCount++;
+      for (const transactionChunk of chunkArray(transactionsNeedingCategoryId, 450)) {
+        const batch = writeBatch(db);
+        let chunkWrites = 0;
+        for (const transaction of transactionChunk) {
+          const matched = findCategoryByPath(
+            transaction.category,
+            categories,
+            transaction.type
+          );
+          if (matched) {
+            batch.update(doc(collRef, transaction.id), { categoryId: matched.id });
+            updatedCount += 1;
+            chunkWrites += 1;
+          }
         }
+        if (chunkWrites > 0) await batch.commit();
       }
 
-      if (updatedCount > 0) {
-        await batch.commit();
-        console.log(`Updated ${updatedCount} transactions with categoryId`);
-      }
+      await setDoc(settingsRef, { dataSchemaVersion: 2 }, { merge: true });
+      console.info(`Category migration complete: ${updatedCount} transactions updated.`);
     };
 
-    run().catch((e) => console.error('Error migrating categoryId for transactions:', e));
+    run().catch((error) => {
+      categoryMigrationRef.current = false;
+      console.error('Error migrating categoryId for transactions:', error);
+    });
   }, [user, loading, categories, allTransactions, getCollectionRef]);
 
   const processedGoals = useMemo((): ProcessedGoal[] => {
@@ -448,45 +544,6 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     loading
   ]);
 
-  useEffect(() => {
-    if (loading) return;
-    if (categories.length === 0 || allTransactions.length === 0) return;
-
-    goals.forEach(goal => {
-        if (!goal.linkedCategoryId) return;
-
-        const category = findCategoryByIdRecursive(goal.linkedCategoryId, categories);
-        if (!category) return;
-        
-        const getSubCategoryNames = (category: Category | SubCategory): string[] => {
-            let names = [category.name];
-            if (category.subCategories) {
-                category.subCategories.forEach(sub => {
-                    names = [...names, ...getSubCategoryNames(sub)];
-                });
-            }
-            return names;
-        };
-        const categoryNames = getSubCategoryNames(category);
-
-        const contributionStartDate = goal.contributionStartDate ? new Date(goal.contributionStartDate) : new Date(0);
-
-        const linkedTransactions = allTransactions.filter(t =>
-            t.type === 'expense' &&
-            categoryNames.includes(t.category) &&
-            new Date(t.date) >= contributionStartDate
-        );
-
-        const total = linkedTransactions.reduce((sum, t) => sum + t.amount, 0);
-        
-        const originalGoal = goals.find(g => g.id === goal.id);
-
-        if (originalGoal && total !== originalGoal.savedAmount) {
-            updateGoal(goal.id, { savedAmount: total });
-        }
-    });
-}, [allTransactions, categories, goals, loading]);
-  
   const getBudgetDetails = useCallback(
     ({
       activeBudgets,
@@ -508,12 +565,16 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const findFirstTransactionYearForBudget = (
         budget: Budget,
         allTx: Transaction[],
+        allCategoryIds: string[],
         allCategoryNames: string[]
       ) => {
         const budgetTxs = allTx
           .filter(
             (t) =>
-              t.type === 'expense' && allCategoryNames.includes(t.category)
+              t.type === 'expense' &&
+              (t.categoryId
+                ? allCategoryIds.includes(t.categoryId)
+                : allCategoryNames.includes(t.category))
           )
           .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
@@ -525,8 +586,15 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const relevantBudgets = activeBudgets.filter((budget) => {
         let effectiveYear = budget.year;
         if (typeof effectiveYear !== 'number') {
-            const budgetCategoryNames = getCategorySubtreeIdsAndNames(findCategoryByIdRecursive(budget.categoryId, categories) || {} as Category).names;
-            effectiveYear = findFirstTransactionYearForBudget(budget, transactions, budgetCategoryNames) ?? firstYear;
+            const budgetCategoryTree = getCategorySubtreeIdsAndNames(
+              findCategoryByIdRecursive(budget.categoryId, categories) || {} as Category
+            );
+            effectiveYear = findFirstTransactionYearForBudget(
+              budget,
+              transactions,
+              budgetCategoryTree.ids,
+              budgetCategoryTree.names
+            ) ?? firstYear;
         }
         return effectiveYear === reportYear;
       });
@@ -542,6 +610,7 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       
       const calculateSpending = (
         budget: Budget,
+        allCategoryIdsForBudget: string[],
         allCategoryNamesForBudget: string[],
         currentForDate: Date,
         yearToFilter: number
@@ -553,8 +622,10 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             
             if (t.type !== 'expense') return false;
             
-            const transactionCategoryName = normalizeCategoryName(t.category);
-            if (!allCategoryNamesForBudget.includes(transactionCategoryName)) {
+            const categoryMatches = t.categoryId
+              ? allCategoryIdsForBudget.includes(t.categoryId)
+              : allCategoryNamesForBudget.includes(normalizeCategoryName(t.category));
+            if (!categoryMatches) {
                 return false;
             }
 
@@ -576,14 +647,23 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return relevantBudgets.map((budget) => {
         const result = findCategoryWithPathById(budget.categoryId, categories);
         let categoryName = 'Unknown Category';
+        let allCategoryIdsForBudget: string[] = [];
         let allCategoryNamesForBudget: string[] = [];
 
         if (result) {
           categoryName = result.path.map((c) => c.name).join(' > ');
-          allCategoryNamesForBudget = getCategorySubtreeIdsAndNames(result.category).names;
+          const categoryTree = getCategorySubtreeIdsAndNames(result.category);
+          allCategoryIdsForBudget = categoryTree.ids;
+          allCategoryNamesForBudget = categoryTree.names;
         }
 
-        const spent = calculateSpending(budget, allCategoryNamesForBudget, forDate, reportYear);
+        const spent = calculateSpending(
+          budget,
+          allCategoryIdsForBudget,
+          allCategoryNamesForBudget,
+          forDate,
+          reportYear
+        );
 
         const remaining = budget.amount - spent;
         const progress = budget.amount > 0 ? (spent / budget.amount) * 100 : 0;
@@ -593,7 +673,13 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             const comparisonBudget = comparisonBudgets.find(b => b.categoryId === budget.categoryId && b.period === budget.period);
             if (comparisonBudget) {
                 const comparisonDate = new Date(comparisonYear, forDate.getMonth(), 1);
-                const comparisonSpent = calculateSpending(comparisonBudget, allCategoryNamesForBudget, comparisonDate, comparisonYear);
+                const comparisonSpent = calculateSpending(
+                  comparisonBudget,
+                  allCategoryIdsForBudget,
+                  allCategoryNamesForBudget,
+                  comparisonDate,
+                  comparisonYear
+                );
                 const comparisonRemaining = comparisonBudget.amount - comparisonSpent;
 
                 deltas = {
@@ -626,6 +712,28 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       ...transaction,
       id: newDocRef.id,
     });
+  };
+
+  const importTransactions = async (
+    importedTransactions: Omit<Transaction, 'id'>[]
+  ): Promise<TransactionImportSummary> => {
+    const collRef = getCollectionRef('transactions');
+    if (!collRef) throw new Error('User not authenticated');
+
+    const prepared = prepareTransactionImport(importedTransactions, allTransactions);
+    for (const transactionChunk of chunkArray(prepared.transactions, 450)) {
+      const batch = writeBatch(db);
+      transactionChunk.forEach((transaction) => {
+        const newDocRef = doc(collRef);
+        batch.set(newDocRef, { ...transaction, id: newDocRef.id });
+      });
+      await batch.commit();
+    }
+
+    return {
+      imported: prepared.transactions.length,
+      duplicates: prepared.duplicates,
+    };
   };
 
   const updateTransaction = async (id: string, values: Partial<Omit<Transaction, 'id'>>) => {
@@ -982,7 +1090,10 @@ export const UserDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     goals: processedGoals,
     startingBalance,
     loading,
+    recurringSync,
+    syncRecurringTransactions: processRecurringTransactions,
     addTransaction,
+    importTransactions,
     updateTransaction,
     deleteTransaction,
     addCategory,

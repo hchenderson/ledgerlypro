@@ -31,12 +31,19 @@ receipt extraction and narrative projections.
    NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=
    NEXT_PUBLIC_FIREBASE_APP_ID=
    NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=
-   FIREBASE_SERVICE_ACCOUNT_JSON=
+   GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/ledgerly-pro-service-account.json
    GEMINI_API_KEY=
    ```
 
-   `FIREBASE_SERVICE_ACCOUNT_JSON` must be server-only. In Firebase App Hosting,
-   it is supplied through Secret Manager as configured in `apphosting.yaml`.
+   To create the local Admin credential file, open Firebase Console, select
+   **Ledgerly Pro**, then go to **Project settings → Service accounts → Firebase
+   Admin SDK → Generate new private key**. Keep the downloaded JSON file outside
+   this repository and set `GOOGLE_APPLICATION_CREDENTIALS` to its full path.
+   Never commit or share that file.
+
+   Firebase App Hosting uses its managed service identity and does not need this
+   local credential file. Configure `GEMINI_API_KEY` as a runtime secret in the
+   Firebase console for the deployed backend.
 
 3. Start the application:
 

@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useState, useMemo, type ReactNode, useEffect } from "react";
+import { useState, useMemo, type ReactNode, useEffect, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -30,24 +30,45 @@ import { cn } from "@/lib/utils";
 import type { Transaction, Category, SubCategory } from "@/types";
 import { Badge } from "./ui/badge";
 import { useUserData } from "@/hooks/use-user-data";
+import {
+  prepareTransactionImport,
+  type TransactionImportSummary,
+} from "@/lib/transaction-import";
 
 type ImportStep = "upload" | "mapping" | "review";
 
 const REQUIRED_COLUMNS = ['date', 'description', 'credit', 'debit'] as const;
 type RequiredColumn = typeof REQUIRED_COLUMNS[number];
-const OPTIONAL_COLUMNS = ['category'] as const;
-type OptionalColumn = typeof OPTIONAL_COLUMNS[number];
+type OptionalColumn = 'category';
 
 
 interface ImportTransactionsDialogProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  onTransactionsImported: (transactions: Omit<Transaction, 'id'>[]) => void;
+  onTransactionsImported: (transactions: Omit<Transaction, 'id'>[]) => Promise<TransactionImportSummary>;
   children: ReactNode;
 }
 
 type ProcessedTransaction = {
     transaction: Omit<Transaction, 'id'>
+}
+
+function findCategoryByName(
+  categories: Category[],
+  name: string,
+  type: Transaction['type']
+): Category | SubCategory | undefined {
+  const target = name.trim().toLocaleLowerCase();
+  const walk = (nodes: (Category | SubCategory)[]): Category | SubCategory | undefined => {
+    for (const node of nodes) {
+      if (node.name.toLocaleLowerCase() === target) return node;
+      const nested = node.subCategories ? walk(node.subCategories) : undefined;
+      if (nested) return nested;
+    }
+    return undefined;
+  };
+
+  return walk(categories.filter((category) => category.type === type));
 }
 
 export function ImportTransactionsDialog({
@@ -69,9 +90,10 @@ export function ImportTransactionsDialog({
   });
   const [isLoading, setIsLoading] = useState(false);
   const [processedTransactions, setProcessedTransactions] = useState<ProcessedTransaction[]>([]);
+  const reviewProcessingRef = useRef(false);
 
   const { toast } = useToast();
-  const { categories, addCategory } = useUserData();
+  const { categories, allTransactions, addCategory } = useUserData();
 
   const resetState = () => {
     setStep("upload");
@@ -81,6 +103,7 @@ export function ImportTransactionsDialog({
     setMapping({ date: "", description: "", credit: "", debit: "", category: "" });
     setIsLoading(false);
     setProcessedTransactions([]);
+    reviewProcessingRef.current = false;
   };
 
   const handleClose = (open: boolean) => {
@@ -92,7 +115,17 @@ export function ImportTransactionsDialog({
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) {
-      setFile(e.target.files[0]);
+      const selectedFile = e.target.files[0];
+      if (selectedFile.size > 5 * 1024 * 1024) {
+        toast({
+          variant: "destructive",
+          title: "File is too large",
+          description: "Choose a CSV file smaller than 5 MB.",
+        });
+        e.target.value = "";
+        return;
+      }
+      setFile(selectedFile);
     }
   };
 
@@ -116,7 +149,19 @@ export function ImportTransactionsDialog({
           setIsLoading(false);
           return;
         }
-        setHeaders((results.meta.fields || []).filter(Boolean));
+        const parsedHeaders = (results.meta.fields || []).filter(Boolean);
+        setHeaders(parsedHeaders);
+        const findHeader = (...candidates: string[]) =>
+          parsedHeaders.find((header) =>
+            candidates.some((candidate) => header.trim().toLocaleLowerCase().includes(candidate))
+          ) ?? "";
+        setMapping({
+          date: findHeader('date', 'posted'),
+          description: findHeader('description', 'merchant', 'memo', 'details'),
+          credit: findHeader('credit', 'deposit', 'income'),
+          debit: findHeader('debit', 'withdrawal', 'expense'),
+          category: findHeader('category'),
+        });
         setParsedData(results.data as Record<string, string>[]);
         setStep("mapping");
         setIsLoading(false);
@@ -128,52 +173,30 @@ export function ImportTransactionsDialog({
     return REQUIRED_COLUMNS.every(col => mapping[col] && headers.includes(mapping[col]));
   }, [mapping, headers]);
 
-  const allCategoryNames = useMemo(() => {
-      const names = new Set<string>();
-      const recursiveAdd = (cats: (Category | SubCategory)[]) => {
-          cats.forEach(cat => {
-              names.add(cat.name);
-              if (cat.subCategories) {
-                  recursiveAdd(cat.subCategories);
-              }
-          })
-      }
-      recursiveAdd(categories);
-      return names;
-  }, [categories]);
-
   useEffect(() => {
-    if (step !== "review") return;
+    if (step !== "review" || reviewProcessingRef.current) return;
+    reviewProcessingRef.current = true;
 
     const processAndSetTransactions = async () => {
-        const uncategorizedExists = allCategoryNames.has("Uncategorized");
-        if (!uncategorizedExists) {
-            // Check again in case it was just added in another async operation
-            const currentCats = categories;
-            if (!currentCats.some(c => c.name === 'Uncategorized' && c.type === 'expense')) {
-                await addCategory({
-                    name: 'Uncategorized',
-                    type: 'expense',
-                    icon: 'HelpCircle'
-                });
-                allCategoryNames.add("Uncategorized");
-            }
-        }
+        const expenseFallback = findCategoryByName(categories, 'Uncategorized', 'expense')
+          ?? await addCategory({
+            name: 'Uncategorized',
+            type: 'expense',
+            icon: 'HelpCircle',
+          });
+        const incomeFallback = findCategoryByName(categories, 'Other Income', 'income')
+          ?? await addCategory({
+            name: 'Other Income',
+            type: 'income',
+            icon: 'Landmark',
+          });
     
         const transactions = parsedData
-          .map((row, index) => {
+          .map((row) => {
             const dateStr = row[mapping.date];
             const descriptionStr = row[mapping.description];
 
-            console.log(`Row ${index}:`, {
-              date: dateStr,
-              description: descriptionStr,
-              credit: row[mapping.credit],
-              debit: row[mapping.debit],
-            });
-
             if (!dateStr || !descriptionStr || descriptionStr.trim() === "") {
-              console.log(`Skipping row ${index}: missing date or description`);
               return null;
             }
             
@@ -184,8 +207,6 @@ export function ImportTransactionsDialog({
             const creditStr = (row[mapping.credit] || "").toString().trim();
             const debitStr = (row[mapping.debit] || "").toString().trim();
             
-            console.log(`Row ${index} cleaned strings:`, { creditStr, debitStr });
-            
             // Remove currency symbols, commas, and other non-numeric characters except decimal points and minus signs
             const creditCleaned = creditStr.replace(/[$,\s]/g, '').replace(/[^0-9.-]/g, '');
             const debitCleaned = debitStr.replace(/[$,\s]/g, '').replace(/[^0-9.-]/g, '');
@@ -193,8 +214,6 @@ export function ImportTransactionsDialog({
             const creditAmount = creditCleaned === '' ? 0 : parseFloat(creditCleaned);
             const debitAmount = debitCleaned === '' ? 0 : parseFloat(debitCleaned);
             
-            console.log(`Row ${index} parsed amounts:`, { creditAmount, debitAmount });
-
             // Handle different scenarios
             if (!isNaN(creditAmount) && creditAmount > 0) {
               type = 'income';
@@ -211,33 +230,31 @@ export function ImportTransactionsDialog({
               type = 'expense';
               amountVal = Math.abs(creditAmount);
             } else {
-              console.log(`Row ${index}: No valid amount found`);
               return null;
             }
             
             if (type === null || amountVal === null || amountVal === 0) {
-              console.log(`Row ${index}: Invalid type or amount`);
               return null;
             }
 
             const date = new Date(dateStr);
             if (isNaN(date.getTime())) {
-              console.log(`Row ${index}: Invalid date`);
               return null;
             }
             
             const importedCategory = row[mapping.category] || "";
-            const finalCategory = allCategoryNames.has(importedCategory) ? importedCategory : "Uncategorized";
+            const matchedCategory = findCategoryByName(categories, importedCategory, type);
+            const fallbackCategory = type === 'income' ? incomeFallback : expenseFallback;
+            const finalCategory = matchedCategory ?? fallbackCategory;
 
             const transaction = {
               amount: amountVal,
               date: date.toISOString(),
-              description: descriptionStr,
+              description: descriptionStr.trim(),
               type: type,
-              category: finalCategory,
+              category: finalCategory.name,
+              categoryId: finalCategory.id,
             };
-
-            console.log(`Row ${index} final transaction:`, transaction);
             
             return {
               transaction,
@@ -245,36 +262,66 @@ export function ImportTransactionsDialog({
           })
           .filter(Boolean) as ProcessedTransaction[];
 
-        console.log('Total processed transactions:', transactions.length);
         setProcessedTransactions(transactions);
     }
 
-    processAndSetTransactions();
+    void processAndSetTransactions().catch((error) => {
+      console.error('Unable to prepare transaction preview:', error);
+      reviewProcessingRef.current = false;
+      setStep('mapping');
+      toast({
+        variant: 'destructive',
+        title: 'Could not prepare the preview',
+        description: 'Please check your category access and try again.',
+      });
+    });
 
-  }, [step, parsedData, mapping, allCategoryNames, categories, addCategory]);
+  }, [step, parsedData, mapping, categories, addCategory, toast]);
 
+  const importPreview = useMemo(
+    () => prepareTransactionImport(
+      processedTransactions.map((item) => item.transaction),
+      allTransactions
+    ),
+    [processedTransactions, allTransactions]
+  );
 
-  const handleImport = () => {
+  const handleImport = async () => {
     const transactionsWithCategory = processedTransactions.filter(item => item.transaction.category);
     if(transactionsWithCategory.length === 0) {
         toast({ variant: "destructive", title: "No valid transactions to import.", description: "Please ensure at least one transaction has a category selected." });
         return;
     }
     
-    const transactionsToImport = transactionsWithCategory.map(item => item.transaction as Omit<Transaction, 'id'>);
-    onTransactionsImported(transactionsToImport);
-    
-    toast({
-        title: "Import Successful",
-        description: `${transactionsToImport.length} transactions have been added.`,
-    });
-    handleClose(false);
+    setIsLoading(true);
+    try {
+      const transactionsToImport = transactionsWithCategory.map(item => item.transaction as Omit<Transaction, 'id'>);
+      const result = await onTransactionsImported(transactionsToImport);
+      toast({
+          title: "Import complete",
+          description: `${result.imported} added${result.duplicates ? `; ${result.duplicates} probable duplicate${result.duplicates === 1 ? '' : 's'} skipped` : ''}.`,
+      });
+      handleClose(false);
+    } catch (error) {
+      console.error('Transaction import failed:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Import failed',
+        description: 'Nothing was marked complete. Please try the import again.',
+      });
+      setIsLoading(false);
+    }
   }
 
   const handleCategoryChange = (index: number, newCategory: string) => {
     setProcessedTransactions(current => {
       const newTransactions = [...current];
       newTransactions[index].transaction.category = newCategory;
+      newTransactions[index].transaction.categoryId = findCategoryByName(
+        categories,
+        newCategory,
+        newTransactions[index].transaction.type
+      )?.id;
       return newTransactions;
     })
   }
@@ -345,10 +392,10 @@ export function ImportTransactionsDialog({
             </DialogHeader>
             <div className="py-4 space-y-4">
                 <div className="grid grid-cols-2 gap-4">
-                     {['date', 'description'].map(col => (
+                     {(['date', 'description'] as const).map(col => (
                         <div key={col} className="space-y-2">
                             <Label className="capitalize">{col} <span className="text-destructive">*</span></Label>
-                            <Select onValueChange={(value) => setMapping(prev => ({...prev, [col]: value}))}>
+                            <Select value={mapping[col]} onValueChange={(value) => setMapping(prev => ({...prev, [col]: value}))}>
                                 <SelectTrigger>
                                     <SelectValue placeholder="Select CSV column" />
                                 </SelectTrigger>
@@ -368,7 +415,7 @@ export function ImportTransactionsDialog({
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                          <div className="space-y-2">
                             <Label>Credit (Income) <span className="text-destructive">*</span></Label>
-                            <Select onValueChange={(value) => setMapping(prev => ({...prev, credit: value}))}>
+                            <Select value={mapping.credit} onValueChange={(value) => setMapping(prev => ({...prev, credit: value}))}>
                                 <SelectTrigger>
                                     <SelectValue placeholder="Select credit column" />
                                 </SelectTrigger>
@@ -379,7 +426,7 @@ export function ImportTransactionsDialog({
                         </div>
                         <div className="space-y-2">
                             <Label>Debit (Expense) <span className="text-destructive">*</span></Label>
-                            <Select onValueChange={(value) => setMapping(prev => ({...prev, debit: value}))}>
+                            <Select value={mapping.debit} onValueChange={(value) => setMapping(prev => ({...prev, debit: value}))}>
                                 <SelectTrigger>
                                     <SelectValue placeholder="Select debit column" />
                                 </SelectTrigger>
@@ -392,7 +439,7 @@ export function ImportTransactionsDialog({
                 </div>
                 <div>
                      <Label>Category (Optional)</Label>
-                      <Select onValueChange={(value) => setMapping(prev => ({...prev, category: value}))}>
+                      <Select value={mapping.category} onValueChange={(value) => setMapping(prev => ({...prev, category: value}))}>
                         <SelectTrigger>
                             <SelectValue placeholder="Select category column" />
                         </SelectTrigger>
@@ -406,7 +453,10 @@ export function ImportTransactionsDialog({
             </div>
             <DialogFooter>
                 <Button variant="outline" onClick={() => setStep('upload')}>Back</Button>
-                <Button onClick={() => setStep('review')} disabled={!canProceedToReview}>
+                <Button onClick={() => {
+                  reviewProcessingRef.current = false;
+                  setStep('review');
+                }} disabled={!canProceedToReview}>
                     Review Data
                     <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
@@ -419,7 +469,7 @@ export function ImportTransactionsDialog({
             <DialogHeader>
               <DialogTitle>Step 3: Review & Confirm</DialogTitle>
               <DialogDescription>
-                Review the transactions to be imported. Invalid rows have been skipped. Found {processedTransactions.length} valid rows.
+                Review the transactions to be imported. Found {processedTransactions.length} valid rows; {importPreview.duplicates} probable duplicate{importPreview.duplicates === 1 ? '' : 's'} will be skipped.
               </DialogDescription>
             </DialogHeader>
             <div className="py-4">
@@ -472,7 +522,8 @@ export function ImportTransactionsDialog({
             </div>
             <DialogFooter>
                  <Button variant="outline" onClick={() => setStep('mapping')}>Back</Button>
-                 <Button onClick={handleImport} disabled={processedTransactions.filter(item => item.transaction.category).length === 0}>
+                 <Button onClick={handleImport} disabled={isLoading || importPreview.transactions.length === 0}>
+                    {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Confirm & Import
                  </Button>
             </DialogFooter>

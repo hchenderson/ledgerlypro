@@ -22,6 +22,7 @@ import {
 import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
 import type { PieLabelRenderProps } from "recharts";
+import { useAuth } from '@/hooks/use-auth';
 
 interface EOYReportProps {
   allTransactions: Transaction[];
@@ -114,6 +115,7 @@ export const EOYReport: React.FC<EOYReportProps> = ({
   initialYear,
   startingBalance = 0,
 }) => {
+  const { user } = useAuth();
   const now = new Date();
   const [year, setYear] = useState(initialYear ?? now.getFullYear());
   const [isGenerating, setIsGenerating] = useState(false);
@@ -168,12 +170,17 @@ export const EOYReport: React.FC<EOYReportProps> = ({
 
   const handleGenerateSummary = async () => {
     try {
+      if (!user) throw new Error('You must be signed in.');
       setIsGenerating(true);
       setAiSummary(null);
+      const idToken = await user.getIdToken();
 
       const res = await fetch("/api/eoy-summary", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
         body: JSON.stringify({
           year: data.year,
           totalIncome: data.totalIncome,

@@ -9,15 +9,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { User, Wallet, ArrowRight, ArrowLeft, Loader2 } from 'lucide-react';
+import { User, Wallet, ArrowRight, ArrowLeft, Loader2, FileUp, Sparkles } from 'lucide-react';
 import { updateProfile } from 'firebase/auth';
 import { Progress } from '@/components/ui/progress';
 import { doc, setDoc, writeBatch, collection } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { defaultTransactions, defaultCategories, defaultBudgets, defaultRecurringTransactions, defaultGoals } from '@/lib/data';
 import type { Transaction, Category, Budget, RecurringTransaction, Goal } from '@/types';
-import { Checkbox } from '@/components/ui/checkbox';
+import { cn } from '@/lib/utils';
+import { LedgerlyBrand } from '@/components/icons';
 
+type SetupMode = 'empty' | 'sample' | 'import';
 
 export default function WelcomePage() {
     const { user, setOnboardingComplete } = useAuth();
@@ -26,7 +28,7 @@ export default function WelcomePage() {
     const [step, setStep] = useState(1);
     const [name, setName] = useState('');
     const [startingBalance, setStartingBalance] = useState('');
-    const [seedData, setSeedData] = useState(true);
+    const [setupMode, setSetupMode] = useState<SetupMode>('empty');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
@@ -50,11 +52,12 @@ export default function WelcomePage() {
             goals: defaultGoals,
         };
     
-        for (const [name, data] of Object.entries(collections)) {
-            const collRef = collection(db, 'users', user.uid, name);
-            data.forEach((item) => {
-                const docRef = doc(collRef);
-                batch.set(docRef, { ...item, id: docRef.id });
+        for (const [collectionName, data] of Object.entries(collections)) {
+            const collRef = collection(db, 'users', user.uid, collectionName);
+            data.forEach((item, index) => {
+                const existingId = 'id' in item && typeof item.id === 'string' ? item.id : undefined;
+                const documentId = existingId ?? `sample-${collectionName}-${index + 1}`;
+                batch.set(doc(collRef, documentId), { ...item, id: documentId });
             });
         }
     
@@ -81,19 +84,27 @@ export default function WelcomePage() {
             const settingsRef = doc(db, 'users', user.uid, 'settings', 'main');
 
             const balance = parseFloat(startingBalance);
-             await setDoc(settingsRef, { 
+            await setDoc(settingsRef, {
                 startingBalance: isNaN(balance) ? 0 : balance,
-                onboardingComplete: true
             }, { merge: true });
             
-            if (seedData) {
+            if (setupMode === 'sample') {
                 await seedDefaultData();
             }
-            
-            setOnboardingComplete(true);
 
-            toast({ title: 'Setup Complete!', description: 'Welcome to Ledgerly Pro. Redirecting you to the dashboard...' });
-            router.push('/dashboard');
+            await setDoc(settingsRef, {
+                onboardingComplete: true,
+                dataSchemaVersion: 2,
+            }, { merge: true });
+            await setOnboardingComplete(true);
+
+            toast({
+                title: 'Setup complete!',
+                description: setupMode === 'import'
+                    ? 'Your account is ready. Choose your CSV file next.'
+                    : 'Welcome to Ledgerly Pro.',
+            });
+            router.push(setupMode === 'import' ? '/transactions?import=1' : '/dashboard');
 
         } catch (error) {
             console.error('Onboarding failed:', error);
@@ -105,11 +116,14 @@ export default function WelcomePage() {
     const progress = (step / 2) * 100;
 
     return (
-        <div className="flex min-h-screen items-center justify-center bg-secondary/50 p-4">
-            <Card className="w-full max-w-2xl">
+        <div className="brand-grid flex min-h-screen items-center justify-center bg-brand-mint p-4 md:p-8">
+          <div className="w-full max-w-2xl">
+            <LedgerlyBrand className="mx-auto mb-7" />
+            <Card className="w-full overflow-hidden border-primary/10 shadow-[0_28px_70px_-40px_rgba(41,58,94,0.5)]">
                 <CardHeader>
-                    <CardTitle className="text-center">Welcome to Ledgerly Pro!</CardTitle>
-                    <CardDescription className="text-center">Let's get your account set up in a few steps.</CardDescription>
+                    <p className="text-center text-xs font-semibold uppercase tracking-[0.18em] text-primary">Account setup</p>
+                    <CardTitle className="text-center text-2xl text-brand-navy dark:text-white">Build your financial foundation</CardTitle>
+                    <CardDescription className="text-center">Two quick steps, then your workspace is ready.</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <Progress value={progress} className="mb-8" />
@@ -138,19 +152,34 @@ export default function WelcomePage() {
                                     <Label htmlFor="starting-balance">Starting Balance (Optional)</Label>
                                     <Input id="starting-balance" type="number" placeholder="0.00" value={startingBalance} onChange={(e) => setStartingBalance(e.target.value)} />
                                 </div>
-                                <div className="flex items-center space-x-2 rounded-md border p-4">
-                                    <Checkbox id="seed-data" checked={seedData} onCheckedChange={(checked) => setSeedData(!!checked)}/>
-                                    <div className="grid gap-1.5 leading-none">
-                                        <label
-                                        htmlFor="seed-data"
-                                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                                        >
-                                        Add sample data
-                                        </label>
-                                        <p className="text-sm text-muted-foreground">
-                                        Populate your account with sample transactions and categories to explore features.
-                                        </p>
-                                    </div>
+                                <div className="space-y-2" role="radiogroup" aria-label="How to begin">
+                                    {([
+                                        { value: 'empty', title: 'Start clean', description: 'Begin with an empty account and add your own data.', icon: Wallet },
+                                        { value: 'import', title: 'Import a CSV', description: 'Finish setup, then open the guided transaction importer.', icon: FileUp },
+                                        { value: 'sample', title: 'Explore sample data', description: 'Add clearly marked example transactions, budgets, and goals.', icon: Sparkles },
+                                    ] as const).map((option) => {
+                                        const Icon = option.icon;
+                                        const selected = setupMode === option.value;
+                                        return (
+                                            <button
+                                                key={option.value}
+                                                type="button"
+                                                role="radio"
+                                                aria-checked={selected}
+                                                onClick={() => setSetupMode(option.value)}
+                                                className={cn(
+                                                    'flex w-full items-start gap-3 rounded-xl border p-3.5 text-left transition-all',
+                                                    selected ? 'border-primary bg-secondary/45 shadow-sm' : 'hover:border-primary/25 hover:bg-muted/50'
+                                                )}
+                                            >
+                                                <Icon className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                                                <span>
+                                                    <span className="block text-sm font-medium">{option.title}</span>
+                                                    <span className="block text-sm text-muted-foreground">{option.description}</span>
+                                                </span>
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                             </div>
                         </div>
@@ -172,6 +201,7 @@ export default function WelcomePage() {
                     )}
                 </CardFooter>
             </Card>
+          </div>
         </div>
     );
 }

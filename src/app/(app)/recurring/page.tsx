@@ -4,9 +4,9 @@
 
 import { useState, useMemo } from 'react';
 import { useUserData } from '@/hooks/use-user-data';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, Repeat, Trash2, Edit } from 'lucide-react';
+import { PlusCircle, Repeat, Trash2, Edit, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -49,20 +49,37 @@ const recurringFormSchema = z.object({
   amount: z.coerce.number().positive('Amount must be a positive number.'),
   type: z.enum(['income', 'expense']),
   category: z.string().min(1, 'Please select a category.'),
+  categoryId: z.string().min(1, 'Please select a category.'),
   frequency: z.enum(['daily', 'weekly', 'monthly', 'yearly']),
   startDate: z.date(),
 });
 
 type RecurringFormValues = z.infer<typeof recurringFormSchema>;
 
+function flattenCategoryOptions(
+  categories: (Category | SubCategory)[]
+): Array<{ id: string; name: string }> {
+  return categories.flatMap((category) => [
+    { id: category.id, name: category.name },
+    ...flattenCategoryOptions(category.subCategories ?? []),
+  ]);
+}
+
 function RecurringForm({ transaction, onSave, categories, closeDialog, isReadOnly }: { transaction?: RecurringTransaction, onSave: (values: RecurringFormValues, id?: string) => void, categories: Category[], closeDialog: () => void, isReadOnly: boolean }) {
   const form = useForm<RecurringFormValues>({
     resolver: zodResolver(recurringFormSchema),
-    defaultValues: transaction ? { ...transaction, startDate: new Date(transaction.startDate) } : {
+    defaultValues: transaction ? {
+      ...transaction,
+      categoryId: transaction.categoryId
+        ?? flattenCategoryOptions(categories).find((category) => category.name === transaction.category)?.id
+        ?? '',
+      startDate: new Date(transaction.startDate),
+    } : {
       description: '',
       amount: 0,
       type: 'expense',
       category: '',
+      categoryId: '',
       frequency: 'monthly',
       startDate: new Date(),
     }
@@ -76,11 +93,7 @@ function RecurringForm({ transaction, onSave, categories, closeDialog, isReadOnl
   const type = form.watch('type');
   
   const availableCategories = useMemo(() => {
-    const flattenCategories = (cats: (Category | SubCategory)[]): string[] => {
-      if (!Array.isArray(cats)) return [];
-      return cats.flatMap(c => [c.name, ...(c.subCategories ? flattenCategories(c.subCategories) : [])]);
-    };
-    return flattenCategories(categories.filter(c => c.type === type));
+    return flattenCategoryOptions(categories.filter(c => c.type === type));
   }, [categories, type]);
 
   return (
@@ -90,16 +103,35 @@ function RecurringForm({ transaction, onSave, categories, closeDialog, isReadOnl
         <FormField control={form.control} name="amount" render={({ field }) => (<FormItem><FormLabel>Amount</FormLabel><FormControl><Input type="number" placeholder="15.99" {...field} disabled={isReadOnly} /></FormControl><FormMessage /></FormItem>)} />
         <FormField control={form.control} name="type" render={({ field }) => (
           <FormItem className="space-y-3"><FormLabel>Type</FormLabel><FormControl>
-            <RadioGroup onValueChange={field.onChange} defaultValue={field.value} className="flex space-x-4" disabled={isReadOnly}>
+            <RadioGroup
+              onValueChange={(value) => {
+                field.onChange(value);
+                form.setValue('category', '');
+                form.setValue('categoryId', '');
+              }}
+              defaultValue={field.value}
+              className="flex space-x-4"
+              disabled={isReadOnly}
+            >
               <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="income" /></FormControl><FormLabel className="font-normal">Income</FormLabel></FormItem>
               <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="expense" /></FormControl><FormLabel className="font-normal">Expense</FormLabel></FormItem>
             </RadioGroup>
           </FormControl><FormMessage /></FormItem>
         )} />
-        <FormField control={form.control} name="category" render={({ field }) => (
+        <FormField control={form.control} name="categoryId" render={({ field }) => (
           <FormItem><FormLabel>Category</FormLabel>
-            <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isReadOnly}><FormControl><SelectTrigger><SelectValue placeholder="Select a category" /></SelectTrigger></FormControl>
-              <SelectContent>{availableCategories.map(cat => (<SelectItem key={cat} value={cat}>{cat}</SelectItem>))}</SelectContent>
+            <Select
+              onValueChange={(categoryId) => {
+                field.onChange(categoryId);
+                form.setValue(
+                  'category',
+                  availableCategories.find((category) => category.id === categoryId)?.name ?? ''
+                );
+              }}
+              defaultValue={field.value}
+              disabled={isReadOnly}
+            ><FormControl><SelectTrigger><SelectValue placeholder="Select a category" /></SelectTrigger></FormControl>
+              <SelectContent>{availableCategories.map(category => (<SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>))}</SelectContent>
             </Select><FormMessage /></FormItem>
         )} />
         <FormField control={form.control} name="frequency" render={({ field }) => (
@@ -227,7 +259,15 @@ function calculateNextOccurrence(rt: RecurringTransaction): Date {
 }
 
 function RecurringPageContent() {
-  const { recurringTransactions, addRecurringTransaction, updateRecurringTransaction, deleteRecurringTransaction, loading } = useUserData();
+  const {
+    recurringTransactions,
+    addRecurringTransaction,
+    updateRecurringTransaction,
+    deleteRecurringTransaction,
+    loading,
+    recurringSync,
+    syncRecurringTransactions,
+  } = useUserData();
   const { activeYear } = useAuth();
   const { isComparing } = useComparison();
   const systemYear = new Date().getFullYear();
@@ -256,7 +296,7 @@ function RecurringPageContent() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-2xl font-bold tracking-tight font-headline flex items-center gap-2">
             <Repeat /> Recurring Transactions
@@ -265,13 +305,46 @@ function RecurringPageContent() {
             Automate your regular income and expenses.
           </p>
         </div>
-        <RecurringDialog onSave={handleSave} isReadOnly={isReadOnly}>
-          <Button disabled={isReadOnly} title={isReadOnly ? "You cannot add recurring transactions in a past year." : "Add new recurring transaction"}>
-            <PlusCircle className="mr-2 h-4 w-4" />
-            New Recurring Transaction
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            onClick={() => void syncRecurringTransactions().catch(() => undefined)}
+            disabled={isReadOnly || recurringSync.status === 'syncing'}
+          >
+            <RefreshCw className={cn('mr-2 h-4 w-4', recurringSync.status === 'syncing' && 'animate-spin')} />
+            Sync now
           </Button>
-        </RecurringDialog>
+          <RecurringDialog onSave={handleSave} isReadOnly={isReadOnly}>
+            <Button disabled={isReadOnly} title={isReadOnly ? "You cannot add recurring transactions in a past year." : "Add new recurring transaction"}>
+              <PlusCircle className="mr-2 h-4 w-4" />
+              New Recurring Transaction
+            </Button>
+          </RecurringDialog>
+        </div>
       </div>
+      {recurringSync.status !== 'idle' && (
+        <div
+          className={cn(
+            'flex items-center gap-2 rounded-md border px-3 py-2 text-sm',
+            recurringSync.status === 'error' && 'border-destructive/40 text-destructive'
+          )}
+          role={recurringSync.status === 'error' ? 'alert' : 'status'}
+        >
+          {recurringSync.status === 'error' ? (
+            <AlertCircle className="h-4 w-4" />
+          ) : recurringSync.status === 'success' ? (
+            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+          ) : (
+            <RefreshCw className="h-4 w-4 animate-spin" />
+          )}
+          <span>{recurringSync.message}</span>
+          {recurringSync.lastSyncedAt && (
+            <span className="ml-auto text-muted-foreground">
+              {format(recurringSync.lastSyncedAt, 'MMM d, h:mm a')}
+            </span>
+          )}
+        </div>
+      )}
       <Card>
         <CardContent className="p-0">
           <Table>

@@ -68,6 +68,7 @@ export const defaultTransactions: Omit<Transaction, 'id'>[] = [
         amount: 5000,
         type: "income",
         category: "Salary",
+        categoryId: "sub_inc_1",
     },
     {
         date: new Date(now.getFullYear(), now.getMonth(), 1).toISOString(),
@@ -75,6 +76,7 @@ export const defaultTransactions: Omit<Transaction, 'id'>[] = [
         amount: 1500,
         type: "expense",
         category: "Rent/Mortgage",
+        categoryId: "sub_exp_1",
     },
     {
         date: new Date(now.getFullYear(), now.getMonth(), 2).toISOString(),
@@ -82,6 +84,7 @@ export const defaultTransactions: Omit<Transaction, 'id'>[] = [
         amount: 120.50,
         type: "expense",
         category: "Groceries",
+        categoryId: "sub_exp_5",
     },
     {
         date: new Date(now.getFullYear(), now.getMonth(), 3).toISOString(),
@@ -89,6 +92,7 @@ export const defaultTransactions: Omit<Transaction, 'id'>[] = [
         amount: 75.00,
         type: "expense",
         category: "Restaurants",
+        categoryId: "sub_exp_6",
     },
      {
         date: new Date(now.getFullYear(), now.getMonth(), 5).toISOString(),
@@ -96,6 +100,7 @@ export const defaultTransactions: Omit<Transaction, 'id'>[] = [
         amount: 60.00,
         type: "expense",
         category: "Internet",
+        categoryId: "sub_exp_4",
     },
 ];
 
@@ -129,6 +134,7 @@ export const defaultRecurringTransactions: Omit<RecurringTransaction, 'id' | 'la
         amount: 15.99,
         type: "expense",
         category: "Hobbies",
+        categoryId: "sub_exp_10",
         frequency: "monthly",
         startDate: new Date(now.getFullYear(), now.getMonth(), 10).toISOString(),
     },
@@ -137,6 +143,7 @@ export const defaultRecurringTransactions: Omit<RecurringTransaction, 'id' | 'la
         amount: 1500,
         type: "expense",
         category: "Rent/Mortgage",
+        categoryId: "sub_exp_1",
         frequency: "monthly",
         startDate: new Date(now.getFullYear(), now.getMonth(), 1).toISOString(),
     }

@@ -8,10 +8,5 @@ cors:
   - origin: "*"
     method: ["GET", "HEAD"]
 
-# Environment variables for the App Hosting backend.
-# Use Secret Manager references for sensitive values. :contentReference[oaicite:5]{index=5}
-env:
-  - variable: FIREBASE_SERVICE_ACCOUNT_JSON
-    secret: FIREBASE_SERVICE_ACCOUNT_JSON
-    availability:
-      - RUNTIME
+# Firebase Admin uses the App Hosting backend's managed service identity.
+# Configure model-provider secrets such as GEMINI_API_KEY in the Firebase console.
