@@ -28,7 +28,8 @@ const transactions: Transaction[] = [
     description: "Rent",
     amount: 1_200,
     type: "expense",
-    category: "Housing > Rent",
+    category: "A stale category label",
+    categoryId: "rent",
   },
 ];
 

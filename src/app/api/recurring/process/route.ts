@@ -4,10 +4,12 @@ import { adminDb } from "@/lib/firebaseAdmin";
 import { AuthenticationError, requireUid } from "@/lib/requireUid";
 import { planRecurringOccurrences } from "@/lib/recurring";
 import type { RecurringTransaction } from "@/types";
+import { logServerEvent, requestLogContext } from "@/lib/server-logger";
 
 const MAX_OCCURRENCES_PER_REQUEST = 400;
 
 export async function POST(req: Request) {
+  const context = requestLogContext(req, 'recurring.process');
   try {
     const uid = await requireUid(req);
     if (!adminDb) throw new Error("Firebase Admin SDK is not initialized.");
@@ -53,15 +55,22 @@ export async function POST(req: Request) {
 
     if (upserted > 0) await batch.commit();
 
-    return NextResponse.json({ upserted, hasMore });
+    logServerEvent('info', 'recurring.process.completed', { ...context, uid, upserted, hasMore });
+    return NextResponse.json({ upserted, hasMore }, {
+      headers: { 'x-request-id': context.requestId },
+    });
   } catch (error) {
     if (error instanceof AuthenticationError) {
-      return NextResponse.json({ error: error.message }, { status: 401 });
+      logServerEvent('warn', 'recurring.process.unauthorized', context, error);
+      return NextResponse.json({ error: error.message }, {
+        status: 401,
+        headers: { 'x-request-id': context.requestId },
+      });
     }
-    console.error("Recurring transaction processing failed:", error);
+    logServerEvent('error', 'recurring.process.failed', context, error);
     return NextResponse.json(
       { error: "Unable to process recurring transactions." },
-      { status: 500 }
+      { status: 500, headers: { 'x-request-id': context.requestId } }
     );
   }
 }

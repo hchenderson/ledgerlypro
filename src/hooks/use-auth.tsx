@@ -12,7 +12,7 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   onboardingComplete: boolean;
-  setOnboardingComplete: (complete: boolean) => void;
+  setOnboardingComplete: (complete: boolean) => Promise<void>;
   showInstructions: boolean;
   setShowInstructions: (show: boolean) => void;
   activeYear: number;
@@ -26,7 +26,7 @@ const AuthContext = createContext<AuthContextType>({
   user: null, 
   loading: true,
   onboardingComplete: false,
-  setOnboardingComplete: () => {},
+  setOnboardingComplete: async () => {},
   showInstructions: false,
   setShowInstructions: () => {},
   activeYear: new Date().getFullYear(),

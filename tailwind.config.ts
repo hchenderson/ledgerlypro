@@ -12,8 +12,8 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        body: ['Inter', 'sans-serif'],
-        headline: ['Montserrat', 'sans-serif'],
+        body: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        headline: ['Montserrat', 'Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         code: ['Source Code Pro', 'monospace'],
       },
       colors: {
@@ -50,6 +50,13 @@ export default {
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',
         ring: 'hsl(var(--ring))',
+        brand: {
+          emerald: '#285943',
+          navy: '#293A5E',
+          mint: '#F0FAF5',
+          charcoal: '#1A1F24',
+          tint: '#CFE5DA',
+        },
         chart: {
           '1': 'hsl(var(--chart-1))',
           '2': 'hsl(var(--chart-2))',

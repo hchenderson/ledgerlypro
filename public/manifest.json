@@ -1,21 +1,27 @@
 {
   "name": "Ledgerly Pro",
   "short_name": "Ledgerly",
-  "description": "A modern personal finance management application.",
+  "description": "Clarity today. Freedom tomorrow.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#F0FAF5",
   "theme_color": "#285943",
   "icons": [
     {
-      "src": "/logo.png",
+      "src": "/icons/icon-192x192.png",
       "sizes": "192x192",
       "type": "image/png"
     },
     {
-      "src": "/logo.png",
+      "src": "/icons/icon-512x512.png",
       "sizes": "512x512",
       "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-maskable-512x512.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
     }
   ]
 }

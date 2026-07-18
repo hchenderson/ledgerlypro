@@ -83,7 +83,9 @@ export function ChatPanel() {
           "Authorization": `Bearer ${idToken}`
         },
         body: JSON.stringify({
-          messages: [...messages, userMsg].map(({ role, content }) => ({ role, content })),
+          messages: [...messages, userMsg]
+            .slice(-20)
+            .map(({ role, content }) => ({ role, content })),
         }),
       });
 

@@ -4,7 +4,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { LedgerlyLogo } from "@/components/icons";
+import { LedgerlyBrand, LedgerlyLogo } from "@/components/icons";
 import { signInWithGoogle, signUpWithEmail, signInWithEmail, sendPasswordResetEmail } from "@/lib/auth";
 import { useRouter } from "next/navigation";
 import { Label } from "@/components/ui/label";
@@ -22,6 +22,7 @@ import {
   DialogTrigger,
   DialogClose,
 } from "@/components/ui/dialog"
+import { Check, ShieldCheck, TrendingUp } from "lucide-react";
 
 const GoogleIcon = () => (
     <svg className="size-4" viewBox="0 0 48 48">
@@ -78,7 +79,7 @@ function ForgotPasswordDialog() {
 export default function SignInPage() {
     const router = useRouter();
     const { toast } = useToast();
-    const { setOnboardingComplete, onboardingComplete } = useAuth();
+    const { onboardingComplete } = useAuth();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -159,31 +160,59 @@ export default function SignInPage() {
     }
 
     return (
-        <div className="flex min-h-screen items-center justify-center bg-secondary/50">
-            <Card className="w-full max-w-sm">
-                <CardHeader className="text-center">
-                    <LedgerlyLogo className="mx-auto h-10 w-10 mb-2" />
-                    <CardTitle>Welcome to Ledgerly Pro</CardTitle>
-                    <CardDescription>Sign in or create an account to continue.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
+        <div className="brand-grid flex min-h-screen items-center justify-center bg-brand-mint p-4 lg:p-8">
+            <div className="grid w-full max-w-5xl overflow-hidden rounded-[2rem] border border-primary/10 bg-card shadow-[0_35px_90px_-45px_rgba(41,58,94,0.5)] lg:grid-cols-[0.9fr_1.1fr]">
+                <aside className="brand-surface relative hidden min-h-[680px] flex-col justify-between overflow-hidden p-10 text-white lg:flex">
+                    <LedgerlyLogo className="absolute -bottom-16 -right-16 h-80 w-80 text-white opacity-[0.055]" />
+                    <LedgerlyBrand inverse stacked markClassName="h-12 w-12" />
+                    <div className="relative max-w-sm">
+                        <p className="text-sm font-semibold uppercase tracking-[0.18em] text-brand-tint">Clarity starts here</p>
+                        <h1 className="mt-4 font-headline text-4xl font-bold leading-tight tracking-[-0.04em]">Your finances.<br />Under control.</h1>
+                        <p className="mt-5 leading-7 text-white/[0.72]">Understand today, plan what comes next, and keep every decision connected to your goals.</p>
+                        <div className="mt-8 space-y-3 text-sm text-white/85">
+                            {['Simple financial overview', 'Focused budgets and goals', 'Secure access to your data'].map((item) => (
+                                <div key={item} className="flex items-center gap-3">
+                                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/[0.12]"><Check className="h-3.5 w-3.5" /></span>
+                                    {item}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                    <div className="relative flex items-center gap-5 border-t border-white/15 pt-6 text-xs text-brand-tint">
+                        <span className="inline-flex items-center gap-1.5"><ShieldCheck className="h-4 w-4" /> Reliable</span>
+                        <span className="inline-flex items-center gap-1.5"><TrendingUp className="h-4 w-4" /> Empowering</span>
+                    </div>
+                </aside>
+
+                <section className="flex items-center p-6 sm:p-10 lg:p-14">
+                  <div className="mx-auto w-full max-w-md">
+                    <LedgerlyBrand className="mb-10 lg:hidden" />
+                    <Card className="w-full border-0 bg-transparent shadow-none">
+                      <CardHeader className="px-0 pb-7 text-left">
+                        <div className="mb-5 hidden h-12 w-12 items-center justify-center rounded-xl bg-secondary/70 lg:flex">
+                            <LedgerlyLogo className="h-8 w-8" />
+                        </div>
+                        <CardTitle className="text-3xl text-brand-navy dark:text-white">Welcome back</CardTitle>
+                        <CardDescription className="mt-2 text-base">Sign in to continue, or create your Ledgerly Pro account.</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-5 px-0">
                      <form onSubmit={handleEmailSignIn} className="space-y-4">
                         <div className="space-y-2">
                             <Label htmlFor="email">Email</Label>
-                            <Input id="email" type="email" placeholder="m@example.com" required value={email} onChange={e => setEmail(e.target.value)} />
+                            <Input id="email" type="email" autoComplete="email" placeholder="you@example.com" required value={email} onChange={e => setEmail(e.target.value)} />
                         </div>
                         <div className="space-y-2">
                             <div className="flex items-center justify-between">
                                 <Label htmlFor="password">Password</Label>
                             </div>
-                            <Input id="password" type="password" required  value={password} onChange={e => setPassword(e.target.value)} />
+                            <Input id="password" type="password" autoComplete="current-password" placeholder="Enter your password" required value={password} onChange={e => setPassword(e.target.value)} />
                             <ForgotPasswordDialog />
                         </div>
-                        <div className="flex gap-2">
+                        <div className="grid grid-cols-2 gap-3 pt-1">
                             <Button type="submit" className="w-full" disabled={isSubmitting}>
                                 {isSubmitting ? 'Signing In...' : 'Sign In'}
                             </Button>
-                            <Button type="button" variant="secondary" className="w-full" onClick={handleEmailSignUp} disabled={isSubmitting}>
+                            <Button type="button" variant="outline" className="w-full" onClick={handleEmailSignUp} disabled={isSubmitting}>
                                 {isSubmitting ? 'Signing Up...' : 'Sign Up'}
                             </Button>
                         </div>
@@ -200,12 +229,16 @@ export default function SignInPage() {
                         </div>
                     </div>
 
-                    <Button className="w-full gap-2" variant="outline" onClick={handleGoogleSignIn} disabled={isSubmitting}>
+                    <Button className="w-full gap-2" variant="secondary" onClick={handleGoogleSignIn} disabled={isSubmitting}>
                        <GoogleIcon />
                         Sign in with Google
                     </Button>
-                </CardContent>
-            </Card>
+                      </CardContent>
+                    </Card>
+                    <p className="mt-8 text-center text-xs leading-5 text-muted-foreground">By continuing, you agree to Ledgerly Pro's terms and acknowledge the privacy policy.</p>
+                  </div>
+                </section>
+            </div>
         </div>
     );
 }

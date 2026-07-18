@@ -28,7 +28,7 @@ import {
   CalendarCheck,
   ArrowRight,
 } from 'lucide-react';
-import type { Category, SubCategory, QuarterlyReport } from '@/types';
+import type { QuarterlyReport } from '@/types';
 import { DateRange } from 'react-day-picker';
 import { subMonths, startOfMonth, endOfMonth, startOfYear, endOfYear, format } from 'date-fns';
 import Link from 'next/link';
@@ -37,7 +37,6 @@ import { OverviewChart } from '@/components/dashboard/overview-chart';
 import { CategoryPieChart } from '@/components/reports/category-pie-chart';
 import { cn } from '@/lib/utils';
 import { ExportReportDialog } from '@/components/reports/export-report-dialog';
-import { generateAndSaveQuarterlyReport, deleteReport } from '@/lib/actions';
 import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
@@ -72,6 +71,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Calendar as CalendarIcon } from 'lucide-react';
 import { ExportQuarterlyReportDialog } from '@/components/reports/export-quarterly-report-dialog';
 import { GenerateQuarterlyReportDialog } from '@/components/reports/generate-quarterly-report-dialog';
+import { findMainCategoryForTransaction } from '@/lib/category-tree';
 
 const PRESET_RANGES = [
   { label: 'This Month', value: 'this-month' },
@@ -173,35 +173,12 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
     });
   }, [allTransactions, dateRange]);
 
- const findMainCategory = useCallback((subCategoryName: string, allCategories: Category[]): string => {
-    for (const mainCat of allCategories) {
-        if (mainCat.name === subCategoryName) {
-            return mainCat.name;
-        }
-        const findInSubs = (subs: SubCategory[], mainCatName: string): string | null => {
-          for (const sub of subs) {
-            if (sub.name === subCategoryName) return mainCatName;
-            if (sub.subCategories) {
-              const found = findInSubs(sub.subCategories, mainCatName);
-              if (found) return found;
-            }
-          }
-          return null;
-        }
-        if (mainCat.subCategories) {
-            const found = findInSubs(mainCat.subCategories, mainCat.name);
-            if (found) return found;
-        }
-    }
-    return 'Uncategorized';
-  }, []);
-
   const { totalIncome, totalExpenses, netIncome } = useMemo(() => {
     const income = dateFilteredTransactions
       .filter(t => t.type === 'income')
       .filter(t => {
         if (selectedIncomeCategories.length === 0) return true;
-        const main = findMainCategory(t.category, categories);
+        const main = findMainCategoryForTransaction(t, categories);
         return selectedIncomeCategories.includes(main);
       })
       .reduce((sum, t) => sum + t.amount, 0);
@@ -210,7 +187,7 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
       .filter(t => t.type === 'expense')
       .filter(t => {
         if (selectedExpenseCategories.length === 0) return true;
-        const main = findMainCategory(t.category, categories);
+        const main = findMainCategoryForTransaction(t, categories);
         return selectedExpenseCategories.includes(main);
       })
       .reduce((sum, t) => sum + t.amount, 0);
@@ -220,7 +197,7 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
       totalExpenses: expenses,
       netIncome: income - expenses,
     };
-  }, [dateFilteredTransactions, selectedIncomeCategories, selectedExpenseCategories, categories, findMainCategory]);
+  }, [dateFilteredTransactions, selectedIncomeCategories, selectedExpenseCategories, categories]);
 
   
   const getCategoryOptions = useCallback((type: 'income' | 'expense') => {
@@ -237,7 +214,7 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
       const mainCatName = selectedExpenseCategories[0];
       const mainCat = categories.find(c => c.name === mainCatName);
       
-      const transactionsForMainCategory = filteredTransactions.filter(t => findMainCategory(t.category, categories) === mainCatName);
+      const transactionsForMainCategory = filteredTransactions.filter(t => findMainCategoryForTransaction(t, categories) === mainCatName);
 
       transactionsForMainCategory.forEach(t => {
           const isMain = t.category === mainCatName;
@@ -261,11 +238,11 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
       // Default view: show main categories
       filteredTransactions
         .filter(t => {
-          const mainCategory = findMainCategory(t.category, categories);
+          const mainCategory = findMainCategoryForTransaction(t, categories);
           return selectedExpenseCategories.length === 0 || selectedExpenseCategories.includes(mainCategory);
         })
         .forEach(t => {
-          const mainCategory = findMainCategory(t.category, categories);
+          const mainCategory = findMainCategoryForTransaction(t, categories);
           data[mainCategory] = (data[mainCategory] || 0) + t.amount;
         });
     }
@@ -273,7 +250,7 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
     return Object.entries(data)
       .map(([name, amount]) => ({ category: name, amount: amount, }))
       .sort((a, b) => b.amount - a.amount);
-  }, [dateFilteredTransactions, categories, findMainCategory, selectedExpenseCategories]);
+  }, [dateFilteredTransactions, categories, selectedExpenseCategories]);
   
   const incomeByCategory = useMemo(() => {
     const data: { [key: string]: number } = {};
@@ -284,7 +261,7 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
       const mainCatName = selectedIncomeCategories[0];
       const mainCat = categories.find(c => c.name === mainCatName);
 
-      const transactionsForMainCategory = filteredTransactions.filter(t => findMainCategory(t.category, categories) === mainCatName);
+      const transactionsForMainCategory = filteredTransactions.filter(t => findMainCategoryForTransaction(t, categories) === mainCatName);
 
       transactionsForMainCategory.forEach(t => {
           const isMain = t.category === mainCatName;
@@ -306,11 +283,11 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
       // Default view
       filteredTransactions
         .filter(t => {
-          const mainCategory = findMainCategory(t.category, categories);
+          const mainCategory = findMainCategoryForTransaction(t, categories);
           return selectedIncomeCategories.length === 0 || selectedIncomeCategories.includes(mainCategory);
         })
         .forEach(t => {
-          const mainCategory = findMainCategory(t.category, categories);
+          const mainCategory = findMainCategoryForTransaction(t, categories);
           data[mainCategory] = (data[mainCategory] || 0) + t.amount;
         });
     }
@@ -318,7 +295,7 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
     return Object.entries(data)
       .map(([name, amount]) => ({ category: name, amount: amount, }))
       .sort((a, b) => b.amount - a.amount);
-  }, [dateFilteredTransactions, categories, findMainCategory, selectedIncomeCategories]);
+  }, [dateFilteredTransactions, categories, selectedIncomeCategories]);
 
   const { overviewData, trendStats } = useMemo(() => {
     const dataByPeriod: { [key: string]: { name: string; income: number; expense: number } } = {};
@@ -389,19 +366,19 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
     return dateFilteredTransactions.filter(t => {
         if (t.type !== 'income') return false;
         if (selectedIncomeCategories.length === 0) return true;
-        const mainCategory = findMainCategory(t.category, categories);
+        const mainCategory = findMainCategoryForTransaction(t, categories);
         return selectedIncomeCategories.includes(mainCategory);
     });
-  }, [dateFilteredTransactions, selectedIncomeCategories, findMainCategory, categories]);
+  }, [dateFilteredTransactions, selectedIncomeCategories, categories]);
 
   const expenseTransactionsForExport = useMemo(() => {
       return dateFilteredTransactions.filter(t => {
           if (t.type !== 'expense') return false;
           if (selectedExpenseCategories.length === 0) return true;
-          const mainCategory = findMainCategory(t.category, categories);
+          const mainCategory = findMainCategoryForTransaction(t, categories);
           return selectedExpenseCategories.includes(mainCategory);
       });
-  }, [dateFilteredTransactions, selectedExpenseCategories, findMainCategory, categories]);
+  }, [dateFilteredTransactions, selectedExpenseCategories, categories]);
 
 
   return (
@@ -635,14 +612,18 @@ function AdvancedReportView() {
     }
     
     try {
-      const result = await generateAndSaveQuarterlyReport({ 
-        userId: user.uid, 
-        referenceDate: referenceDate.toISOString(),
-        notes,
-        budgetIds,
+      const idToken = await user.getIdToken();
+      const response = await fetch('/api/reports/quarterly', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ referenceDate: referenceDate.toISOString(), notes, budgetIds }),
       });
-      
-      if (result.success && result.report) {
+      const result = await response.json();
+
+      if (response.ok && result.report) {
         toast({
           title: "Report Generated",
           description: `Successfully generated report for ${result.report.period}.`
@@ -663,8 +644,17 @@ function AdvancedReportView() {
 
   const handleDeleteReport = async (reportId: string) => {
     if (!user) return;
-    const result = await deleteReport({ userId: user.uid, reportId });
-    if (result.success) {
+    const idToken = await user.getIdToken();
+    const response = await fetch('/api/reports/quarterly', {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+      },
+      body: JSON.stringify({ reportId }),
+    });
+    const result = await response.json();
+    if (response.ok) {
       toast({
         title: "Report Deleted",
         description: `Report "${reportId}" has been deleted.`

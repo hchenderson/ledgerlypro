@@ -11,7 +11,6 @@ import {
   SidebarTrigger,
   SidebarInset,
 } from "@/components/ui/sidebar"
-import Image from "next/image";
 import { MainNav } from "@/components/main-nav";
 import { UserNav } from "@/components/user-nav";
 import { useAuth } from "@/hooks/use-auth";
@@ -21,7 +20,6 @@ import { NewTransactionSheet } from "@/components/new-transaction-sheet";
 import { PlusCircle, Download } from "lucide-react";
 import { ImportTransactionsDialog } from "@/components/import-transactions-dialog";
 import { UserDataProvider, useUserData } from "@/hooks/use-user-data";
-import type { Transaction } from "@/types";
 import { AdSenseScript } from "@/components/adsense-script";
 import { useRouter } from 'next/navigation';
 import { Button } from "@/components/ui/button";
@@ -30,6 +28,7 @@ import { cn } from "@/lib/utils";
 import { YearSwitcher } from "@/components/year-switcher";
 import { ComparisonProvider, useComparison } from "@/hooks/use-comparison";
 import { ComparisonSwitcher } from "@/components/comparison-switcher";
+import { LedgerlyBrand } from "@/components/icons";
 
 
 function AppLayoutSkeleton() {
@@ -62,7 +61,7 @@ function AppLayoutSkeleton() {
 }
 
 function MainAppShell({ children }: { children: React.ReactNode }) {
-    const { addTransaction, categories } = useUserData();
+    const { addTransaction, importTransactions, categories } = useUserData();
     const { user, activeYear } = useAuth();
     const { isComparing } = useComparison();
     const [isImportSheetOpen, setIsImportSheetOpen] = useState(false);
@@ -71,9 +70,13 @@ function MainAppShell({ children }: { children: React.ReactNode }) {
     const systemYear = new Date().getFullYear();
     const isReadOnly = activeYear < systemYear || isComparing;
 
-    const handleTransactionsImported = (transactions: Omit<Transaction, 'id'>[]) => {
-        transactions.forEach(addTransaction);
-    }
+    useEffect(() => {
+        const url = new URL(window.location.href);
+        if (url.searchParams.get('import') !== '1') return;
+        setIsImportSheetOpen(true);
+        url.searchParams.delete('import');
+        window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+    }, []);
 
     const showAds = user?.uid !== process.env.NEXT_PUBLIC_ADSENSE_EXCLUDE_UID;
     
@@ -81,10 +84,7 @@ function MainAppShell({ children }: { children: React.ReactNode }) {
         <SidebarProvider>
             <Sidebar>
                 <SidebarHeader>
-                    <div className="flex items-center gap-2 p-2">
-                        <Image src="/logo.png" alt="Ledgerly Pro Logo" width={32} height={32} className="h-8 w-8" />
-                        <span className="text-lg font-semibold text-sidebar-primary">Ledgerly Pro</span>
-                    </div>
+                    <LedgerlyBrand inverse stacked className="px-2 py-3" markClassName="h-9 w-9" />
                 </SidebarHeader>
                 <SidebarContent>
                     <MainNav />
@@ -95,7 +95,7 @@ function MainAppShell({ children }: { children: React.ReactNode }) {
             </Sidebar>
 
             <SidebarInset className="flex flex-col">
-                 <header className="flex h-16 shrink-0 items-center border-b px-4 gap-2">
+                 <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center gap-2 border-b bg-card/90 px-4 shadow-sm shadow-foreground/[0.03] backdrop-blur-xl">
                     <SidebarTrigger />
                     <YearSwitcher />
                     <div className="hidden md:block">
@@ -106,7 +106,7 @@ function MainAppShell({ children }: { children: React.ReactNode }) {
                         <ImportTransactionsDialog
                             isOpen={isImportSheetOpen}
                             onOpenChange={setIsImportSheetOpen}
-                            onTransactionsImported={handleTransactionsImported}
+                            onTransactionsImported={importTransactions}
                         >
                             <Button variant="outline" size="sm" disabled={isReadOnly} title={isReadOnly ? "You cannot import transactions into a past year." : "Import transactions"} className="flex items-center">
                                 <Download className="h-4 w-4 sm:mr-2" />
@@ -131,7 +131,7 @@ function MainAppShell({ children }: { children: React.ReactNode }) {
                     </div>
                 </header>
                 <div className={cn("flex-1", showAds && "pb-[90px]")}>
-                    <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
+                    <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 xl:p-10">
                         {children}
                     </main>
                 </div>
