@@ -24,7 +24,6 @@ import { Calendar } from "@/components/ui/calendar";
 import { ExportTransactionsDialog } from "@/components/export-transactions-dialog";
 import { Pagination } from "@/components/ui/pagination";
 import { useAuth } from "@/hooks/use-auth";
-import { useComparison } from "@/hooks/use-comparison";
 
 
 const TRANSACTIONS_PAGE_SIZE = 25;
@@ -57,7 +56,6 @@ export default function TransactionsPage() {
     loading: userDataLoading,
   } = useUserData();
   const { activeYear } = useAuth();
-  const { isComparing } = useComparison();
   
   const [paginatedTransactions, setPaginatedTransactions] = useState<Transaction[]>([]);
   const [page, setPage] = useState(1);
@@ -73,7 +71,7 @@ export default function TransactionsPage() {
   const [maxAmount, setMaxAmount] = useState('');
 
   const systemYear = new Date().getFullYear();
-  const isReadOnly = activeYear < systemYear || isComparing;
+  const isReadOnly = activeYear < systemYear;
 
   const filteredTransactions = useMemo(() => {
     let transactions = [...allTransactions];

@@ -26,7 +26,7 @@ import { Button } from "@/components/ui/button";
 import { AdBanner } from "@/components/ad-banner";
 import { cn } from "@/lib/utils";
 import { YearSwitcher } from "@/components/year-switcher";
-import { ComparisonProvider, useComparison } from "@/hooks/use-comparison";
+import { ComparisonProvider } from "@/hooks/use-comparison";
 import { ComparisonSwitcher } from "@/components/comparison-switcher";
 import { LedgerlyBrand } from "@/components/icons";
 
@@ -63,12 +63,11 @@ function AppLayoutSkeleton() {
 function MainAppShell({ children }: { children: React.ReactNode }) {
     const { addTransaction, importTransactions, categories } = useUserData();
     const { user, activeYear } = useAuth();
-    const { isComparing } = useComparison();
     const [isImportSheetOpen, setIsImportSheetOpen] = useState(false);
     const [isNewTxSheetOpen, setIsNewTxSheetOpen] = useState(false);
     
     const systemYear = new Date().getFullYear();
-    const isReadOnly = activeYear < systemYear || isComparing;
+    const isReadOnly = activeYear < systemYear;
 
     useEffect(() => {
         const url = new URL(window.location.href);

@@ -52,7 +52,6 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from '@/hooks/use-auth';
-import { useComparison } from '@/hooks/use-comparison';
 
 const goalFormSchema = z.object({
   name: z.string().min(2, 'Goal name must be at least 2 characters.'),
@@ -309,9 +308,8 @@ function GoalsPageContent() {
   const { goals, addGoal, updateGoal, deleteGoal, addContributionToGoal, loading } = useUserData();
   const { toast } = useToast();
   const { activeYear } = useAuth();
-  const { isComparing } = useComparison();
   const systemYear = new Date().getFullYear();
-  const isReadOnly = activeYear < systemYear || isComparing;
+  const isReadOnly = activeYear < systemYear;
 
   const handleSaveGoal = async (values: GoalFormValues, id?: string) => {
     try {
