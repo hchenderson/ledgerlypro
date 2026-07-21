@@ -1,58 +1,44 @@
-
 "use client";
 
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { ArrowRight, GitCompare, X } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import { useComparison } from "@/hooks/use-comparison";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Button } from "./ui/button";
-import { GitCompare, Info } from "lucide-react";
-import { Badge } from "./ui/badge";
 
 export function ComparisonSwitcher() {
-  const { activeYear, firstYear } = useAuth();
+  const pathname = usePathname();
+  const { activeYear } = useAuth();
   const { comparisonYear, setComparisonYear, isComparing } = useComparison();
-
-  const availableYears = Array.from(
-    { length: activeYear - firstYear },
-    (_, i) => activeYear - 1 - i
-  );
+  const isComparisonPage = pathname === "/compare";
 
   return (
     <div className="flex items-center gap-2">
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="outline" className="w-[180px] justify-start">
-            <GitCompare className="mr-2 h-4 w-4" />
-            <span className="truncate">
-              Compare to: {comparisonYear ?? 'None'}
-            </span>
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent className="w-56" align="start">
-          <DropdownMenuLabel>Select Comparison Year</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={() => setComparisonYear(undefined)}>
-            None
-          </DropdownMenuItem>
-          {availableYears.map((year) => (
-            <DropdownMenuItem key={year} onSelect={() => setComparisonYear(year)}>
-              {year}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-      {isComparing && (
-        <Badge variant="secondary" className="hidden sm:flex items-center gap-1.5">
-           <Info className="h-3 w-3" />
-           Read-only
-        </Badge>
+      <Button
+        asChild
+        variant={isComparisonPage ? "secondary" : "outline"}
+        className="min-w-[150px] justify-between"
+      >
+        <Link href="/compare">
+          <span className="flex items-center gap-2">
+            <GitCompare className="h-4 w-4" />
+            {comparisonYear ? `${activeYear} vs ${comparisonYear}` : "Compare"}
+          </span>
+          <ArrowRight className="h-4 w-4 opacity-60" />
+        </Link>
+      </Button>
+      {isComparing && !isComparisonPage && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="hidden gap-1.5 px-2 text-muted-foreground xl:flex"
+          onClick={() => setComparisonYear(undefined)}
+          title="Clear comparison year"
+        >
+          <X className="h-3.5 w-3.5" /> Clear
+        </Button>
       )}
     </div>
   );

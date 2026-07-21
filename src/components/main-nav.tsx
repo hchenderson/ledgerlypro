@@ -15,6 +15,7 @@ import {
   Repeat,
   Flag,
   Bot,
+  GitCompare,
 } from "lucide-react";
 import {
   SidebarMenu,
@@ -29,6 +30,7 @@ const navItems: NavItem[] = [
   { title: "Transactions", href: "/transactions", icon: ArrowRightLeft, variant: "ghost" },
   { title: "Categories", href: "/categories", icon: Tag, variant: "ghost" },
   { title: "Reports", href: "/reports", icon: PieChart, variant: "ghost" },
+  { title: "Compare", href: "/compare", icon: GitCompare, variant: "ghost", badge: "New" },
   { title: "Budgets", href: "/budgets", icon: Target, variant: "ghost" },
   { title: "Goals", href: "/goals", icon: Flag, variant: "ghost", badge: "New" },
   { title: "Recurring", href: "/recurring", icon: Repeat, variant: "ghost" },

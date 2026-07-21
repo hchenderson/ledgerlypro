@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { createContext, useContext, useState, useMemo } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 interface ComparisonContextType {
   comparisonYear: number | undefined;
@@ -14,11 +14,27 @@ const ComparisonContext = createContext<ComparisonContextType | undefined>(undef
 export const ComparisonProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [comparisonYear, setComparisonYear] = useState<number | undefined>(undefined);
 
+  useEffect(() => {
+    const savedYear = window.localStorage.getItem('ledgerly-comparison-year');
+    if (!savedYear) return;
+    const parsedYear = Number(savedYear);
+    if (Number.isInteger(parsedYear)) setComparisonYear(parsedYear);
+  }, []);
+
+  const updateComparisonYear = useCallback((year: number | undefined) => {
+    setComparisonYear(year);
+    if (year === undefined) {
+      window.localStorage.removeItem('ledgerly-comparison-year');
+    } else {
+      window.localStorage.setItem('ledgerly-comparison-year', String(year));
+    }
+  }, []);
+
   const value = useMemo(() => ({
     comparisonYear,
-    setComparisonYear,
+    setComparisonYear: updateComparisonYear,
     isComparing: comparisonYear !== undefined,
-  }), [comparisonYear]);
+  }), [comparisonYear, updateComparisonYear]);
 
   return (
     <ComparisonContext.Provider value={value}>
