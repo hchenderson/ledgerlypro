@@ -30,7 +30,19 @@ import {
 } from 'lucide-react';
 import type { QuarterlyReport } from '@/types';
 import { DateRange } from 'react-day-picker';
-import { subMonths, startOfMonth, endOfMonth, startOfYear, endOfYear, format } from 'date-fns';
+import {
+  subMonths,
+  startOfMonth,
+  endOfMonth,
+  startOfYear,
+  endOfYear,
+  startOfQuarter,
+  endOfQuarter,
+  getQuarter,
+  getYear,
+  format,
+  parseISO,
+} from 'date-fns';
 import Link from 'next/link';
 
 import { OverviewChart } from '@/components/dashboard/overview-chart';
@@ -39,9 +51,10 @@ import { cn } from '@/lib/utils';
 import { ExportReportDialog } from '@/components/reports/export-report-dialog';
 import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
+import { Badge } from '@/components/ui/badge';
 import {
   Table,
   TableBody,
@@ -93,6 +106,14 @@ const PRESET_RANGES = [
   { label: 'Q3', value: 'q3' },
   { label: 'Q4', value: 'q4' },
 ];
+
+const quarterlyPeriodSortValue = (period: string) => {
+  const match = /^Q([1-4])\s+(\d{4})$/.exec(period);
+  return match ? Number(match[2]) * 10 + Number(match[1]) : 0;
+};
+
+const formatStoredReportDate = (value: string) =>
+  format(parseISO(value.slice(0, 10)), 'MMM d, yyyy');
 
 function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
   const { allTransactions, categories } = useUserData();
@@ -585,19 +606,24 @@ function AdvancedReportView() {
     
     setLoading(true);
     const reportsRef = collection(db, 'users', user.uid, 'reports');
-    const q = query(reportsRef, orderBy('period', 'desc'));
-    
     const unsubscribe = onSnapshot(
-      q,
+      reportsRef,
       (snapshot) => {
-        const fetchedReports = snapshot.docs.map(doc => {
-          const data = doc.data();
-          return data as QuarterlyReport;
-        });
+        const fetchedReports = snapshot.docs
+          .map(doc => doc.data() as QuarterlyReport)
+          .sort(
+            (a, b) =>
+              quarterlyPeriodSortValue(b.period) -
+              quarterlyPeriodSortValue(a.period)
+          );
         setReports(fetchedReports);
-        if (fetchedReports.length > 0 && !selectedReport) {
-          setSelectedReport(fetchedReports[0]);
-        }
+        setSelectedReport((currentReport) => {
+          if (fetchedReports.length === 0) return null;
+          if (!currentReport) return fetchedReports[0];
+          return fetchedReports.find(
+            (report) => report.period === currentReport.period
+          ) ?? fetchedReports[0];
+        });
         setLoading(false);
       },
       (error) => {
@@ -612,16 +638,20 @@ function AdvancedReportView() {
     );
     
     return () => unsubscribe();
-  }, [user, toast, selectedReport]);
+  }, [user, toast]);
 
-  const handleGenerateReport = async (referenceDate: Date, notes: string | undefined, budgetIds: string[]) => {
+  const handleGenerateReport = async (
+    referenceDate: Date,
+    notes: string | undefined,
+    budgetIds: string[]
+  ) => {
     if (!user) {
       toast({
         variant: "destructive",
         title: "Authentication Error",
         description: "You must be logged in to generate reports."
       });
-      return;
+      return false;
     }
     
     try {
@@ -632,7 +662,14 @@ function AdvancedReportView() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${idToken}`,
         },
-        body: JSON.stringify({ referenceDate: referenceDate.toISOString(), notes, budgetIds }),
+        body: JSON.stringify({
+          reportYear: getYear(referenceDate),
+          quarter: getQuarter(referenceDate),
+          startDate: startOfQuarter(referenceDate).toISOString(),
+          endDate: endOfQuarter(referenceDate).toISOString(),
+          notes,
+          budgetIds,
+        }),
       });
       const result = await response.json();
 
@@ -642,6 +679,7 @@ function AdvancedReportView() {
           description: `Successfully generated report for ${result.report.period}.`
         });
         // This will be picked up by the onSnapshot listener, which will update the UI
+        return true;
       } else {
         throw new Error(result.error || "Unknown error occurred.");
       }
@@ -652,6 +690,7 @@ function AdvancedReportView() {
         title: "Generation Failed",
         description: error.message || "An unexpected error occurred.",
       });
+      return false;
     }
   };
 
@@ -697,12 +736,47 @@ function AdvancedReportView() {
       );
     }
 
+    const incomeSummaryTotal = Object.values(
+      selectedReport.incomeSummary
+    ).reduce((sum, amount) => sum + amount, 0);
+    const expenseSummaryTotal = Object.values(
+      selectedReport.expenseSummary
+    ).reduce((sum, amount) => sum + amount, 0);
+    const totalIncome = selectedReport.totalIncome ?? incomeSummaryTotal;
+    const totalExpenses = selectedReport.totalExpenses ?? expenseSummaryTotal;
+    const transactionCount = selectedReport.transactionCount;
+    const savingsRate =
+      selectedReport.kpis.savingsRate ??
+      (totalIncome > 0 ? (selectedReport.netIncome / totalIncome) * 100 : 0);
+    const averageMonthlyNet =
+      selectedReport.kpis.averageMonthlyNet ?? selectedReport.netIncome / 3;
+    const averageTransaction =
+      transactionCount && transactionCount > 0
+        ? (totalIncome + totalExpenses) / transactionCount
+        : null;
+    const isReconciled =
+      Math.abs(totalIncome - incomeSummaryTotal) < 0.01 &&
+      Math.abs(totalExpenses - expenseSummaryTotal) < 0.01 &&
+      Math.abs(totalIncome - totalExpenses - selectedReport.netIncome) < 0.01;
+    const isCurrentCalculation = selectedReport.calculationVersion === 2;
+
     return (
       <Card id={`report-${selectedReport.period}`}>
         <CardHeader className="flex flex-row justify-between items-start">
           <div>
             <CardTitle>Financial Report - {selectedReport.period}</CardTitle>
-            <CardDescription>Generated on {format(new Date(selectedReport.createdAt.seconds * 1000), 'PPP')}</CardDescription>
+            <CardDescription>
+              Generated on {format(new Date(selectedReport.createdAt.seconds * 1000), 'PPP')}
+              {' · '}Covers {formatStoredReportDate(selectedReport.startDate)}–{formatStoredReportDate(selectedReport.endDate)}
+            </CardDescription>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Badge variant={isReconciled ? "secondary" : "destructive"}>
+                {isReconciled ? "Totals reconciled" : "Totals need regeneration"}
+              </Badge>
+              {!isCurrentCalculation && (
+                <Badge variant="outline">Legacy calculation · regenerate recommended</Badge>
+              )}
+            </div>
           </div>
            <ExportQuarterlyReportDialog
               reportId={`report-${selectedReport.period}`}
@@ -713,7 +787,15 @@ function AdvancedReportView() {
            {/* Executive Summary */}
            <div>
               <h3 className="text-lg font-semibold mb-2 border-b pb-2">Executive Summary</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                  <Card>
+                      <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Total Income</CardTitle></CardHeader>
+                      <CardContent><p className="text-2xl font-bold text-emerald-600">{formatCurrency(totalIncome)}</p></CardContent>
+                  </Card>
+                  <Card>
+                      <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Total Expenses</CardTitle></CardHeader>
+                      <CardContent><p className="text-2xl font-bold text-destructive">{formatCurrency(totalExpenses)}</p></CardContent>
+                  </Card>
                   <Card>
                       <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Net Income</CardTitle></CardHeader>
                       <CardContent>
@@ -723,11 +805,20 @@ function AdvancedReportView() {
                       </CardContent>
                   </Card>
                    <Card>
-                      <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Profit Margin</CardTitle></CardHeader>
+                      <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Savings Rate</CardTitle></CardHeader>
                       <CardContent>
-                          <p className="text-2xl font-bold">{selectedReport.kpis.profitMargin.toFixed(1)}%</p>
+                          <p className="text-2xl font-bold">{savingsRate.toFixed(1)}%</p>
                       </CardContent>
                   </Card>
+              </div>
+          </div>
+
+          <div>
+              <h3 className="text-lg font-semibold mb-2 border-b pb-2">Activity Snapshot</h3>
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="rounded-lg border p-4"><p className="text-sm text-muted-foreground">Transactions</p><p className="mt-1 text-xl font-semibold">{transactionCount ?? 'Unavailable on legacy report'}</p></div>
+                <div className="rounded-lg border p-4"><p className="text-sm text-muted-foreground">Average transaction</p><p className="mt-1 text-xl font-semibold">{averageTransaction === null ? 'Unavailable' : formatCurrency(averageTransaction)}</p></div>
+                <div className="rounded-lg border p-4"><p className="text-sm text-muted-foreground">Average monthly net</p><p className="mt-1 text-xl font-semibold">{formatCurrency(averageMonthlyNet)}</p></div>
               </div>
           </div>
           
@@ -829,7 +920,8 @@ function AdvancedReportView() {
            {/* Goals Progress */}
           {selectedReport.goalsProgress && selectedReport.goalsProgress.length > 0 && (
             <div>
-                <h3 className="text-lg font-semibold mb-2 border-b pb-2">Goals Progress</h3>
+                <h3 className="text-lg font-semibold mb-1 border-b pb-2">Goals Snapshot</h3>
+                <p className="mb-3 text-sm text-muted-foreground">Goal balances as they existed when this report was generated.</p>
                  <Table>
                     <TableHeader>
                         <TableRow>
@@ -876,6 +968,14 @@ function AdvancedReportView() {
                     <TableRow>
                         <TableCell>Expense-to-Income Ratio</TableCell>
                         <TableCell className="text-right">{selectedReport.kpis.expenseToIncomeRatio.toFixed(1)}%</TableCell>
+                    </TableRow>
+                    <TableRow>
+                        <TableCell>Savings Rate</TableCell>
+                        <TableCell className="text-right">{savingsRate.toFixed(1)}%</TableCell>
+                    </TableRow>
+                    <TableRow>
+                        <TableCell>Average Monthly Net</TableCell>
+                        <TableCell className="text-right">{formatCurrency(averageMonthlyNet)}</TableCell>
                     </TableRow>
                 </TableBody>
                </Table>

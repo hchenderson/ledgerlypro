@@ -31,7 +31,7 @@ export function GenerateQuarterlyReportDialog({
     referenceDate: Date,
     notes: string | undefined,
     budgetIds: string[]
-  ) => void | Promise<void>;
+  ) => boolean | Promise<boolean>;
 }) {
   const { toast } = useToast();
   const { budgets, categories } = useUserData();
@@ -46,6 +46,10 @@ export function GenerateQuarterlyReportDialog({
   const budgetOptions = useMemo(
     () =>
       budgets
+        .filter(
+          (budget) =>
+            referenceDate && budget.year === getYear(referenceDate)
+        )
         .map((budget) => ({
           value: budget.id,
           label: `${
@@ -55,7 +59,7 @@ export function GenerateQuarterlyReportDialog({
           } (${budget.year})`,
         }))
         .sort((a, b) => a.label.localeCompare(b.label)),
-    [budgets, categories]
+    [budgets, categories, referenceDate]
   );
 
   const handleGenerate = async () => {
@@ -70,7 +74,12 @@ export function GenerateQuarterlyReportDialog({
 
     setIsLoading(true);
     try {
-      await onGenerate(referenceDate, notes, selectedBudgetIds);
+      const generated = await onGenerate(
+        referenceDate,
+        notes,
+        selectedBudgetIds
+      );
+      if (!generated) return;
       setIsOpen(false);
       setNotes(undefined);
       setSelectedBudgetIds([]);
@@ -112,7 +121,10 @@ export function GenerateQuarterlyReportDialog({
                 <Calendar
                   mode="single"
                   selected={referenceDate}
-                  onSelect={setReferenceDate}
+                  onSelect={(date) => {
+                    setReferenceDate(date);
+                    setSelectedBudgetIds([]);
+                  }}
                   initialFocus
                 />
               </PopoverContent>
@@ -128,13 +140,18 @@ export function GenerateQuarterlyReportDialog({
             )}
           </div>
           <div className="space-y-2">
-            <Label>Budgets to Include (Optional)</Label>
+            <Label>
+              Budgets to Include ({referenceDate ? getYear(referenceDate) : 'select a year'})
+            </Label>
             <SearchableMultiSelect
               options={budgetOptions}
               selected={selectedBudgetIds}
               onChange={setSelectedBudgetIds}
-              placeholder="Select budgets..."
+              placeholder="All matching-year budgets"
             />
+            <p className="text-xs text-muted-foreground">
+              Leave this empty to include every budget from the report year.
+            </p>
           </div>
           <div className="space-y-2">
             <Label>Notes (Optional)</Label>

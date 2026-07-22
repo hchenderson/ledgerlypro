@@ -5,9 +5,16 @@ import {
   findMainCategoryForTransaction,
   normalizeCategoryLabel,
 } from "./category-tree";
+import {
+  summarizeTransactions,
+  transactionAmount,
+} from "./financial-summary";
 import type { Budget, Category, Goal, Transaction } from "@/types";
 
 export interface QuarterlyReportMetrics {
+  totalIncome: number;
+  totalExpenses: number;
+  transactionCount: number;
   incomeSummary: Record<string, number>;
   expenseSummary: Record<string, number>;
   netIncome: number;
@@ -33,6 +40,8 @@ export interface QuarterlyReportMetrics {
   kpis: {
     profitMargin: number;
     expenseToIncomeRatio: number;
+    savingsRate: number;
+    averageMonthlyNet: number;
   };
 }
 
@@ -45,7 +54,8 @@ function summarizeByCategory(
     .filter((transaction) => transaction.type === type)
     .reduce<Record<string, number>>((totals, transaction) => {
       const mainCategory = findMainCategoryForTransaction(transaction, categories);
-      totals[mainCategory] = (totals[mainCategory] ?? 0) + transaction.amount;
+      totals[mainCategory] =
+        (totals[mainCategory] ?? 0) + transactionAmount(transaction);
       return totals;
     }, {});
 }
@@ -55,51 +65,61 @@ export function calculateQuarterlyReportMetrics({
   categories,
   budgets,
   goals,
+  reportYear,
 }: {
   transactions: Transaction[];
   categories: Category[];
   budgets: Budget[];
   goals: Goal[];
+  reportYear: number;
 }): QuarterlyReportMetrics {
-  const income = transactions
-    .filter((transaction) => transaction.type === "income")
-    .reduce((sum, transaction) => sum + transaction.amount, 0);
-  const expenses = transactions
-    .filter((transaction) => transaction.type === "expense")
-    .reduce((sum, transaction) => sum + transaction.amount, 0);
-  const netIncome = income - expenses;
+  const {
+    income: totalIncome,
+    expenses: totalExpenses,
+    net: netIncome,
+    transactionCount,
+  } = summarizeTransactions(transactions);
 
-  const budgetComparison = budgets.flatMap((budget) => {
-    const path = findCategoryPathById(budget.categoryId, categories);
-    const category = path?.at(-1);
-    const mainCategory = path?.[0] as Category | undefined;
-    if (!category || mainCategory?.type !== "expense") return [];
+  const budgetComparison = budgets
+    .filter((budget) => budget.year === reportYear)
+    .flatMap((budget) => {
+      const path = findCategoryPathById(budget.categoryId, categories);
+      const category = path?.at(-1);
+      const mainCategory = path?.[0] as Category | undefined;
+      if (!category || mainCategory?.type !== "expense") return [];
 
-    const budgetAmount =
-      budget.period === "monthly" ? budget.amount * 3 : budget.amount / 4;
-    const categoryIds = new Set(categorySubtreeIds(category));
-    const categoryNames = new Set(
-      categorySubtreeNames(category).map(normalizeCategoryLabel)
-    );
-    const actual = transactions
-      .filter((transaction) => {
-        if (transaction.type !== "expense") return false;
-        if (transaction.categoryId) {
-          return categoryIds.has(transaction.categoryId);
-        }
-        return categoryNames.has(normalizeCategoryLabel(transaction.category));
-      })
-      .reduce((sum, transaction) => sum + transaction.amount, 0);
-    const variance = budgetAmount - actual;
+      const budgetAmount =
+        budget.period === "monthly" ? budget.amount * 3 : budget.amount / 4;
+      const categoryIds = new Set(categorySubtreeIds(category));
+      const categoryNames = new Set(
+        categorySubtreeNames(category).map(normalizeCategoryLabel)
+      );
+      const actual = transactions
+        .filter((transaction) => {
+          if (transaction.type !== "expense") return false;
+          if (transaction.categoryId) {
+            return categoryIds.has(transaction.categoryId);
+          }
+          return categoryNames.has(
+            normalizeCategoryLabel(transaction.category)
+          );
+        })
+        .reduce(
+          (sum, transaction) => sum + transactionAmount(transaction),
+          0
+        );
+      const variance = budgetAmount - actual;
 
-    return [{
-      categoryName: category.name,
-      budget: budgetAmount,
-      actual,
-      variance,
-      percentUsed: budgetAmount > 0 ? (actual / budgetAmount) * 100 : 0,
-    }];
-  });
+      return [
+        {
+          categoryName: category.name,
+          budget: budgetAmount,
+          actual,
+          variance,
+          percentUsed: budgetAmount > 0 ? (actual / budgetAmount) * 100 : 0,
+        },
+      ];
+    });
 
   const budgetComparisonTotals = budgetComparison.reduce(
     (totals, item) => ({
@@ -117,6 +137,9 @@ export function calculateQuarterlyReportMetrics({
       : 0;
 
   return {
+    totalIncome,
+    totalExpenses,
+    transactionCount,
     incomeSummary: summarizeByCategory(transactions, "income", categories),
     expenseSummary: summarizeByCategory(transactions, "expense", categories),
     netIncome,
@@ -129,8 +152,13 @@ export function calculateQuarterlyReportMetrics({
       progress: goal.targetAmount > 0 ? (goal.savedAmount / goal.targetAmount) * 100 : 0,
     })),
     kpis: {
-      profitMargin: income > 0 ? (netIncome / income) * 100 : 0,
-      expenseToIncomeRatio: income > 0 ? (expenses / income) * 100 : 0,
+      profitMargin:
+        totalIncome > 0 ? (netIncome / totalIncome) * 100 : 0,
+      expenseToIncomeRatio:
+        totalIncome > 0 ? (totalExpenses / totalIncome) * 100 : 0,
+      savingsRate:
+        totalIncome > 0 ? (netIncome / totalIncome) * 100 : 0,
+      averageMonthlyNet: netIncome / 3,
     },
   };
 }

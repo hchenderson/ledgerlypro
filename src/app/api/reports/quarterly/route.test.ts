@@ -34,13 +34,20 @@ describe('quarterly report API security', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         userId: 'attacker-selected-user',
-        referenceDate: '2026-07-14T12:00:00.000Z',
+        reportYear: 2026,
+        quarter: 3,
+        startDate: '2026-07-01T04:00:00.000Z',
+        endDate: '2026-10-01T03:59:59.999Z',
       }),
     }));
 
     expect(response.status).toBe(200);
     expect(generateQuarterlyReport).toHaveBeenCalledWith(expect.objectContaining({
       uid: 'verified-user',
+      reportYear: 2026,
+      quarter: 3,
+      startDate: new Date('2026-07-01T04:00:00.000Z'),
+      endDate: new Date('2026-10-01T03:59:59.999Z'),
     }));
     expect(generateQuarterlyReport).not.toHaveBeenCalledWith(expect.objectContaining({
       uid: 'attacker-selected-user',
