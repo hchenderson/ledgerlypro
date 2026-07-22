@@ -374,6 +374,8 @@ export default function ComparePage() {
               <SelectContent>
                 <SelectItem value="ytd">Year to date</SelectItem>
                 <SelectItem value="full">Full year</SelectItem>
+                <SelectItem value="h1">First half (Jan–Jun)</SelectItem>
+                <SelectItem value="h2">Second half (Jul–Dec)</SelectItem>
                 <SelectItem value="q1">Quarter 1</SelectItem>
                 <SelectItem value="q2">Quarter 2</SelectItem>
                 <SelectItem value="q3">Quarter 3</SelectItem>

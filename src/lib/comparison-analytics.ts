@@ -13,6 +13,8 @@ import type { Category, Transaction } from "@/types";
 export type ComparisonRangePreset =
   | "ytd"
   | "full"
+  | "h1"
+  | "h2"
   | "q1"
   | "q2"
   | "q3"
@@ -155,7 +157,13 @@ export function buildComparisonDateRanges({
 
   let rangeStartMonth = 0;
   let rangeEndMonth = 11;
-  if (preset.startsWith("q")) {
+  if (preset === "h1") {
+    rangeStartMonth = 0;
+    rangeEndMonth = 5;
+  } else if (preset === "h2") {
+    rangeStartMonth = 6;
+    rangeEndMonth = 11;
+  } else if (preset.startsWith("q")) {
     const quarter = Number(preset.slice(1)) - 1;
     rangeStartMonth = quarter * 3;
     rangeEndMonth = quarter * 3 + 2;
