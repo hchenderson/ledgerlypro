@@ -72,11 +72,18 @@ import { Calendar as CalendarIcon } from 'lucide-react';
 import { ExportQuarterlyReportDialog } from '@/components/reports/export-quarterly-report-dialog';
 import { GenerateQuarterlyReportDialog } from '@/components/reports/generate-quarterly-report-dialog';
 import { findMainCategoryForTransaction } from '@/lib/category-tree';
+import {
+  filterTransactionsByDateRange,
+  parseTransactionDate,
+  summarizeTransactions,
+  transactionAmount,
+} from '@/lib/financial-summary';
 
 const PRESET_RANGES = [
   { label: 'This Month', value: 'this-month' },
   { label: 'Last Month', value: 'last-month' },
   { label: 'This Year', value: 'this-year' },
+  { label: 'Year to Date', value: 'year-to-date' },
   { label: 'Last 30 Days', value: 'last-30' },
   { label: 'Last 90 Days', value: 'last-90' },
   { label: 'Q1', value: 'q1' },
@@ -134,6 +141,10 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
          fromDate = startOfYear(baseDate);
          toDate = endOfYear(baseDate);
         break;
+      case 'year-to-date':
+        fromDate = startOfYear(baseDate);
+        toDate = baseDate;
+        break;
       case 'last-30':
          fromDate = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate() - 29);
          toDate = baseDate;
@@ -165,37 +176,29 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
   };
 
   const dateFilteredTransactions = useMemo(() => {
-    return allTransactions.filter(t => {
-      const transactionDate = new Date(t.date);
-      return dateRange?.from && dateRange?.to
-        ? transactionDate >= dateRange.from && transactionDate <= dateRange.to
-        : true;
-    });
+    return dateRange?.from && dateRange?.to
+      ? filterTransactionsByDateRange(allTransactions, {
+          from: dateRange.from,
+          to: dateRange.to,
+        })
+      : allTransactions;
   }, [allTransactions, dateRange]);
 
   const { totalIncome, totalExpenses, netIncome } = useMemo(() => {
-    const income = dateFilteredTransactions
-      .filter(t => t.type === 'income')
-      .filter(t => {
-        if (selectedIncomeCategories.length === 0) return true;
-        const main = findMainCategoryForTransaction(t, categories);
-        return selectedIncomeCategories.includes(main);
-      })
-      .reduce((sum, t) => sum + t.amount, 0);
-
-    const expenses = dateFilteredTransactions
-      .filter(t => t.type === 'expense')
-      .filter(t => {
-        if (selectedExpenseCategories.length === 0) return true;
-        const main = findMainCategoryForTransaction(t, categories);
-        return selectedExpenseCategories.includes(main);
-      })
-      .reduce((sum, t) => sum + t.amount, 0);
+    const includedTransactions = dateFilteredTransactions.filter(t => {
+      const selectedCategories = t.type === 'income'
+        ? selectedIncomeCategories
+        : selectedExpenseCategories;
+      if (selectedCategories.length === 0) return true;
+      const main = findMainCategoryForTransaction(t, categories);
+      return selectedCategories.includes(main);
+    });
+    const summary = summarizeTransactions(includedTransactions);
 
     return {
-      totalIncome: income,
-      totalExpenses: expenses,
-      netIncome: income - expenses,
+      totalIncome: summary.income,
+      totalExpenses: summary.expenses,
+      netIncome: summary.net,
     };
   }, [dateFilteredTransactions, selectedIncomeCategories, selectedExpenseCategories, categories]);
 
@@ -221,16 +224,16 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
           const subCategory = mainCat?.subCategories?.find(sc => sc.name === t.category);
           
           if (isMain && (!mainCat?.subCategories || mainCat.subCategories.length === 0)) { // Main cat with no subs
-              data[t.category] = (data[t.category] || 0) + t.amount;
+              data[t.category] = (data[t.category] || 0) + transactionAmount(t);
           } else if (subCategory) { // Is a direct subcategory
-              data[t.category] = (data[t.category] || 0) + t.amount;
+              data[t.category] = (data[t.category] || 0) + transactionAmount(t);
           } else if (!isMain) { // Could be a sub-sub-category
-             data[t.category] = (data[t.category] || 0) + t.amount;
+             data[t.category] = (data[t.category] || 0) + transactionAmount(t);
           }
       });
       // If no sub-category transactions, show total for main category
       if (Object.keys(data).length === 0 && transactionsForMainCategory.length > 0) {
-        data[mainCatName] = transactionsForMainCategory.reduce((acc, t) => acc + t.amount, 0);
+        data[mainCatName] = transactionsForMainCategory.reduce((acc, t) => acc + transactionAmount(t), 0);
       }
 
 
@@ -243,7 +246,7 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
         })
         .forEach(t => {
           const mainCategory = findMainCategoryForTransaction(t, categories);
-          data[mainCategory] = (data[mainCategory] || 0) + t.amount;
+          data[mainCategory] = (data[mainCategory] || 0) + transactionAmount(t);
         });
     }
   
@@ -268,15 +271,15 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
           const subCategory = mainCat?.subCategories?.find(sc => sc.name === t.category);
 
           if (isMain && (!mainCat?.subCategories || mainCat.subCategories.length === 0)) {
-              data[t.category] = (data[t.category] || 0) + t.amount;
+              data[t.category] = (data[t.category] || 0) + transactionAmount(t);
           } else if (subCategory) {
-              data[t.category] = (data[t.category] || 0) + t.amount;
+              data[t.category] = (data[t.category] || 0) + transactionAmount(t);
           } else if (!isMain) {
-             data[t.category] = (data[t.category] || 0) + t.amount;
+             data[t.category] = (data[t.category] || 0) + transactionAmount(t);
           }
       });
       if (Object.keys(data).length === 0 && transactionsForMainCategory.length > 0) {
-        data[mainCatName] = transactionsForMainCategory.reduce((acc, t) => acc + t.amount, 0);
+        data[mainCatName] = transactionsForMainCategory.reduce((acc, t) => acc + transactionAmount(t), 0);
       }
 
     } else {
@@ -288,7 +291,7 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
         })
         .forEach(t => {
           const mainCategory = findMainCategoryForTransaction(t, categories);
-          data[mainCategory] = (data[mainCategory] || 0) + t.amount;
+          data[mainCategory] = (data[mainCategory] || 0) + transactionAmount(t);
         });
     }
   
@@ -300,8 +303,8 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
   const { overviewData, trendStats } = useMemo(() => {
     const dataByPeriod: { [key: string]: { name: string; income: number; expense: number } } = {};
     dateFilteredTransactions.forEach(t => {
-      const tDate = new Date(t.date);
-      if (isNaN(tDate.getTime())) return;
+      const tDate = parseTransactionDate(t.date);
+      if (!tDate) return;
       
       let periodKey, periodLabel;
       if (period === 'monthly') {
@@ -315,7 +318,7 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
       if (!dataByPeriod[periodKey]) {
         dataByPeriod[periodKey] = { name: periodLabel, income: 0, expense: 0 };
       }
-      dataByPeriod[periodKey][t.type] += t.amount;
+      dataByPeriod[periodKey][t.type] += transactionAmount(t);
     });
 
     const sortedData = Object.values(dataByPeriod).sort((a, b) => new Date(a.name) > new Date(b.name) ? 1 : -1);

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { format as formatDate } from "date-fns";
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -44,13 +45,13 @@ import { useAuth } from "@/hooks/use-auth";
 import { useComparison } from "@/hooks/use-comparison";
 import { useUserData } from "@/hooks/use-user-data";
 import {
+  buildComparisonDateRanges,
   computeYearComparison,
   type CategoryComparison,
   type ComparisonDelta,
+  type ComparisonRangePreset,
 } from "@/lib/comparison-analytics";
 import { cn } from "@/lib/utils";
-
-type RangePreset = "ytd" | "full" | "q1" | "q2" | "q3" | "q4" | "custom";
 
 const MONTHS = [
   "January",
@@ -70,34 +71,11 @@ const MONTHS = [
 const currency = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
-  maximumFractionDigits: 0,
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
 });
 
 const integer = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
-
-const getRange = (
-  preset: RangePreset,
-  primaryYear: number,
-  startMonth: number,
-  endMonth: number
-) => {
-  if (preset === "full") return { startMonth: 0, endMonth: 11 };
-  if (preset === "ytd") {
-    return {
-      startMonth: 0,
-      endMonth:
-        primaryYear === new Date().getFullYear() ? new Date().getMonth() : 11,
-    };
-  }
-  if (preset.startsWith("q")) {
-    const quarter = Number(preset.slice(1)) - 1;
-    return { startMonth: quarter * 3, endMonth: quarter * 3 + 2 };
-  }
-  return {
-    startMonth: Math.min(startMonth, endMonth),
-    endMonth: Math.max(startMonth, endMonth),
-  };
-};
 
 const formatPercent = (value: number) => `${value.toFixed(1)}%`;
 
@@ -245,9 +223,9 @@ function CompareSkeleton() {
 
 export default function ComparePage() {
   const { activeYear, firstYear } = useAuth();
-  const { allTransactions, loading } = useUserData();
+  const { allTransactions, categories, loading } = useUserData();
   const { comparisonYear, setComparisonYear } = useComparison();
-  const [rangePreset, setRangePreset] = useState<RangePreset>("ytd");
+  const [rangePreset, setRangePreset] = useState<ComparisonRangePreset>("ytd");
   const [startMonth, setStartMonth] = useState(0);
   const [endMonth, setEndMonth] = useState(11);
   const [metric, setMetric] = useState<ComparisonMetric>("net");
@@ -278,7 +256,7 @@ export default function ComparePage() {
       const saved = window.localStorage.getItem("ledgerly-comparison-preferences");
       if (saved) {
         const preferences = JSON.parse(saved) as {
-          rangePreset?: RangePreset;
+          rangePreset?: ComparisonRangePreset;
           startMonth?: number;
           endMonth?: number;
           metric?: ComparisonMetric;
@@ -307,14 +285,28 @@ export default function ComparePage() {
     );
   }, [categoryLimit, cumulative, endMonth, metric, preferencesLoaded, rangePreset, startMonth]);
 
-  const range = useMemo(
-    () => getRange(rangePreset, activeYear, startMonth, endMonth),
-    [activeYear, endMonth, rangePreset, startMonth]
+  const ranges = useMemo(
+    () =>
+      buildComparisonDateRanges({
+        preset: rangePreset,
+        primaryYear: activeYear,
+        comparisonYear: selectedComparisonYear,
+        startMonth,
+        endMonth,
+      }),
+    [activeYear, endMonth, rangePreset, selectedComparisonYear, startMonth]
   );
 
   const analytics = useMemo(
-    () => computeYearComparison(allTransactions, activeYear, selectedComparisonYear, range),
-    [activeYear, allTransactions, range, selectedComparisonYear]
+    () =>
+      computeYearComparison(
+        allTransactions,
+        activeYear,
+        selectedComparisonYear,
+        ranges,
+        categories
+      ),
+    [activeYear, allTransactions, categories, ranges, selectedComparisonYear]
   );
 
   const largestExpenseMover = useMemo(
@@ -322,7 +314,8 @@ export default function ComparePage() {
     [analytics.expenseCategories]
   );
 
-  const rangeLabel = `${MONTHS[range.startMonth]}–${MONTHS[range.endMonth]}`;
+  const primaryRangeLabel = `${formatDate(ranges.primary.from, "MMM d, yyyy")}–${formatDate(ranges.primary.to, "MMM d, yyyy")}`;
+  const comparisonRangeLabel = `${formatDate(ranges.comparison.from, "MMM d, yyyy")}–${formatDate(ranges.comparison.to, "MMM d, yyyy")}`;
   const hasAnyData = analytics.primary.transactionCount + analytics.comparison.transactionCount > 0;
 
   const resetPreferences = () => {
@@ -352,7 +345,7 @@ export default function ComparePage() {
           </p>
         </div>
         <Badge variant="secondary" className="w-fit gap-2 px-3 py-1.5">
-          <CalendarRange className="h-4 w-4" /> {rangeLabel}
+          <CalendarRange className="h-4 w-4" /> {primaryRangeLabel}
         </Badge>
       </div>
 
@@ -376,7 +369,7 @@ export default function ComparePage() {
           </div>
           <div className="space-y-2">
             <Label>Period</Label>
-            <Select value={rangePreset} onValueChange={(value) => setRangePreset(value as RangePreset)}>
+            <Select value={rangePreset} onValueChange={(value) => setRangePreset(value as ComparisonRangePreset)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="ytd">Year to date</SelectItem>
@@ -437,6 +430,17 @@ export default function ComparePage() {
           )}
         </CardContent>
       </Card>
+
+      <div className="grid gap-3 text-sm sm:grid-cols-2">
+        <div className="rounded-xl border bg-card px-4 py-3">
+          <span className="font-semibold text-primary">{activeYear}</span>
+          <span className="ml-2 text-muted-foreground">{primaryRangeLabel}</span>
+        </div>
+        <div className="rounded-xl border bg-card px-4 py-3">
+          <span className="font-semibold text-brand-navy dark:text-brand-tint">{selectedComparisonYear}</span>
+          <span className="ml-2 text-muted-foreground">{comparisonRangeLabel}</span>
+        </div>
+      </div>
 
       {!hasAnyData && (
         <Card className="border-dashed bg-secondary/25">
