@@ -84,6 +84,8 @@ const PRESET_RANGES = [
   { label: 'Last Month', value: 'last-month' },
   { label: 'This Year', value: 'this-year' },
   { label: 'Year to Date', value: 'year-to-date' },
+  { label: 'First Half (Jan–Jun)', value: 'first-half' },
+  { label: 'Second Half (Jul–Dec)', value: 'second-half' },
   { label: 'Last 30 Days', value: 'last-30' },
   { label: 'Last 90 Days', value: 'last-90' },
   { label: 'Q1', value: 'q1' },
@@ -144,6 +146,14 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
       case 'year-to-date':
         fromDate = startOfYear(baseDate);
         toDate = baseDate;
+        break;
+      case 'first-half':
+        fromDate = new Date(currentYear, 0, 1);
+        toDate = new Date(currentYear, 5, 30);
+        break;
+      case 'second-half':
+        fromDate = new Date(currentYear, 6, 1);
+        toDate = new Date(currentYear, 11, 31);
         break;
       case 'last-30':
          fromDate = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate() - 29);

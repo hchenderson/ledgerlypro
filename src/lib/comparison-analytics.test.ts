@@ -87,6 +87,32 @@ describe("computeYearComparison", () => {
     expect(result.monthly[11].month).toBe("Dec");
   });
 
+  it("builds exact first-half and second-half date ranges", () => {
+    const firstHalf = buildComparisonDateRanges({
+      preset: "h1",
+      primaryYear: 2026,
+      comparisonYear: 2025,
+    });
+    const secondHalf = buildComparisonDateRanges({
+      preset: "h2",
+      primaryYear: 2026,
+      comparisonYear: 2025,
+    });
+
+    expect([
+      firstHalf.primary.from.getMonth(),
+      firstHalf.primary.from.getDate(),
+      firstHalf.primary.to.getMonth(),
+      firstHalf.primary.to.getDate(),
+    ]).toEqual([0, 1, 5, 30]);
+    expect([
+      secondHalf.primary.from.getMonth(),
+      secondHalf.primary.from.getDate(),
+      secondHalf.primary.to.getMonth(),
+      secondHalf.primary.to.getDate(),
+    ]).toEqual([6, 1, 11, 31]);
+  });
+
   it("matches the shared report summary for the same date range", () => {
     const result = computeYearComparison(
       transactions,
@@ -155,6 +181,8 @@ describe("computeYearComparison", () => {
   it.each([
     ["full", 0, 11],
     ["ytd", 0, 11],
+    ["h1", 0, 11],
+    ["h2", 0, 11],
     ["q1", 0, 11],
     ["q2", 0, 11],
     ["q3", 0, 11],
