@@ -16,9 +16,9 @@ const transaction = (
 describe("financial summary", () => {
   it("includes the entire selected ending day", () => {
     const transactions = [
-      transaction("morning", "2026-07-21T08:00:00.000-04:00", 10, "expense"),
-      transaction("evening", "2026-07-21T22:00:00.000-04:00", 20, "expense"),
-      transaction("tomorrow", "2026-07-22T08:00:00.000-04:00", 30, "expense"),
+      transaction("morning", "2026-07-21T08:00:00.000", 10, "expense"),
+      transaction("evening", "2026-07-21T22:00:00.000", 20, "expense"),
+      transaction("tomorrow", "2026-07-22T08:00:00.000", 30, "expense"),
     ];
 
     const filtered = filterTransactionsByDateRange(transactions, {
