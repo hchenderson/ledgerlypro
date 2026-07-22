@@ -1,10 +1,27 @@
-import { getMonth, getYear, parseISO } from "date-fns";
+import { endOfMonth, getDaysInMonth, getMonth } from "date-fns";
 
-import type { Transaction } from "@/types";
+import { findMainCategoryForTransaction } from "@/lib/category-tree";
+import {
+  filterTransactionsByDateRange,
+  parseTransactionDate,
+  summarizeTransactions,
+  transactionAmount,
+  type FinancialDateRange,
+} from "@/lib/financial-summary";
+import type { Category, Transaction } from "@/types";
 
-export interface ComparisonRange {
-  startMonth: number;
-  endMonth: number;
+export type ComparisonRangePreset =
+  | "ytd"
+  | "full"
+  | "q1"
+  | "q2"
+  | "q3"
+  | "q4"
+  | "custom";
+
+export interface ComparisonDateRanges {
+  primary: FinancialDateRange;
+  comparison: FinancialDateRange;
 }
 
 export interface ComparisonSnapshot {
@@ -85,6 +102,78 @@ const MONTH_NAMES = [
 
 const clampMonth = (month: number) => Math.max(0, Math.min(11, month));
 
+const rangeForMonths = (
+  year: number,
+  requestedStartMonth: number,
+  requestedEndMonth: number
+): FinancialDateRange => {
+  const startMonth = clampMonth(
+    Math.min(requestedStartMonth, requestedEndMonth)
+  );
+  const endMonth = clampMonth(
+    Math.max(requestedStartMonth, requestedEndMonth)
+  );
+  return {
+    from: new Date(year, startMonth, 1),
+    to: endOfMonth(new Date(year, endMonth, 1)),
+  };
+};
+
+const matchingDate = (year: number, source: Date) => {
+  const month = getMonth(source);
+  const maximumDay = getDaysInMonth(new Date(year, month, 1));
+  return new Date(year, month, Math.min(source.getDate(), maximumDay));
+};
+
+export function buildComparisonDateRanges({
+  preset,
+  primaryYear,
+  comparisonYear,
+  now = new Date(),
+  startMonth = 0,
+  endMonth = 11,
+}: {
+  preset: ComparisonRangePreset;
+  primaryYear: number;
+  comparisonYear: number;
+  now?: Date;
+  startMonth?: number;
+  endMonth?: number;
+}): ComparisonDateRanges {
+  if (preset === "ytd") {
+    return {
+      primary: {
+        from: new Date(primaryYear, 0, 1),
+        to: matchingDate(primaryYear, now),
+      },
+      comparison: {
+        from: new Date(comparisonYear, 0, 1),
+        to: matchingDate(comparisonYear, now),
+      },
+    };
+  }
+
+  let rangeStartMonth = 0;
+  let rangeEndMonth = 11;
+  if (preset.startsWith("q")) {
+    const quarter = Number(preset.slice(1)) - 1;
+    rangeStartMonth = quarter * 3;
+    rangeEndMonth = quarter * 3 + 2;
+  } else if (preset === "custom") {
+    rangeStartMonth = startMonth;
+    rangeEndMonth = endMonth;
+  }
+
+  return {
+    primary: rangeForMonths(primaryYear, rangeStartMonth, rangeEndMonth),
+    comparison: rangeForMonths(
+      comparisonYear,
+      rangeStartMonth,
+      rangeEndMonth
+    ),
+  };
+}
+
 const getPercentChange = (current: number, previous: number): number | null => {
   if (previous === 0) return current === 0 ? 0 : null;
   return ((current - previous) / Math.abs(previous)) * 100;
@@ -95,51 +184,30 @@ const makeDelta = (current: number, previous: number): ComparisonDelta => ({
   percent: getPercentChange(current, previous),
 });
 
-const normalizeAmount = (amount: number) =>
-  Number.isFinite(amount) ? Math.abs(amount) : 0;
-
 const transactionDateParts = (transaction: Transaction) => {
-  const date = parseISO(transaction.date);
-  if (Number.isNaN(date.getTime())) return null;
-  return { year: getYear(date), month: getMonth(date) };
+  const date = parseTransactionDate(transaction.date);
+  if (!date) return null;
+  return { month: getMonth(date) };
 };
-
-const transactionsForPeriod = (
-  transactions: Transaction[],
-  year: number,
-  range: ComparisonRange
-) =>
-  transactions.filter((transaction) => {
-    const parts = transactionDateParts(transaction);
-    return (
-      parts?.year === year &&
-      parts.month >= range.startMonth &&
-      parts.month <= range.endMonth
-    );
-  });
 
 const computeSnapshot = (
   transactions: Transaction[],
   year: number,
   monthCount: number
 ): ComparisonSnapshot => {
-  let income = 0;
-  let expenses = 0;
   let largestExpense: Transaction | null = null;
 
   for (const transaction of transactions) {
-    const amount = normalizeAmount(transaction.amount);
-    if (transaction.type === "income") {
-      income += amount;
-    } else {
-      expenses += amount;
-      if (!largestExpense || amount > normalizeAmount(largestExpense.amount)) {
+    const amount = transactionAmount(transaction);
+    if (transaction.type === "expense") {
+      if (!largestExpense || amount > transactionAmount(largestExpense)) {
         largestExpense = transaction;
       }
     }
   }
 
-  const net = income - expenses;
+  const { income, expenses, net, transactionCount } =
+    summarizeTransactions(transactions);
   const totalVolume = income + expenses;
 
   return {
@@ -148,7 +216,7 @@ const computeSnapshot = (
     expenses,
     net,
     savingsRate: income > 0 ? (net / income) * 100 : 0,
-    transactionCount: transactions.length,
+    transactionCount,
     averageTransaction:
       transactions.length > 0 ? totalVolume / transactions.length : 0,
     averageMonthlyNet: monthCount > 0 ? net / monthCount : 0,
@@ -159,26 +227,31 @@ const computeSnapshot = (
 const computeCategoryComparison = (
   primaryTransactions: Transaction[],
   comparisonTransactions: Transaction[],
-  type: Transaction["type"]
+  type: Transaction["type"],
+  categories: Category[]
 ): CategoryComparison[] => {
   const primaryMap = new Map<string, number>();
   const comparisonMap = new Map<string, number>();
+  const categoryFor = (transaction: Transaction) =>
+    categories.length > 0
+      ? findMainCategoryForTransaction(transaction, categories)
+      : transaction.category?.trim() || "Uncategorized";
 
   for (const transaction of primaryTransactions) {
     if (transaction.type !== type) continue;
-    const category = transaction.category?.trim() || "Uncategorized";
+    const category = categoryFor(transaction);
     primaryMap.set(
       category,
-      (primaryMap.get(category) ?? 0) + normalizeAmount(transaction.amount)
+      (primaryMap.get(category) ?? 0) + transactionAmount(transaction)
     );
   }
 
   for (const transaction of comparisonTransactions) {
     if (transaction.type !== type) continue;
-    const category = transaction.category?.trim() || "Uncategorized";
+    const category = categoryFor(transaction);
     comparisonMap.set(
       category,
-      (comparisonMap.get(category) ?? 0) + normalizeAmount(transaction.amount)
+      (comparisonMap.get(category) ?? 0) + transactionAmount(transaction)
     );
   }
 
@@ -213,26 +286,20 @@ export function computeYearComparison(
   transactions: Transaction[],
   primaryYear: number,
   comparisonYear: number,
-  requestedRange: ComparisonRange
+  ranges: ComparisonDateRanges,
+  categories: Category[] = []
 ): YearComparisonAnalytics {
-  const startMonth = clampMonth(
-    Math.min(requestedRange.startMonth, requestedRange.endMonth)
-  );
-  const endMonth = clampMonth(
-    Math.max(requestedRange.startMonth, requestedRange.endMonth)
-  );
-  const range = { startMonth, endMonth };
+  const startMonth = getMonth(ranges.primary.from);
+  const endMonth = getMonth(ranges.primary.to);
   const monthCount = endMonth - startMonth + 1;
 
-  const primaryTransactions = transactionsForPeriod(
+  const primaryTransactions = filterTransactionsByDateRange(
     transactions,
-    primaryYear,
-    range
+    ranges.primary
   );
-  const comparisonTransactions = transactionsForPeriod(
+  const comparisonTransactions = filterTransactionsByDateRange(
     transactions,
-    comparisonYear,
-    range
+    ranges.comparison
   );
 
   const primary = computeSnapshot(primaryTransactions, primaryYear, monthCount);
@@ -249,7 +316,7 @@ export function computeYearComparison(
       let expenses = 0;
       for (const transaction of yearTransactions) {
         if (transactionDateParts(transaction)?.month !== monthIndex) continue;
-        const amount = normalizeAmount(transaction.amount);
+        const amount = transactionAmount(transaction);
         if (transaction.type === "income") income += amount;
         else expenses += amount;
       }
@@ -315,12 +382,14 @@ export function computeYearComparison(
     expenseCategories: computeCategoryComparison(
       primaryTransactions,
       comparisonTransactions,
-      "expense"
+      "expense",
+      categories
     ),
     incomeCategories: computeCategoryComparison(
       primaryTransactions,
       comparisonTransactions,
-      "income"
+      "income",
+      categories
     ),
     monthsWon: monthly.filter(
       (point) => point.primaryNet > point.comparisonNet
