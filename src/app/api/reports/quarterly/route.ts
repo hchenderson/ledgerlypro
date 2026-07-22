@@ -6,10 +6,16 @@ import { deleteQuarterlyReport, generateQuarterlyReport } from "@/lib/quarterly-
 import { logServerEvent, requestLogContext } from "@/lib/server-logger";
 
 const GenerateReportSchema = z.object({
-  referenceDate: z.string().datetime(),
+  reportYear: z.number().int().min(1900).max(2200),
+  quarter: z.number().int().min(1).max(4),
+  startDate: z.string().datetime(),
+  endDate: z.string().datetime(),
   notes: z.string().trim().max(2_000).optional(),
   budgetIds: z.array(z.string().min(1)).max(200).optional(),
-});
+}).refine(
+  ({ startDate, endDate }) => new Date(startDate) < new Date(endDate),
+  { message: "The report date range is invalid." }
+);
 
 const DeleteReportSchema = z.object({
   reportId: z.string().regex(/^Q[1-4] \d{4}$/),
@@ -31,7 +37,10 @@ export async function POST(req: Request) {
 
     const report = await generateQuarterlyReport({
       uid,
-      referenceDate: new Date(parsed.data.referenceDate),
+      reportYear: parsed.data.reportYear,
+      quarter: parsed.data.quarter,
+      startDate: new Date(parsed.data.startDate),
+      endDate: new Date(parsed.data.endDate),
       notes: parsed.data.notes,
       budgetIds: parsed.data.budgetIds,
     });

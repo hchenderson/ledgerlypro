@@ -115,6 +115,10 @@ export interface QuarterlyReport {
   startDate: string;
   endDate: string;
   createdAt: Timestamp;
+  calculationVersion?: number;
+  totalIncome?: number;
+  totalExpenses?: number;
+  transactionCount?: number;
   incomeSummary: Record<string, number>;
   expenseSummary: Record<string, number>;
   netIncome: number;
@@ -140,6 +144,8 @@ export interface QuarterlyReport {
   kpis: {
     profitMargin: number;
     expenseToIncomeRatio: number;
+    savingsRate?: number;
+    averageMonthlyNet?: number;
   };
   notes?: string;
 }

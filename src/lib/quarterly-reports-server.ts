@@ -1,6 +1,5 @@
 import "server-only";
 
-import { getQuarter, getYear, startOfQuarter, endOfQuarter } from "date-fns";
 import { Timestamp } from "firebase-admin/firestore";
 
 import { adminDb } from "@/lib/firebaseAdmin";
@@ -20,22 +19,24 @@ export async function deleteQuarterlyReport(uid: string, reportId: string) {
 
 export async function generateQuarterlyReport({
   uid,
-  referenceDate,
+  reportYear,
+  quarter,
+  startDate,
+  endDate,
   notes,
   budgetIds,
 }: {
   uid: string;
-  referenceDate: Date;
+  reportYear: number;
+  quarter: number;
+  startDate: Date;
+  endDate: Date;
   notes?: string;
   budgetIds?: string[];
 }): Promise<QuarterlyReport> {
   if (!adminDb) throw new Error("Firebase Admin SDK is not initialized.");
 
-  const quarter = getQuarter(referenceDate);
-  const year = getYear(referenceDate);
-  const period = `Q${quarter} ${year}`;
-  const startDate = startOfQuarter(referenceDate);
-  const endDate = endOfQuarter(referenceDate);
+  const period = `Q${quarter} ${reportYear}`;
   const userRef = adminDb.collection("users").doc(uid);
 
   const [transactionSnapshot, categories, allBudgets, goals] = await Promise.all([
@@ -52,13 +53,20 @@ export async function generateQuarterlyReport({
   const budgets = budgetIds?.length
     ? allBudgets.filter((budget) => budgetIds.includes(budget.id))
     : allBudgets;
-  const metrics = calculateQuarterlyReportMetrics({ transactions, categories, budgets, goals });
+  const metrics = calculateQuarterlyReportMetrics({
+    transactions,
+    categories,
+    budgets,
+    goals,
+    reportYear,
+  });
   const createdAt = Timestamp.now();
   const reportDocument = {
     period,
     startDate: startDate.toISOString(),
     endDate: endDate.toISOString(),
     createdAt,
+    calculationVersion: 2,
     ...metrics,
     ...(notes ? { notes } : {}),
   };
