@@ -8,6 +8,8 @@ import {
   format,
 } from "date-fns";
 import type { Transaction, Category, SubCategory } from "@/types";
+import { transferBalanceDelta } from "@/lib/accounts";
+import { transactionAmount } from "@/lib/financial-summary";
 
 export interface EOYMonthlyPoint {
   monthIndex: number;
@@ -15,6 +17,8 @@ export interface EOYMonthlyPoint {
   income: number;
   expenses: number;
   net: number;
+  transferNet: number;
+  balanceChange: number;
 }
 
 export interface EOYCategorySummary {
@@ -86,6 +90,8 @@ export function computeEOYReport(
     income: 0,
     expenses: 0,
     net: 0,
+    transferNet: 0,
+    balanceChange: 0,
   }));
 
   const allCategoryNames = flattenCategoryNames(categories);
@@ -98,25 +104,29 @@ export function computeEOYReport(
 
   yearTx.forEach((tx) => {
     const m = getMonth(parseISO(tx.date));
+    const amount = transactionAmount(tx);
     if (tx.type === "income") {
-      monthly[m].income += tx.amount;
+      monthly[m].income += amount;
     } else if (tx.type === "expense") {
-      monthly[m].expenses += tx.amount;
+      monthly[m].expenses += amount;
       if (categoryTotals[tx.category] !== undefined) {
-        categoryTotals[tx.category] += tx.amount;
+        categoryTotals[tx.category] += amount;
       }
       
       const mainCat = findMainCategoryForSub(tx.category, categories);
       if (mainCat) {
-        mainCategoryTotals[mainCat.name] = (mainCategoryTotals[mainCat.name] || 0) + tx.amount;
+        mainCategoryTotals[mainCat.name] = (mainCategoryTotals[mainCat.name] || 0) + amount;
       } else {
-        mainCategoryTotals['Uncategorized'] = (mainCategoryTotals['Uncategorized'] || 0) + tx.amount;
+        mainCategoryTotals['Uncategorized'] = (mainCategoryTotals['Uncategorized'] || 0) + amount;
       }
+    } else if (tx.type === "transfer") {
+      monthly[m].transferNet += transferBalanceDelta(tx);
     }
   });
 
   monthly.forEach((m) => {
     m.net = m.income - m.expenses;
+    m.balanceChange = m.net + m.transferNet;
   });
 
   const totalIncome = monthly.reduce((sum, m) => sum + m.income, 0);

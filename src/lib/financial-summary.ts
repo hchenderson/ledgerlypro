@@ -45,17 +45,23 @@ export function summarizeTransactions(
 ): FinancialSummary {
   let income = 0;
   let expenses = 0;
+  let transactionCount = 0;
 
   for (const transaction of transactions) {
     const amount = transactionAmount(transaction);
-    if (transaction.type === "income") income += amount;
-    else expenses += amount;
+    if (transaction.type === "income") {
+      income += amount;
+      transactionCount += 1;
+    } else if (transaction.type === "expense") {
+      expenses += amount;
+      transactionCount += 1;
+    }
   }
 
   return {
     income,
     expenses,
     net: income - expenses,
-    transactionCount: transactions.length,
+    transactionCount,
   };
 }

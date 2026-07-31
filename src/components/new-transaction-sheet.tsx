@@ -38,8 +38,6 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  SelectGroup,
-  SelectLabel,
 } from "@/components/ui/select"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { useToast } from "@/hooks/use-toast"
@@ -54,7 +52,8 @@ import {
   DialogTrigger,
   DialogClose,
 } from "@/components/ui/dialog"
-import { useUserData } from "@/hooks/use-user-data"
+import { useCategories } from "@/hooks/use-categories"
+import { useAccounts } from "@/hooks/use-accounts"
 
 const formSchema = z.object({
   type: z.enum(["income", "expense"], {
@@ -71,6 +70,9 @@ const formSchema = z.object({
   }),
   categoryId: z.string({
     required_error: "Please select a category.",
+  }),
+  accountId: z.string().min(1, {
+    message: "Please select an account.",
   }),
   category: z.string().optional(),
 })
@@ -100,7 +102,7 @@ const AddCategoryDialog = ({
     const [name, setName] = useState('');
     const [parent, setParent] = useState('');
     const [isOpen, setIsOpen] = useState(false);
-    const { addCategory, addSubCategory } = useUserData();
+    const { addCategory, addSubCategory } = useCategories();
 
     const mainCategories = categories.filter(c => c.type === type);
     
@@ -194,6 +196,19 @@ export function NewTransactionSheet({
     categories,
 }: NewTransactionSheetProps) {
   const { toast } = useToast()
+  const {
+    accounts,
+    activeAccounts,
+    primaryAccountId,
+    selectedAccountIds,
+  } = useAccounts()
+  const selectedActiveAccountId =
+    selectedAccountIds.length === 1 &&
+    activeAccounts.some(
+      (account) => account.id === selectedAccountIds[0],
+    )
+      ? selectedAccountIds[0]
+      : undefined;
   
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -210,9 +225,18 @@ export function NewTransactionSheet({
         const transactionDate = transaction.date ? new Date(transaction.date) : new Date();
         form.reset({
           ...transaction,
+          type:
+            transaction.type === "transfer"
+              ? "expense"
+              : transaction.type,
           date: transactionDate,
           amount: transaction.amount || ('' as any),
           categoryId: transaction.categoryId || undefined,
+          accountId:
+            transaction.accountId ??
+            selectedActiveAccountId ??
+            primaryAccountId ??
+            undefined,
         });
         setDateInput(format(transactionDate, "MM/dd/yyyy"));
       } else {
@@ -222,12 +246,22 @@ export function NewTransactionSheet({
           description: '',
           amount: '' as any,
           categoryId: undefined,
+          accountId:
+            selectedActiveAccountId ??
+            primaryAccountId ??
+            undefined,
           date: today,
         });
         setDateInput(format(today, "MM/dd/yyyy"));
       }
     }
-  }, [transaction, form, isOpen]);
+  }, [
+    form,
+    isOpen,
+    primaryAccountId,
+    selectedActiveAccountId,
+    transaction,
+  ]);
 
   const transactionType = useWatch({ control: form.control, name: 'type' });
 
@@ -309,7 +343,7 @@ export function NewTransactionSheet({
 
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
-      <SheetTrigger asChild>{children}</SheetTrigger>
+      {children ? <SheetTrigger asChild>{children}</SheetTrigger> : null}
       <SheetContent>
         <SheetHeader>
           <SheetTitle>{sheetTitle}</SheetTitle>
@@ -317,6 +351,44 @@ export function NewTransactionSheet({
         </SheetHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
+            <FormField
+              control={form.control}
+              name="accountId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Account</FormLabel>
+                  <Select
+                    onValueChange={field.onChange}
+                    value={field.value}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select an account" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {[
+                        ...activeAccounts,
+                        ...accounts.filter(
+                          (account) =>
+                            account.isArchived &&
+                            account.id === field.value,
+                        ),
+                      ].map((account) => (
+                        <SelectItem
+                          key={account.id}
+                          value={account.id}
+                        >
+                          {account.name}
+                          {account.isArchived ? " (Archived)" : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             <FormField
               control={form.control}
               name="type"

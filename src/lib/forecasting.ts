@@ -3,8 +3,8 @@
 
 import {
   addDays, addWeeks, addMonths, addYears,
-  isAfter, isBefore, startOfDay, endOfDay,
-  eachDayOfInterval, differenceInDays,
+  isBefore, startOfDay, endOfDay,
+  differenceInDays,
   parseISO, format, startOfWeek, isWithinInterval
 } from 'date-fns';
 import type { Transaction, RecurringTransaction } from '@/types';

@@ -6,14 +6,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
-import { MoreHorizontal, Upload, Calendar as CalendarIcon, X, Loader2, Edit, Trash2 } from "lucide-react";
+import { MoreHorizontal, Upload, Calendar as CalendarIcon, X, Loader2, Edit, Trash2, ArrowRightLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { NewTransactionSheet } from "@/components/new-transaction-sheet";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import type { Transaction, Category, SubCategory } from "@/types";
 import { useToast } from "@/hooks/use-toast";
-import { useUserData } from "@/hooks/use-user-data";
+import { useCategories } from "@/hooks/use-categories";
+import { useTransactionData } from "@/hooks/use-transactions";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -21,9 +21,27 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { DateRange } from "react-day-picker";
 import { cn } from "@/lib/utils";
 import { Calendar } from "@/components/ui/calendar";
-import { ExportTransactionsDialog } from "@/components/export-transactions-dialog";
 import { Pagination } from "@/components/ui/pagination";
 import { useAuth } from "@/hooks/use-auth";
+import { useIsMobile } from "@/hooks/use-mobile";
+import dynamic from "next/dynamic";
+import { useAccounts } from "@/hooks/use-accounts";
+
+const NewTransactionSheet = dynamic(
+  () =>
+    import("@/components/new-transaction-sheet").then(
+      (module) => module.NewTransactionSheet,
+    ),
+  { ssr: false },
+);
+
+const ExportTransactionsDialog = dynamic(
+  () =>
+    import("@/components/export-transactions-dialog").then(
+      (module) => module.ExportTransactionsDialog,
+    ),
+  { ssr: false },
+);
 
 
 const TRANSACTIONS_PAGE_SIZE = 25;
@@ -47,20 +65,23 @@ function TransactionsSkeleton() {
 }
 
 export default function TransactionsPage() {
-  const { 
-    allTransactions,
+  const {
+    transactions: allTransactions,
     addTransaction,
     updateTransaction, 
     deleteTransaction, 
-    categories = [],
     loading: userDataLoading,
-  } = useUserData();
+  } = useTransactionData();
+  const { categories = [] } = useCategories();
+  const { getAccountName } = useAccounts();
   const { activeYear } = useAuth();
+  const isMobile = useIsMobile();
   
   const [paginatedTransactions, setPaginatedTransactions] = useState<Transaction[]>([]);
   const [page, setPage] = useState(1);
 
   const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [isExportOpen, setIsExportOpen] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const { toast } = useToast();
 
@@ -125,8 +146,11 @@ export default function TransactionsPage() {
       });
     };
     recurse(categories);
+    if (allTransactions.some((transaction) => transaction.type === "transfer")) {
+      options.push({ value: "Transfer", label: "Transfer" });
+    }
     return options;
-  }, [categories]);
+  }, [allTransactions, categories]);
 
   const resetFilters = useCallback(() => {
     setDescriptionFilter('');
@@ -137,7 +161,7 @@ export default function TransactionsPage() {
   }, []);
 
   const handleEdit = useCallback((transaction: Transaction) => {
-    if (isReadOnly) return;
+    if (isReadOnly || transaction.type === "transfer") return;
     setSelectedTransaction(transaction);
     setIsSheetOpen(true);
   }, [isReadOnly]);
@@ -160,20 +184,36 @@ export default function TransactionsPage() {
   }, [updateTransaction, toast]);
 
   const handleDelete = useCallback(async (id: string) => {
+      const transaction = allTransactions.find((item) => item.id === id);
       try {
         await deleteTransaction(id);
         toast({
-          title: "Transaction Deleted",
-          description: "The transaction has been successfully deleted.",
+          title: transaction?.type === "transfer" ? "Transfer deleted" : "Transaction deleted",
+          description:
+            transaction?.type === "transfer"
+              ? "Both linked account entries were deleted."
+              : "The transaction has been successfully deleted.",
         });
-      } catch (error) {
+      } catch {
         toast({
           variant: "destructive",
           title: "Error",
           description: "Failed to delete transaction. Please try again.",
         });
       }
-  }, [deleteTransaction, toast]);
+  }, [allTransactions, deleteTransaction, toast]);
+
+  const transactionSign = useCallback((transaction: Transaction) => {
+    if (transaction.type === "income") return "+";
+    if (transaction.type === "expense") return "-";
+    return transaction.transferDirection === "in" ? "+" : "-";
+  }, []);
+
+  const transactionAmountClass = useCallback((transaction: Transaction) => {
+    if (transaction.type === "income") return "text-emerald-600";
+    if (transaction.type === "transfer") return "text-primary";
+    return "";
+  }, []);
   
   const formatCurrency = useCallback((amount: number) => {
     return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(amount);
@@ -192,10 +232,10 @@ export default function TransactionsPage() {
   return (
     <div className="space-y-6">
       <Card>
-        <CardHeader>
+        <CardHeader className="pb-4">
           <CardTitle>Filters</CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
           <Input 
             placeholder="Filter by description..."
             value={descriptionFilter}
@@ -247,12 +287,12 @@ export default function TransactionsPage() {
                 defaultMonth={dateRange?.from}
                 selected={dateRange}
                 onSelect={setDateRange}
-                numberOfMonths={2}
+                numberOfMonths={isMobile ? 1 : 2}
               />
             </PopoverContent>
           </Popover>
           
-          <div className="flex items-center gap-2 lg:col-span-2">
+          <div className="grid grid-cols-2 gap-2 lg:col-span-2">
             <Input 
               type="number"
               placeholder="Min amount"
@@ -267,8 +307,13 @@ export default function TransactionsPage() {
             />
           </div>
           
-          <div className="lg:col-span-2 flex justify-end">
-            <Button onClick={resetFilters} variant="ghost" disabled={!isFiltering}>
+          <div className="flex lg:col-span-2 lg:justify-end">
+            <Button
+              onClick={resetFilters}
+              variant="ghost"
+              disabled={!isFiltering}
+              className="h-11 w-full sm:w-auto"
+            >
               <X className="mr-2 h-4 w-4"/>
               Reset Filters
             </Button>
@@ -277,37 +322,152 @@ export default function TransactionsPage() {
       </Card>
 
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
+        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
             <CardTitle>Transactions</CardTitle>
-             <CardDescription>
+             <CardDescription className="mt-1">
               {isFiltering
                 ? `Found ${filteredTransactions.length} transactions matching your filters.`
                 : `Showing ${filteredTransactions.length > 0 ? (page - 1) * TRANSACTIONS_PAGE_SIZE + 1 : 0}-${Math.min(page * TRANSACTIONS_PAGE_SIZE, filteredTransactions.length)} of ${allTransactions.length} total transactions.`
               }
             </CardDescription>
           </div>
-          <ExportTransactionsDialog
-            transactions={allTransactions}
-            categories={categories}
-            triggerButton={
-                 <Button 
-                    variant="outline"
-                    disabled={allTransactions.length === 0}
-                  >
-                    <Upload className="mr-2 h-4 w-4" />
-                    Export
-                  </Button>
-            }
-           />
+          <Button
+            variant="outline"
+            disabled={allTransactions.length === 0}
+            className="h-11 w-full sm:w-auto"
+            onClick={() => setIsExportOpen(true)}
+          >
+            <Upload className="mr-2 h-4 w-4" />
+            Export
+          </Button>
+          {isExportOpen ? (
+            <ExportTransactionsDialog
+              transactions={allTransactions}
+              categories={categories}
+              isOpen={isExportOpen}
+              onOpenChange={setIsExportOpen}
+            />
+          ) : null}
         </CardHeader>
         
         <CardContent>
+          <div className="space-y-3 md:hidden">
+            {userDataLoading && allTransactions.length === 0 ? (
+              <div className="flex h-24 items-center justify-center">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : paginatedTransactions.length > 0 ? (
+              paginatedTransactions.map((transaction) => (
+                <article
+                  key={transaction.id}
+                  className="rounded-xl border bg-card p-4 shadow-sm"
+                >
+                  <div className="flex min-w-0 items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h3 className="truncate font-semibold">{transaction.description}</h3>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <Badge variant="outline" className="max-w-full truncate">
+                          {transaction.category}
+                        </Badge>
+                        <Badge variant="secondary" className="max-w-full truncate">
+                          {getAccountName(transaction.accountId)}
+                        </Badge>
+                        {transaction.type === "transfer" ? (
+                          <Badge className="gap-1">
+                            <ArrowRightLeft className="h-3 w-3" />
+                            {transaction.transferDirection === "in"
+                              ? "Transfer in"
+                              : "Transfer out"}
+                          </Badge>
+                        ) : null}
+                        <time
+                          dateTime={transaction.date}
+                          className="text-xs text-muted-foreground"
+                        >
+                          {formatDate(transaction.date)}
+                        </time>
+                      </div>
+                    </div>
+                    <p
+                      className={cn(
+                        "max-w-[50%] shrink-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono font-semibold",
+                        transactionAmountClass(transaction)
+                      )}
+                    >
+                      {transactionSign(transaction)}
+                      {formatCurrency(transaction.amount)}
+                    </p>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-11"
+                      onClick={() => handleEdit(transaction)}
+                      disabled={isReadOnly || transaction.type === "transfer"}
+                      aria-label={`Edit ${transaction.description}`}
+                      title={
+                        transaction.type === "transfer"
+                          ? "Linked transfers are edited together and cannot be edited here."
+                          : undefined
+                      }
+                    >
+                      <Edit className="h-4 w-4" />
+                      Edit
+                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-11 text-destructive hover:text-destructive"
+                          disabled={isReadOnly}
+                          aria-label={`Delete ${transaction.description}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Delete
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete transaction?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            {transaction.type === "transfer"
+                              ? `This will permanently delete both linked entries for ${transaction.description}.`
+                              : `This will permanently delete ${transaction.description}.`}{" "}
+                            This action cannot be undone.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => handleDelete(transaction.id)}
+                            className="bg-red-600 hover:bg-red-700"
+                          >
+                            Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
+                </article>
+              ))
+            ) : (
+              <div className="flex h-24 items-center justify-center rounded-lg border border-dashed px-4 text-center text-sm text-muted-foreground">
+                No transactions found.
+              </div>
+            )}
+          </div>
+
+          <div className="hidden md:block">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Description</TableHead>
                 <TableHead>Category</TableHead>
+                <TableHead className="hidden lg:table-cell">Account</TableHead>
                 <TableHead className="hidden md:table-cell">Date</TableHead>
                 <TableHead className="text-right">Amount</TableHead>
                 <TableHead>
@@ -318,7 +478,7 @@ export default function TransactionsPage() {
             <TableBody>
               {userDataLoading && allTransactions.length === 0 ? (
                  <TableRow>
-                    <TableCell colSpan={5} className="h-24 text-center">
+                    <TableCell colSpan={6} className="h-24 text-center">
                         <Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" />
                     </TableCell>
                 </TableRow>
@@ -327,7 +487,11 @@ export default function TransactionsPage() {
                   <TableRow 
                     key={transaction.id} 
                     onClick={() => handleEdit(transaction)}
-                    className={cn(!isReadOnly && "cursor-pointer")}
+                    className={cn(
+                      !isReadOnly &&
+                        transaction.type !== "transfer" &&
+                        "cursor-pointer",
+                    )}
                   >
                     <TableCell className="font-medium max-w-[120px] sm:max-w-xs truncate">
                       {transaction.description}
@@ -336,12 +500,22 @@ export default function TransactionsPage() {
                       <Badge variant="outline">
                         {transaction.category}
                       </Badge>
+                      {transaction.type === "transfer" ? (
+                        <Badge className="ml-2 hidden xl:inline-flex">
+                          {transaction.transferDirection === "in"
+                            ? "In"
+                            : "Out"}
+                        </Badge>
+                      ) : null}
+                    </TableCell>
+                    <TableCell className="hidden max-w-44 truncate lg:table-cell">
+                      {getAccountName(transaction.accountId)}
                     </TableCell>
                     <TableCell className="hidden md:table-cell">
                       {formatDate(transaction.date)}
                     </TableCell>
-                    <TableCell className={`text-right font-mono ${transaction.type === 'income' ? 'text-emerald-600' : ''}`}>
-                      {transaction.type === 'income' ? '+' : '-'}
+                    <TableCell className={cn("text-right font-mono", transactionAmountClass(transaction))}>
+                      {transactionSign(transaction)}
                       {formatCurrency(transaction.amount)}
                     </TableCell>
                     <TableCell>
@@ -354,7 +528,10 @@ export default function TransactionsPage() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                            <DropdownMenuItem onSelect={() => handleEdit(transaction)}>
+                            <DropdownMenuItem
+                              onSelect={() => handleEdit(transaction)}
+                              disabled={transaction.type === "transfer"}
+                            >
                               <Edit className="mr-2 h-4 w-4" /> Edit
                             </DropdownMenuItem>
                              <AlertDialog>
@@ -370,7 +547,10 @@ export default function TransactionsPage() {
                                   <AlertDialogHeader>
                                     <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                                     <AlertDialogDescription>
-                                      This action cannot be undone. This will permanently delete this transaction.
+                                      This action cannot be undone.{" "}
+                                      {transaction.type === "transfer"
+                                        ? "Both linked transfer entries will be permanently deleted."
+                                        : "This transaction will be permanently deleted."}
                                     </AlertDialogDescription>
                                   </AlertDialogHeader>
                                   <AlertDialogFooter>
@@ -391,32 +571,38 @@ export default function TransactionsPage() {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={5} className="h-24 text-center">
+                  <TableCell colSpan={6} className="h-24 text-center">
                     No transactions found.
                   </TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
+          </div>
           
            {totalPages > 1 && (
-            <Pagination
-              currentPage={page}
-              totalPages={totalPages}
-              onPageChange={setPage}
-            />
+            <div className="overflow-x-auto">
+              <Pagination
+                currentPage={page}
+                totalPages={totalPages}
+                onPageChange={setPage}
+                pageNeighbours={isMobile ? 0 : 1}
+              />
+            </div>
           )}
         </CardContent>
       </Card>
 
-      <NewTransactionSheet 
-        isOpen={isSheetOpen}
-        onOpenChange={handleSheetClose}
-        transaction={selectedTransaction}
-        onTransactionCreated={handleTransactionCreated}
-        onTransactionUpdated={handleTransactionUpdated}
-        categories={categories}
-      />
+      {isSheetOpen ? (
+        <NewTransactionSheet
+          isOpen={isSheetOpen}
+          onOpenChange={handleSheetClose}
+          transaction={selectedTransaction}
+          onTransactionCreated={handleTransactionCreated}
+          onTransactionUpdated={handleTransactionUpdated}
+          categories={categories}
+        />
+      ) : null}
     </div>
   );
 }

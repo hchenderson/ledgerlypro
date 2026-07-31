@@ -1,12 +1,10 @@
 
 "use client"
 
-import { Line, ComposedChart, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend, Area } from "recharts"
+import { ComposedChart, ResponsiveContainer, XAxis, YAxis, Tooltip, Area } from "recharts"
 import {
   ChartContainer,
   ChartTooltipContent,
-  ChartLegend,
-  ChartLegendContent,
   ChartConfig
 } from "@/components/ui/chart"
 import type { ForecastDataPoint } from "@/lib/forecasting";

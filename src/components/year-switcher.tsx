@@ -13,25 +13,21 @@ import {
 import { Button } from "./ui/button";
 import { Calendar } from "lucide-react";
 import { useComparison } from "@/hooks/use-comparison";
-import { useUserData } from "@/hooks/use-user-data";
 import { useMemo } from "react";
 
 export function YearSwitcher() {
   const { activeYear, setActiveYear, firstYear } = useAuth();
   const { setComparisonYear } = useComparison();
-  const { allTransactions } = useUserData();
-
-  const transactionYears = useMemo(() => {
-    if (!allTransactions.length) return [];
-    return Array.from(new Set(allTransactions.map(t => new Date(t.date).getFullYear())));
-  }, [allTransactions]);
 
   const currentSystemYear = new Date().getFullYear();
   
   const years = useMemo(() => {
-    const allYears = new Set([currentSystemYear, firstYear, ...transactionYears]);
-    return Array.from(allYears).sort((a, b) => b - a);
-  }, [currentSystemYear, firstYear, transactionYears]);
+    const oldestYear = Math.min(firstYear, currentSystemYear);
+    return Array.from(
+      { length: currentSystemYear - oldestYear + 1 },
+      (_, index) => currentSystemYear - index,
+    );
+  }, [currentSystemYear, firstYear]);
 
 
   const handleYearChange = (year: number) => {
@@ -42,11 +38,15 @@ export function YearSwitcher() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" className="w-[180px] justify-start">
-          <Calendar className="mr-2 h-4 w-4" />
+        <Button
+          variant="outline"
+          className="h-11 w-[92px] justify-start px-3 md:h-10 md:w-[180px] md:px-4"
+          aria-label={`Select reporting year. Currently ${activeYear}`}
+        >
+          <Calendar className="mr-1.5 h-4 w-4 md:mr-2" />
           <span className="font-semibold">{activeYear}</span>
           {activeYear === currentSystemYear && (
-            <span className="ml-auto text-xs text-muted-foreground">Current</span>
+            <span className="ml-auto hidden text-xs text-muted-foreground md:inline">Current</span>
           )}
         </Button>
       </DropdownMenuTrigger>
@@ -54,7 +54,11 @@ export function YearSwitcher() {
         <DropdownMenuLabel>Select a Year</DropdownMenuLabel>
         <DropdownMenuSeparator />
         {years.map((year) => (
-          <DropdownMenuItem key={year} onSelect={() => handleYearChange(year)}>
+          <DropdownMenuItem
+            key={year}
+            onSelect={() => handleYearChange(year)}
+            className="min-h-11 md:min-h-0"
+          >
             <span>{year}</span>
             {year === currentSystemYear && (
               <span className="ml-auto text-xs text-muted-foreground">Current</span>

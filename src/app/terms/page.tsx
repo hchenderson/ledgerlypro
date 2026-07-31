@@ -6,21 +6,27 @@ import { ArrowLeft } from 'lucide-react';
 
 export default function TermsOfServicePage() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-secondary/50 p-4">
-        <div className="absolute top-4 left-4">
+    <main className="min-h-dvh bg-secondary/50 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] sm:px-6 sm:py-8">
+      <div className="mx-auto w-full max-w-4xl">
+        <nav className="mb-4" aria-label="Legal page navigation">
             <Button asChild variant="outline">
                 <Link href="/">
                     <ArrowLeft className="mr-2 h-4 w-4" />
                     Back to Home
                 </Link>
             </Button>
-        </div>
+        </nav>
       <Card className="w-full max-w-4xl">
-        <CardHeader>
-          <CardTitle className="font-headline text-3xl">Terms of Service</CardTitle>
-          <p className="text-muted-foreground">Last updated: {new Date().toLocaleDateString()}</p>
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle>
+            <h1 className="font-headline text-2xl sm:text-3xl">Terms of Service</h1>
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Last updated: <time>{new Date().toLocaleDateString()}</time>
+          </p>
         </CardHeader>
-        <CardContent className="prose prose-sm max-w-none dark:prose-invert prose-headings:font-headline prose-headings:text-xl prose-headings:font-bold prose-p:text-muted-foreground">
+        <CardContent className="prose prose-sm max-w-none break-words px-4 pb-5 dark:prose-invert prose-headings:scroll-mt-4 prose-headings:font-headline prose-headings:text-xl prose-headings:font-bold prose-p:text-muted-foreground sm:px-6 sm:pb-6">
+          <article>
           <p>
             Please read these Terms of Service ("Terms", "Terms of Service") carefully before using the Ledgerly Pro application (the "Service") operated by us.
           </p>
@@ -60,10 +66,13 @@ export default function TermsOfServicePage() {
 
           <h2>7. Contact Us</h2>
           <p>
-            If you have any questions about these Terms, please contact us at support@ledgerly.business.
+            If you have any questions about these Terms, please contact us at{" "}
+            <a href="mailto:support@ledgerly.business">support@ledgerly.business</a>.
           </p>
+          </article>
         </CardContent>
       </Card>
-    </div>
+      </div>
+    </main>
   );
 }

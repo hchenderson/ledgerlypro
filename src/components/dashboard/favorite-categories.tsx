@@ -4,11 +4,11 @@
 import { useMemo } from 'react';
 import Link from 'next/link';
 import type { Category, Transaction } from '@/types';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '../ui/button';
 import { Star } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Progress } from '../ui/progress';
+import { transactionAmount } from '@/lib/financial-summary';
 
 interface FavoriteCategoriesProps {
     categories: Category[];
@@ -35,7 +35,7 @@ export function FavoriteCategories({ categories, transactions }: FavoriteCategor
                     new Date(t.date).getFullYear() === currentYear &&
                     t.type === cat.type
                 )
-                .reduce((sum, t) => sum + t.amount, 0);
+                .reduce((sum, t) => sum + transactionAmount(t), 0);
 
             return {
                 ...cat,

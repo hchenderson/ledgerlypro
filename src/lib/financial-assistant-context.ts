@@ -12,6 +12,7 @@ import {
   findMainCategoryForTransaction,
   normalizeCategoryLabel,
 } from '@/lib/category-tree';
+import { transactionAmount } from '@/lib/financial-summary';
 
 export type FinancialAssistantContext = {
   year: number;
@@ -35,9 +36,13 @@ export type FinancialAssistantContext = {
     targetDate?: string;
   }>;
   recurringScheduleCount: number;
-  matchingTransactions: Array<
-    Pick<Transaction, 'date' | 'description' | 'amount' | 'type' | 'category'>
-  >;
+  matchingTransactions: Array<{
+    date: string;
+    description: string;
+    amount: number;
+    type: "income" | "expense";
+    category: string;
+  }>;
 };
 
 function questionTerms(question: string): string[] {
@@ -68,20 +73,25 @@ export function buildFinancialAssistantContext({
 }): FinancialAssistantContext {
   const yearlyTransactions = transactions.filter((transaction) => {
     const date = new Date(transaction.date);
-    return !Number.isNaN(date.getTime()) && date.getUTCFullYear() === year;
+    return (
+      !Number.isNaN(date.getTime()) &&
+      date.getUTCFullYear() === year &&
+      transaction.type !== "transfer"
+    );
   });
   const income = yearlyTransactions
     .filter((transaction) => transaction.type === 'income')
-    .reduce((sum, transaction) => sum + transaction.amount, 0);
+    .reduce((sum, transaction) => sum + transactionAmount(transaction), 0);
   const expenses = yearlyTransactions
     .filter((transaction) => transaction.type === 'expense')
-    .reduce((sum, transaction) => sum + transaction.amount, 0);
+    .reduce((sum, transaction) => sum + transactionAmount(transaction), 0);
 
   const categoryTotals = yearlyTransactions
     .filter((transaction) => transaction.type === 'expense')
     .reduce<Record<string, number>>((totals, transaction) => {
       const category = findMainCategoryForTransaction(transaction, categories);
-      totals[category] = (totals[category] ?? 0) + transaction.amount;
+      totals[category] =
+        (totals[category] ?? 0) + transactionAmount(transaction);
       return totals;
     }, {});
 
@@ -104,7 +114,10 @@ export function buildFinancialAssistantContext({
             ? ids.has(transaction.categoryId)
             : names.has(normalizeCategoryLabel(transaction.category));
         })
-        .reduce((sum, transaction) => sum + transaction.amount, 0);
+        .reduce(
+          (sum, transaction) => sum + transactionAmount(transaction),
+          0,
+        );
 
       return [{
         category: categoryPath.map((part) => part.name).join(' > '),
@@ -118,6 +131,7 @@ export function buildFinancialAssistantContext({
   const terms = questionTerms(question);
   const matchingTransactions = transactions
     .filter((transaction) => {
+      if (transaction.type === "transfer") return false;
       if (terms.length === 0) return false;
       const haystack = `${transaction.description} ${transaction.category}`.toLocaleLowerCase();
       return terms.some((term) => haystack.includes(term));
@@ -126,8 +140,8 @@ export function buildFinancialAssistantContext({
     .map(({ date, description, amount, type, category }) => ({
       date,
       description,
-      amount,
-      type,
+      amount: Math.abs(amount),
+      type: type as "income" | "expense",
       category,
     }));
 

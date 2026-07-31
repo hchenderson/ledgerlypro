@@ -14,7 +14,6 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import Papa from "papaparse";
 import { Download } from "lucide-react";
 import type { Category, SubCategory } from "@/types";
 import { format } from "date-fns";
@@ -27,7 +26,7 @@ export function ExportCategoriesDialog({ categories }: ExportCategoriesDialogPro
   const [isOpen, setIsOpen] = useState(false);
   const { toast } = useToast();
 
-  const handleExport = useCallback(() => {
+  const handleExport = useCallback(async () => {
     try {
       if (!categories || categories.length === 0) {
         toast({
@@ -51,6 +50,7 @@ export function ExportCategoriesDialog({ categories }: ExportCategoriesDialogPro
       
       recurse(categories);
 
+      const { default: Papa } = await import("papaparse");
       const csv = Papa.unparse(flattenedData);
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a');
@@ -76,7 +76,7 @@ export function ExportCategoriesDialog({ categories }: ExportCategoriesDialogPro
       toast({
         variant: "destructive",
         title: "Export Failed",
-        description: "An error occurred while exporting categories.",
+        description: "The export tools could not be loaded or the file could not be created.",
       });
     }
   }, [categories, toast]);

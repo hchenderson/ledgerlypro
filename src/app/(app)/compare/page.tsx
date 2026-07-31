@@ -7,6 +7,7 @@ import {
   ArrowUpRight,
   BarChart3,
   CalendarRange,
+  ChevronDown,
   GitCompareArrows,
   Lightbulb,
   ListFilter,
@@ -30,6 +31,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -43,7 +49,8 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/hooks/use-auth";
 import { useComparison } from "@/hooks/use-comparison";
-import { useUserData } from "@/hooks/use-user-data";
+import { useCategories } from "@/hooks/use-categories";
+import { useTransactionsForYears } from "@/hooks/use-transactions";
 import {
   buildComparisonDateRanges,
   computeYearComparison,
@@ -127,13 +134,13 @@ function MetricCard({
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-sm font-medium text-muted-foreground">{title}</p>
-            <p className="mt-2 font-headline text-2xl font-semibold tracking-tight">
+            <p className="mt-2 break-words font-headline text-xl font-semibold tracking-tight sm:text-2xl">
               {format(primary)}
             </p>
           </div>
           <DeltaBadge delta={delta} inverse={inverse} />
         </div>
-        <div className="mt-4 flex items-center justify-between border-t pt-3 text-xs text-muted-foreground">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 border-t pt-3 text-xs text-muted-foreground">
           <span>{primaryYear}</span>
           <span>{comparisonYear}: {format(comparison)}</span>
         </div>
@@ -187,7 +194,7 @@ function CategoryBreakdown({
                 </p>
               </div>
               <div className="shrink-0 text-right">
-                <p className="font-mono text-sm font-semibold">{currency.format(item.primary)}</p>
+                <p className="max-w-[9rem] break-words font-mono text-sm font-semibold sm:max-w-none">{currency.format(item.primary)}</p>
                 <p className={cn("text-xs", improved ? "text-emerald-600" : "text-destructive")}>
                   {item.delta >= 0 ? "+" : ""}{currency.format(item.delta)}
                 </p>
@@ -223,7 +230,10 @@ function CompareSkeleton() {
 
 export default function ComparePage() {
   const { activeYear, firstYear } = useAuth();
-  const { allTransactions, categories, loading } = useUserData();
+  const {
+    categories,
+    loading: collectionsLoading,
+  } = useCategories();
   const { comparisonYear, setComparisonYear } = useComparison();
   const [rangePreset, setRangePreset] = useState<ComparisonRangePreset>("ytd");
   const [startMonth, setStartMonth] = useState(0);
@@ -232,24 +242,27 @@ export default function ComparePage() {
   const [categoryLimit, setCategoryLimit] = useState(5);
   const [cumulative, setCumulative] = useState(false);
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(true);
 
   const availableYears = useMemo(() => {
     const years = new Set<number>();
-    for (const transaction of allTransactions) {
-      const year = new Date(transaction.date).getFullYear();
-      if (Number.isFinite(year) && year !== activeYear) years.add(year);
-    }
     const oldestSuggestedYear = Math.min(firstYear, activeYear - 5);
     for (let year = activeYear - 1; year >= oldestSuggestedYear; year -= 1) {
       years.add(year);
     }
     return [...years].filter((year) => year !== activeYear).sort((a, b) => b - a);
-  }, [activeYear, allTransactions, firstYear]);
+  }, [activeYear, firstYear]);
 
   const selectedComparisonYear =
     comparisonYear && comparisonYear !== activeYear
       ? comparisonYear
       : (availableYears[0] ?? activeYear - 1);
+  const {
+    transactions: allTransactions,
+    loading: transactionsLoading,
+    error: transactionsError,
+  } = useTransactionsForYears([activeYear, selectedComparisonYear]);
+  const loading = collectionsLoading || transactionsLoading;
 
   useEffect(() => {
     try {
@@ -329,6 +342,15 @@ export default function ComparePage() {
   };
 
   if (loading) return <CompareSkeleton />;
+  if (transactionsError) {
+    return (
+      <Card>
+        <CardContent className="p-6 text-sm text-destructive">
+          Comparison data is temporarily unavailable. Please try again.
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -337,18 +359,19 @@ export default function ComparePage() {
           <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-primary">
             <GitCompareArrows className="h-4 w-4" /> Comparison workspace
           </div>
-          <h1 className="font-headline text-3xl font-bold tracking-tight text-brand-navy dark:text-white">
+          <h1 className="font-headline text-2xl font-bold tracking-tight text-brand-navy dark:text-white sm:text-3xl">
             {activeYear} vs. {selectedComparisonYear}
           </h1>
           <p className="mt-2 max-w-2xl text-muted-foreground">
             Compare matching periods, uncover category shifts, and customize the view around the questions that matter to you.
           </p>
         </div>
-        <Badge variant="secondary" className="w-fit gap-2 px-3 py-1.5">
+        <Badge variant="secondary" className="max-w-full gap-2 whitespace-normal break-words px-3 py-1.5 text-left">
           <CalendarRange className="h-4 w-4" /> {primaryRangeLabel}
         </Badge>
       </div>
 
+      <Collapsible open={filtersOpen} onOpenChange={setFiltersOpen} asChild>
       <Card className="border-primary/15 bg-card/95">
         <CardHeader className="pb-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -356,9 +379,23 @@ export default function ComparePage() {
               <CardTitle className="flex items-center gap-2"><ListFilter className="h-5 w-5 text-primary" /> Customize comparison</CardTitle>
               <CardDescription className="mt-1">These choices are saved on this device.</CardDescription>
             </div>
-            <Button variant="ghost" size="sm" onClick={resetPreferences}><RotateCcw className="h-4 w-4" /> Reset</Button>
+            <div className="flex w-full gap-2 sm:w-auto">
+              <Button variant="ghost" size="sm" onClick={resetPreferences} className="flex-1 sm:flex-none"><RotateCcw className="h-4 w-4" /> Reset</Button>
+              <CollapsibleTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 sm:flex-none"
+                  aria-label={`${filtersOpen ? "Hide" : "Show"} comparison filters`}
+                >
+                  {filtersOpen ? "Hide" : "Show"} filters
+                  <ChevronDown className={cn("h-4 w-4 transition-transform", filtersOpen && "rotate-180")} />
+                </Button>
+              </CollapsibleTrigger>
+            </div>
           </div>
         </CardHeader>
+        <CollapsibleContent>
         <CardContent className="grid gap-5 sm:grid-cols-2 xl:grid-cols-5">
           <div className="space-y-2">
             <Label>Comparison year</Label>
@@ -431,16 +468,18 @@ export default function ComparePage() {
             </div>
           )}
         </CardContent>
+        </CollapsibleContent>
       </Card>
+      </Collapsible>
 
       <div className="grid gap-3 text-sm sm:grid-cols-2">
         <div className="rounded-xl border bg-card px-4 py-3">
           <span className="font-semibold text-primary">{activeYear}</span>
-          <span className="ml-2 text-muted-foreground">{primaryRangeLabel}</span>
+          <span className="mt-1 block break-words text-muted-foreground sm:ml-2 sm:mt-0 sm:inline">{primaryRangeLabel}</span>
         </div>
         <div className="rounded-xl border bg-card px-4 py-3">
           <span className="font-semibold text-brand-navy dark:text-brand-tint">{selectedComparisonYear}</span>
-          <span className="ml-2 text-muted-foreground">{comparisonRangeLabel}</span>
+          <span className="mt-1 block break-words text-muted-foreground sm:ml-2 sm:mt-0 sm:inline">{comparisonRangeLabel}</span>
         </div>
       </div>
 
@@ -462,8 +501,8 @@ export default function ComparePage() {
       </div>
 
       <Card>
-        <CardHeader className="flex-row items-start justify-between space-y-0">
-          <div>
+        <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
+          <div className="min-w-0">
             <CardTitle>{cumulative ? "Cumulative" : "Monthly"} {metric === "net" ? "net cash flow" : metric}</CardTitle>
             <CardDescription>Solid emerald is {activeYear}; dashed navy is {selectedComparisonYear}.</CardDescription>
           </div>
@@ -523,10 +562,10 @@ export default function ComparePage() {
               <CardTitle className="flex items-center gap-2"><WalletCards className="h-5 w-5 text-primary" /> Activity detail</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex items-center justify-between border-b pb-3"><span className="text-sm text-muted-foreground">Transactions</span><span className="font-mono font-semibold">{integer.format(analytics.primary.transactionCount)} <span className="text-xs font-normal text-muted-foreground">vs {integer.format(analytics.comparison.transactionCount)}</span></span></div>
-              <div className="flex items-center justify-between border-b pb-3"><span className="text-sm text-muted-foreground">Average transaction</span><span className="font-mono font-semibold">{currency.format(analytics.primary.averageTransaction)}</span></div>
-              <div className="flex items-center justify-between border-b pb-3"><span className="text-sm text-muted-foreground">Average monthly net</span><span className="font-mono font-semibold">{currency.format(analytics.primary.averageMonthlyNet)}</span></div>
-              <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Largest expense</span><span className="max-w-[55%] truncate text-right text-sm font-semibold">{analytics.primary.largestExpense ? `${analytics.primary.largestExpense.description} · ${currency.format(analytics.primary.largestExpense.amount)}` : "None"}</span></div>
+              <div className="flex items-start justify-between gap-3 border-b pb-3"><span className="text-sm text-muted-foreground">Transactions</span><span className="text-right font-mono font-semibold">{integer.format(analytics.primary.transactionCount)} <span className="block text-xs font-normal text-muted-foreground sm:inline">vs {integer.format(analytics.comparison.transactionCount)}</span></span></div>
+              <div className="flex items-start justify-between gap-3 border-b pb-3"><span className="text-sm text-muted-foreground">Average transaction</span><span className="break-words text-right font-mono font-semibold">{currency.format(analytics.primary.averageTransaction)}</span></div>
+              <div className="flex items-start justify-between gap-3 border-b pb-3"><span className="text-sm text-muted-foreground">Average monthly net</span><span className="break-words text-right font-mono font-semibold">{currency.format(analytics.primary.averageMonthlyNet)}</span></div>
+              <div className="flex items-start justify-between gap-3"><span className="shrink-0 text-sm text-muted-foreground">Largest expense</span><span className="min-w-0 break-words text-right text-sm font-semibold">{analytics.primary.largestExpense ? `${analytics.primary.largestExpense.description} · ${currency.format(analytics.primary.largestExpense.amount)}` : "None"}</span></div>
             </CardContent>
           </Card>
 

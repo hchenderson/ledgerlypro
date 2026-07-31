@@ -3,7 +3,9 @@
 
 import { useMemo } from "react";
 import { addDays, startOfDay } from "date-fns";
-import { useUserData } from "@/hooks/use-user-data";
+import { useCategories } from "@/hooks/use-categories";
+import { useRecurringTransactions } from "@/hooks/use-recurring-transactions";
+import { useTransactionData } from "@/hooks/use-transactions";
 import { expandRecurringBetween, type ForecastTx, type RecurringTxLike } from "@/forecast/expandRecurringBetween";
 import { buildForecastSeries } from "@/forecast/series";
 import { buildWeeklyNetBand } from "@/forecast/confidence";
@@ -11,29 +13,58 @@ import { useAuth } from "./use-auth";
 import { buildCategoryWeekdayProfile, projectCategoryWeekdayBaseline } from "@/forecast/baseline-category-weekday";
 import { buildMerchantProfile } from "@/forecast/merchant-profile";
 import { projectMerchantBaseline } from "@/forecast/merchant-project";
-import type { Category, SubCategory } from "@/types";
+import type { Category, SubCategory, Transaction } from "@/types";
+import { useAccounts } from "@/hooks/use-accounts";
 
 
 // Assumes your Transaction shape includes: id, date, amount, type, category, description
 export function useForwardForecast(horizonDays = 90) {
-  const { allTransactions, recurringTransactions, categories: allCategoriesFromUserData } = useUserData(); // provided by context
+  const { recurringTransactions } = useRecurringTransactions();
+  const { categories: allCategoriesFromUserData } = useCategories();
+  const { transactions: allTransactions } = useTransactionData();
+  const {
+    allAccountsSelected,
+    selectedAccountIds,
+    primaryAccountId,
+  } = useAccounts();
   const { forecastSettings } = useAuth();
 
   return useMemo(() => {
     const start = startOfDay(new Date());
     const end = addDays(start, horizonDays);
 
-    const actuals: ForecastTx[] = allTransactions.map((t) => ({
+    const actuals: ForecastTx[] = allTransactions
+      .filter(
+        (
+          transaction,
+        ): transaction is Transaction & {
+          type: "income" | "expense";
+        } =>
+          transaction.type === "income" ||
+          transaction.type === "expense",
+      )
+      .map((t) => ({
       id: t.id,
       date: t.date,
-      amount: t.amount,
+      amount: Math.abs(t.amount),
       type: t.type,
       category: t.category,
       description: t.description,
       source: "actual",
-    }));
+      }));
 
-    const recurringFuture = expandRecurringBetween(recurringTransactions as RecurringTxLike[], start, end);
+    const visibleRecurringTransactions = allAccountsSelected
+      ? recurringTransactions
+      : recurringTransactions.filter((schedule) =>
+          selectedAccountIds.includes(
+            schedule.accountId ?? primaryAccountId ?? "",
+          ),
+        );
+    const recurringFuture = expandRecurringBetween(
+      visibleRecurringTransactions as RecurringTxLike[],
+      start,
+      end,
+    );
     
     // --- START NEW HYBRID LOGIC ---
     const baselineExclusions = forecastSettings.baselineExclusions ?? {};
@@ -115,5 +146,14 @@ export function useForwardForecast(horizonDays = 90) {
       recurringFuture,
       baseline,
     };
-  }, [allTransactions, recurringTransactions, horizonDays, forecastSettings, allCategoriesFromUserData]);
+  }, [
+    allAccountsSelected,
+    allCategoriesFromUserData,
+    allTransactions,
+    forecastSettings,
+    horizonDays,
+    primaryAccountId,
+    recurringTransactions,
+    selectedAccountIds,
+  ]);
 }

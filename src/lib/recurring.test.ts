@@ -11,6 +11,7 @@ const recurring: RecurringTransaction = {
   category: "Housing",
   frequency: "monthly",
   startDate: "2025-01-01T12:00:00.000Z",
+  accountId: "checking",
 };
 
 describe("planRecurringOccurrences", () => {
@@ -25,6 +26,7 @@ describe("planRecurringOccurrences", () => {
     expect(first.occurrences[0].id).toBe(
       recurringOccurrenceId("rent", new Date("2025-01-01T00:00:00.000Z"))
     );
+    expect(first.occurrences[0].accountId).toBe("checking");
   });
 
   it("continues after the last materialized occurrence", () => {

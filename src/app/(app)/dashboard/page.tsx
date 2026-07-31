@@ -5,75 +5,155 @@
 import { Star, Flag } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { StatCard } from "@/components/dashboard/stat-card";
-import { OverviewChart } from "@/components/dashboard/overview-chart";
 import { RecentTransactions } from "@/components/dashboard/recent-transactions";
 import { BudgetProgress } from "@/components/dashboard/budget-progress";
 import { useMemo } from "react";
-import { useUserData } from "@/hooks/use-user-data";
+import { useBudgets } from "@/hooks/use-budgets";
+import { useCategories } from "@/hooks/use-categories";
+import { useGoals } from "@/hooks/use-goals";
+import { useAccounts } from "@/hooks/use-accounts";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/use-auth";
 import { InstructionsGuide } from "@/components/dashboard/instructions-guide";
 import { computeDashboardAnalytics } from "@/lib/dashboard-analytics";
+import { buildProcessedGoals } from "@/lib/goal-progress";
 import { GoalProgress } from "@/components/dashboard/goal-progress";
 import { format, subMonths } from "date-fns";
-import { ForwardAnalyticsPanel } from "@/components/dashboard/forward-analytics-panel";
+import dynamic from "next/dynamic";
+import {
+  useAllTransactions,
+  usePriorYearsNet,
+  useTransactionData,
+} from "@/hooks/use-transactions";
+
+const OverviewChart = dynamic(
+  () => import("@/components/dashboard/overview-chart").then((module) => module.OverviewChart),
+  {
+    ssr: false,
+    loading: () => <Skeleton className="h-[260px] w-full sm:h-[300px]" />,
+  }
+);
+
+const ForwardAnalyticsPanel = dynamic(
+  () =>
+    import("@/components/dashboard/forward-analytics-panel").then(
+      (module) => module.ForwardAnalyticsPanel
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="space-y-4" aria-label="Loading financial analytics">
+        <Skeleton className="h-8 w-56 max-w-full" />
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Skeleton className="h-80" />
+          <Skeleton className="h-80" />
+        </div>
+      </div>
+    ),
+  }
+);
 
 function DashboardSkeleton() {
   return (
-    <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Skeleton className="h-28" />
-        <Skeleton className="h-28" />
-        <Skeleton className="h-28" />
-        <Skeleton className="h-28" />
+    <div className="space-y-5 sm:space-y-6" aria-busy="true" aria-label="Loading dashboard">
+      <div className="grid gap-3 sm:gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Skeleton className="h-24 sm:h-28" />
+        <Skeleton className="h-24 sm:h-28" />
+        <Skeleton className="h-24 sm:h-28" />
+        <Skeleton className="h-24 sm:h-28" />
       </div>
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-        <Skeleton className="lg:col-span-3 h-80" />
-        <Skeleton className="lg:col-span-2 h-80" />
+      <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-5">
+        <Skeleton className="h-72 lg:col-span-3 lg:h-80" />
+        <Skeleton className="h-64 lg:col-span-2 lg:h-80" />
       </div>
-       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-        <Skeleton className="lg:col-span-5 h-60" />
+       <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-5">
+        <Skeleton className="h-56 lg:col-span-5 lg:h-60" />
       </div>
     </div>
   )
 }
 
 export default function DashboardPage() {
-  const { allTransactions, transactions, loading: userDataLoading, getBudgetDetails, goals, budgets, categories, startingBalance } = useUserData();
-  const { showInstructions, loading: authLoading, activeYear } = useAuth();
+  const {
+    goals: rawGoals,
+    loading: goalsLoading,
+  } = useGoals();
+  const {
+    budgets,
+    getBudgetDetails,
+    loading: budgetsLoading,
+  } = useBudgets();
+  const {
+    categories,
+    loading: categoriesLoading,
+  } = useCategories();
+  const {
+    openingBalanceForSelection,
+    loading: accountsLoading,
+  } = useAccounts();
+  const {
+    transactions,
+    loading: transactionsLoading,
+  } = useTransactionData();
+  const userDataLoading =
+    goalsLoading ||
+    budgetsLoading ||
+    categoriesLoading ||
+    accountsLoading ||
+    transactionsLoading;
+  const {
+    showInstructions,
+    loading: authLoading,
+    activeYear,
+    firstYear,
+  } = useAuth();
+  const {
+    net: priorYearsNet,
+    loading: priorYearsSummaryLoading,
+  } = usePriorYearsNet(activeYear, firstYear);
+  const hasLinkedGoals = rawGoals.some((goal) => goal.linkedCategoryId);
+  const {
+    transactions: goalTransactions,
+    loading: goalTransactionsLoading,
+  } = useAllTransactions({ enabled: hasLinkedGoals });
   
   const openingBalanceForYear = useMemo(() => {
     if (userDataLoading || authLoading) return 0;
 
-    const priorTransactions = allTransactions.filter(t => {
-        const year = new Date(t.date).getFullYear();
-        return year < activeYear;
-    });
-
-    if (priorTransactions.length === 0) {
-        return startingBalance;
-    }
-
-    const netDelta = priorTransactions.reduce((sum, t) => {
-        return t.type === 'income'
-            ? sum + t.amount
-            : sum - t.amount;
-    }, 0);
-
-    return startingBalance + netDelta;
-  }, [allTransactions, startingBalance, activeYear, userDataLoading, authLoading]);
+    return openingBalanceForSelection + priorYearsNet;
+  }, [
+    authLoading,
+    openingBalanceForSelection,
+    priorYearsNet,
+    userDataLoading,
+  ]);
 
   const analytics = useMemo(() => {
-    const yearTransactions = allTransactions.filter(
-      (transaction) => new Date(transaction.date).getFullYear() === activeYear
-    );
     const referenceDate = new Date(activeYear, new Date().getMonth(), 1);
     return computeDashboardAnalytics(
-      yearTransactions,
+      transactions,
       openingBalanceForYear,
       referenceDate
     );
-  }, [allTransactions, activeYear, openingBalanceForYear]);
+  }, [transactions, activeYear, openingBalanceForYear]);
+
+  const goals = useMemo(
+    () =>
+      buildProcessedGoals(
+        rawGoals,
+        categories,
+        hasLinkedGoals ? goalTransactions : transactions,
+        userDataLoading,
+      ),
+    [
+      categories,
+      goalTransactions,
+      hasLinkedGoals,
+      rawGoals,
+      transactions,
+      userDataLoading,
+    ],
+  );
 
   const favoritedBudgets = useMemo(() => {
     const yearBudgets = budgets.filter(b => b.year === activeYear);
@@ -91,7 +171,11 @@ export default function DashboardPage() {
     return new Date(transactions[0].date);
   }, [transactions]);
   
-  const isLoading = userDataLoading || authLoading;
+  const isLoading =
+    userDataLoading ||
+    authLoading ||
+    priorYearsSummaryLoading ||
+    (hasLinkedGoals && goalTransactionsLoading);
 
   if (isLoading && transactions.length === 0) {
     return <DashboardSkeleton />;
@@ -108,12 +192,13 @@ export default function DashboardPage() {
   const previousMonthName = subMonths(new Date(), 1).toLocaleString('default', { month: 'long' });
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-5 sm:space-y-6">
+      <h1 className="sr-only">Dashboard</h1>
       {(transactions.length === 0 || showInstructions) && <InstructionsGuide />}
       
       {analytics ? (
         <>
-           <div className="grid gap-4 md:grid-cols-2">
+           <div className="grid gap-3 sm:gap-4 md:grid-cols-2">
             <StatCard
               title="Current Balance"
               value={analytics.currentBalance}
@@ -139,7 +224,7 @@ export default function DashboardPage() {
             )}
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-3 sm:gap-4 md:grid-cols-2 lg:grid-cols-3">
             <StatCard
               title="Total Income"
               value={analytics.totalIncome}
@@ -163,7 +248,7 @@ export default function DashboardPage() {
             />
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-3 sm:gap-4 md:grid-cols-2 lg:grid-cols-3">
             <StatCard
               title={`${currentMonthName} Income`}
               value={analytics.currentMonthIncome}
@@ -187,7 +272,7 @@ export default function DashboardPage() {
             />
           </div>
 
-           <div className="grid gap-4 md:grid-cols-2">
+           <div className="grid gap-3 sm:gap-4 md:grid-cols-2">
               <StatCard
                 title={`${previousMonthName} Income`}
                 value={analytics.previousMonthIncome}
@@ -204,24 +289,24 @@ export default function DashboardPage() {
               />
             </div>
           
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-            <Card className="lg:col-span-3">
-              <CardHeader>
-                <CardTitle>Income vs. Expense ({activeYear})</CardTitle>
+          <div className="grid min-w-0 grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-5">
+            <Card className="min-w-0 overflow-hidden lg:col-span-3">
+              <CardHeader className="p-4 sm:p-6">
+                <CardTitle className="break-words">Income vs. Expense ({activeYear})</CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="px-2 pb-4 sm:px-6 sm:pb-6">
                 <OverviewChart data={analytics.overviewData}/>
               </CardContent>
             </Card>
-            <Card className="lg:col-span-2">
-              <CardHeader>
-                <CardTitle>Recent Transactions ({activeYear})</CardTitle>
+            <Card className="min-w-0 overflow-hidden lg:col-span-2">
+              <CardHeader className="p-4 sm:p-6">
+                <CardTitle className="break-words">Recent Transactions ({activeYear})</CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="px-4 pb-4 sm:px-6 sm:pb-6">
                 {transactions.length > 0 ? (
                     <RecentTransactions transactions={transactions.slice(0, 5)} />
                 ) : (
-                    <div className="flex flex-col items-center justify-center h-full text-center">
+                    <div className="flex min-h-40 flex-col items-center justify-center text-center">
                         <p className="text-muted-foreground">No transactions yet for {activeYear}.</p>
                         <p className="text-sm text-muted-foreground">Add your first transaction to get started.</p>
                     </div>
@@ -232,22 +317,22 @@ export default function DashboardPage() {
         </>
       ): <DashboardSkeleton />}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-              <CardTitle className="flex items-center gap-2"><Flag className="text-primary" /> Savings Goals</CardTitle>
+      <div className="grid min-w-0 grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
+        <Card className="min-w-0 overflow-hidden">
+          <CardHeader className="p-4 sm:p-6">
+              <CardTitle className="flex items-center gap-2"><Flag className="shrink-0 text-primary" /> <span className="min-w-0">Savings Goals</span></CardTitle>
               <CardDescription>Track your progress towards your financial goals.</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-4 pb-4 sm:px-6 sm:pb-6">
               <GoalProgress goals={goals} />
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader>
-              <CardTitle className="flex items-center gap-2"><Star className="text-yellow-400 fill-yellow-400" /> Favorite Budgets ({activeYear})</CardTitle>
+        <Card className="min-w-0 overflow-hidden">
+          <CardHeader className="p-4 sm:p-6">
+              <CardTitle className="flex items-start gap-2"><Star className="mt-0.5 shrink-0 fill-yellow-400 text-yellow-400" /> <span className="min-w-0 break-words">Favorite Budgets ({activeYear})</span></CardTitle>
               <CardDescription>Your hand-picked budgets for quick insights.</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-4 pb-4 sm:px-6 sm:pb-6">
               <BudgetProgress budgets={favoritedBudgets} />
           </CardContent>
         </Card>

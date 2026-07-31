@@ -32,4 +32,19 @@ describe('prepareTransactionImport', () => {
     expect(result.transactions).toEqual([newTransaction]);
     expect(result.duplicates).toBe(2);
   });
+
+  it('allows the same bank entry in a different account', () => {
+    const checkingTransaction = {
+      ...existing,
+      accountId: 'checking',
+    };
+    const { id: _id, ...candidate } = checkingTransaction;
+    const result = prepareTransactionImport(
+      [{ ...candidate, accountId: 'savings' }],
+      [checkingTransaction],
+    );
+
+    expect(result.transactions).toHaveLength(1);
+    expect(result.duplicates).toBe(0);
+  });
 });

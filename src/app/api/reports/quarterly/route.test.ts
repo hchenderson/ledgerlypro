@@ -38,6 +38,7 @@ describe('quarterly report API security', () => {
         quarter: 3,
         startDate: '2026-07-01T04:00:00.000Z',
         endDate: '2026-10-01T03:59:59.999Z',
+        accountIds: ['checking', 'savings'],
       }),
     }));
 
@@ -48,6 +49,7 @@ describe('quarterly report API security', () => {
       quarter: 3,
       startDate: new Date('2026-07-01T04:00:00.000Z'),
       endDate: new Date('2026-10-01T03:59:59.999Z'),
+      accountIds: ['checking', 'savings'],
     }));
     expect(generateQuarterlyReport).not.toHaveBeenCalledWith(expect.objectContaining({
       uid: 'attacker-selected-user',

@@ -1,6 +1,7 @@
 
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -16,6 +17,7 @@ import {
   Flag,
   Bot,
   GitCompare,
+  WalletCards,
 } from "lucide-react";
 import {
   SidebarMenu,
@@ -28,6 +30,7 @@ import type { NavItem } from "@/types";
 const navItems: NavItem[] = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, variant: "default" },
   { title: "Transactions", href: "/transactions", icon: ArrowRightLeft, variant: "ghost" },
+  { title: "Accounts", href: "/accounts", icon: WalletCards, variant: "ghost", badge: "New" },
   { title: "Categories", href: "/categories", icon: Tag, variant: "ghost" },
   { title: "Reports", href: "/reports", icon: PieChart, variant: "ghost" },
   { title: "Compare", href: "/compare", icon: GitCompare, variant: "ghost", badge: "New" },
@@ -46,6 +49,10 @@ const settingsNavItem: NavItem = { title: "Settings", href: "/settings", icon: S
 export function MainNav() {
   const pathname = usePathname();
   const { setOpenMobile } = useSidebar();
+
+  useEffect(() => {
+    setOpenMobile(false);
+  }, [pathname, setOpenMobile]);
 
   const renderNavItem = (item: NavItem) => (
     <SidebarMenuItem key={item.href}>

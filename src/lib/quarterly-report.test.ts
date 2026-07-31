@@ -39,6 +39,28 @@ const transactions: Transaction[] = [
     category: "A stale category label",
     categoryId: "rent",
   },
+  {
+    id: "transfer-out",
+    date: "2025-01-03T12:00:00.000Z",
+    description: "Move to savings",
+    amount: 400,
+    type: "transfer",
+    category: "Transfer",
+    accountId: "checking",
+    transferId: "move",
+    transferDirection: "out",
+  },
+  {
+    id: "transfer-in",
+    date: "2025-01-03T12:00:00.000Z",
+    description: "Move to savings",
+    amount: 400,
+    type: "transfer",
+    category: "Transfer",
+    accountId: "savings",
+    transferId: "move",
+    transferDirection: "in",
+  },
 ];
 
 const budgets: Budget[] = [
@@ -116,6 +138,7 @@ describe("calculateQuarterlyReportMetrics", () => {
     expect(quarterly.transactionCount).toBe(
       comparison.primary.transactionCount
     );
+    expect(comparison.primary.averageTransaction).toBe(3_100);
     expect(
       Object.values(quarterly.incomeSummary).reduce(
         (sum, amount) => sum + amount,

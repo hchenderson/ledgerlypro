@@ -2,11 +2,12 @@
 "use client"
 
 import * as React from "react"
-import { Pie, PieChart, ResponsiveContainer, Cell, Tooltip } from "recharts"
+import { Pie, PieChart, Cell, Tooltip } from "recharts"
 import {
   ChartContainer,
   type ChartConfig
 } from "@/components/ui/chart"
+import { useIsMobile } from "@/hooks/use-mobile"
 
 interface CategoryPieChartProps {
     data: { category: string; amount: number }[];
@@ -47,6 +48,7 @@ const COLORS = [
 ];
 
 export function CategoryPieChart({ data }: CategoryPieChartProps) {
+  const isMobile = useIsMobile()
   const chartConfig = React.useMemo(() => {
     return data.reduce((acc, cur, index) => {
       acc[cur.category] = { label: cur.category, color: COLORS[index % COLORS.length] };
@@ -65,18 +67,20 @@ export function CategoryPieChart({ data }: CategoryPieChartProps) {
     
   if (data.length === 0) {
     return (
-        <div className="flex items-center justify-center h-[350px] text-muted-foreground">
+        <div className="flex h-[260px] items-center justify-center text-muted-foreground sm:h-[350px]">
             No expense data to display for the selected filters.
         </div>
     )
   }
 
   return (
-    <ChartContainer
-      config={chartConfig}
-      className="mx-auto aspect-square h-[350px]"
-    >
-      <ResponsiveContainer width="100%" height="100%">
+    <div className="space-y-3">
+      <ChartContainer
+        config={chartConfig}
+        className="mx-auto h-[260px] w-full max-w-[350px] sm:h-[350px]"
+        role="img"
+        aria-label="Category breakdown pie chart"
+      >
         <PieChart>
           <Tooltip content={<CustomTooltip />} />
           <Pie
@@ -85,12 +89,15 @@ export function CategoryPieChart({ data }: CategoryPieChartProps) {
             nameKey="name"
             cx="50%"
             cy="50%"
-            innerRadius={60}
-            outerRadius={90}
+            innerRadius={isMobile ? 48 : 60}
+            outerRadius={isMobile ? 78 : 90}
             paddingAngle={2}
-            labelLine={true}
-            label={({ name, percent }) =>
-                `${name} ${(percent * 100).toFixed(0)}%`
+            labelLine={!isMobile}
+            label={
+              isMobile
+                ? false
+                : ({ name, percent }) =>
+                    `${name} ${(percent * 100).toFixed(0)}%`
             }
           >
              {processedData.map((entry, index) => (
@@ -98,7 +105,58 @@ export function CategoryPieChart({ data }: CategoryPieChartProps) {
             ))}
           </Pie>
         </PieChart>
-      </ResponsiveContainer>
-    </ChartContainer>
+      </ChartContainer>
+
+      <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border p-3 sm:hidden">
+        {processedData.map((item) => (
+          <div key={item.name} className="flex items-center justify-between gap-3 text-xs">
+            <span className="flex min-w-0 items-center gap-2">
+              <span
+                className="h-2.5 w-2.5 shrink-0 rounded-sm"
+                style={{ backgroundColor: item.fill }}
+                aria-hidden="true"
+              />
+              <span className="truncate">{item.name}</span>
+            </span>
+            <span className="shrink-0 tabular-nums text-muted-foreground">
+              {(item.percent * 100).toFixed(1)}%
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <details className="rounded-lg border bg-muted/20 text-sm">
+        <summary className="cursor-pointer px-3 py-2 font-medium">
+          View category data
+        </summary>
+        <div className="max-h-72 overflow-auto border-t">
+          <table className="w-full min-w-[20rem] text-left text-xs">
+            <thead className="sticky top-0 bg-background">
+              <tr>
+                <th className="px-3 py-2 font-medium">Category</th>
+                <th className="px-3 py-2 text-right font-medium">Amount</th>
+                <th className="px-3 py-2 text-right font-medium">Share</th>
+              </tr>
+            </thead>
+            <tbody>
+              {processedData.map((item) => (
+                <tr key={item.name} className="border-t">
+                  <td className="px-3 py-2">{item.name}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    {new Intl.NumberFormat("en-US", {
+                      style: "currency",
+                      currency: "USD",
+                    }).format(item.value)}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    {(item.percent * 100).toFixed(1)}%
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
+    </div>
   )
 }

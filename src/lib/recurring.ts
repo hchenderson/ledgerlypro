@@ -98,10 +98,13 @@ export function planRecurringOccurrences(
       recurringTransactionId: recurring.id,
       date,
       description: `(Recurring) ${recurring.description}`,
-      amount: recurring.amount,
+      amount: Math.abs(recurring.amount),
       type: recurring.type,
       category: recurring.category,
       ...(recurring.categoryId ? { categoryId: recurring.categoryId } : {}),
+      ...(recurring.accountId
+        ? { accountId: recurring.accountId }
+        : {}),
       source: "recurring",
     });
     cursor = nextOccurrence(cursor, recurring.frequency, anchorDay, anchorMonth);
