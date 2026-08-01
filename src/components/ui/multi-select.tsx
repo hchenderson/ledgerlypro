@@ -12,7 +12,6 @@ import {
   CommandInput
 } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
-import { Button } from "./button";
 
 type Option = Record<"value" | "label", string>;
 
@@ -72,11 +71,9 @@ export function MultiSelect({ options, selected, onChange, className, placeholde
 
   return (
     <Command onKeyDown={handleKeyDown} className={cn("overflow-visible bg-transparent", className)}>
-      <Button
-        type="button"
-        variant="outline"
-        className="group w-full h-auto min-h-10 px-3 py-2 text-sm ring-offset-background rounded-md focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2"
-         onClick={() => {
+      <div
+        className="group h-auto min-h-11 w-full rounded-md border border-primary/30 bg-background px-3 py-2 text-sm shadow-sm ring-offset-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2"
+        onClick={() => {
             setOpen(true);
             inputRef.current?.focus();
         }}
@@ -88,7 +85,9 @@ export function MultiSelect({ options, selected, onChange, className, placeholde
               <Badge key={optionValue} variant="secondary">
                 {option?.label}
                 <button
-                  className="ml-1 ring-offset-background rounded-full outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                  type="button"
+                  aria-label={`Remove ${option?.label ?? optionValue}`}
+                  className="-mr-1 ml-1 inline-flex h-6 w-6 items-center justify-center rounded-full ring-offset-background outline-none hover:bg-background/70 focus:ring-2 focus:ring-ring focus:ring-offset-2"
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       handleUnselect(optionValue);
@@ -115,10 +114,11 @@ export function MultiSelect({ options, selected, onChange, className, placeholde
             onBlur={handleBlur}
             onFocus={() => setOpen(true)}
             placeholder={effectivePlaceholder}
+            aria-label={placeholder}
             className="ml-2 bg-transparent outline-none placeholder:text-muted-foreground flex-1 h-full p-0"
           />
         </div>
-      </Button>
+      </div>
       <div className="relative mt-2">
         {open && (options.length > 0) ? (
           <div className="absolute w-full z-10 top-0 rounded-md border bg-popover text-popover-foreground shadow-md outline-none animate-in max-h-64 overflow-y-auto">

@@ -15,7 +15,6 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import Papa from "papaparse";
 import { ArrowRight, FileUp, Loader2 } from "lucide-react";
 import {
   Select,
@@ -29,7 +28,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { cn } from "@/lib/utils";
 import type { Transaction, Category, SubCategory } from "@/types";
 import { Badge } from "./ui/badge";
-import { useUserData } from "@/hooks/use-user-data";
+import { useCategories } from "@/hooks/use-categories";
+import { useAccounts } from "@/hooks/use-accounts";
+import { useAllTransactions } from "@/hooks/use-transactions";
 import {
   prepareTransactionImport,
   type TransactionImportSummary,
@@ -46,7 +47,7 @@ interface ImportTransactionsDialogProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   onTransactionsImported: (transactions: Omit<Transaction, 'id'>[]) => Promise<TransactionImportSummary>;
-  children: ReactNode;
+  children?: ReactNode;
 }
 
 type ProcessedTransaction = {
@@ -56,7 +57,7 @@ type ProcessedTransaction = {
 function findCategoryByName(
   categories: Category[],
   name: string,
-  type: Transaction['type']
+  type: Category['type']
 ): Category | SubCategory | undefined {
   const target = name.trim().toLocaleLowerCase();
   const walk = (nodes: (Category | SubCategory)[]): Category | SubCategory | undefined => {
@@ -93,7 +94,37 @@ export function ImportTransactionsDialog({
   const reviewProcessingRef = useRef(false);
 
   const { toast } = useToast();
-  const { categories, allTransactions, addCategory } = useUserData();
+  const { categories, addCategory } = useCategories();
+  const {
+    activeAccounts,
+    primaryAccountId,
+    selectedAccountIds,
+  } = useAccounts();
+  const [selectedImportAccountId, setSelectedImportAccountId] =
+    useState("");
+  const selectedActiveAccountId =
+    selectedAccountIds.length === 1 &&
+    activeAccounts.some(
+      (account) => account.id === selectedAccountIds[0],
+    )
+      ? selectedAccountIds[0]
+      : undefined;
+  const { transactions: allTransactions } = useAllTransactions({
+    enabled: isOpen,
+    respectAccountFilter: false,
+  });
+
+  useEffect(() => {
+    if (!isOpen || selectedImportAccountId) return;
+    setSelectedImportAccountId(
+      selectedActiveAccountId ?? primaryAccountId ?? "",
+    );
+  }, [
+    isOpen,
+    primaryAccountId,
+    selectedActiveAccountId,
+    selectedImportAccountId,
+  ]);
 
   const resetState = () => {
     setStep("upload");
@@ -103,6 +134,9 @@ export function ImportTransactionsDialog({
     setMapping({ date: "", description: "", credit: "", debit: "", category: "" });
     setIsLoading(false);
     setProcessedTransactions([]);
+    setSelectedImportAccountId(
+      selectedActiveAccountId ?? primaryAccountId ?? "",
+    );
     reviewProcessingRef.current = false;
   };
 
@@ -129,44 +163,64 @@ export function ImportTransactionsDialog({
     }
   };
 
-  const handleUpload = () => {
+  const handleUpload = async () => {
+    if (!selectedImportAccountId) {
+      toast({
+        variant: "destructive",
+        title: "Select an account",
+        description:
+          "Choose the account these transactions belong to.",
+      });
+      return;
+    }
     if (!file) {
       toast({ variant: "destructive", title: "No file selected." });
       return;
     }
     setIsLoading(true);
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      delimitersToGuess: [',', '\t', ';'],
-      complete: (results) => {
-        if (results.errors.length) {
-          toast({
-            variant: "destructive",
-            title: "Error parsing CSV",
-            description: results.errors[0].message,
+    try {
+      const { default: Papa } = await import("papaparse");
+      Papa.parse<Record<string, string>>(file, {
+        header: true,
+        skipEmptyLines: true,
+        delimitersToGuess: [',', '\t', ';'],
+        complete: (results) => {
+          if (results.errors.length) {
+            toast({
+              variant: "destructive",
+              title: "Error parsing CSV",
+              description: results.errors[0].message,
+            });
+            setIsLoading(false);
+            return;
+          }
+          const parsedHeaders = (results.meta.fields || []).filter(Boolean);
+          setHeaders(parsedHeaders);
+          const findHeader = (...candidates: string[]) =>
+            parsedHeaders.find((header) =>
+              candidates.some((candidate) => header.trim().toLocaleLowerCase().includes(candidate))
+            ) ?? "";
+          setMapping({
+            date: findHeader('date', 'posted'),
+            description: findHeader('description', 'merchant', 'memo', 'details'),
+            credit: findHeader('credit', 'deposit', 'income'),
+            debit: findHeader('debit', 'withdrawal', 'expense'),
+            category: findHeader('category'),
           });
+          setParsedData(results.data);
+          setStep("mapping");
           setIsLoading(false);
-          return;
-        }
-        const parsedHeaders = (results.meta.fields || []).filter(Boolean);
-        setHeaders(parsedHeaders);
-        const findHeader = (...candidates: string[]) =>
-          parsedHeaders.find((header) =>
-            candidates.some((candidate) => header.trim().toLocaleLowerCase().includes(candidate))
-          ) ?? "";
-        setMapping({
-          date: findHeader('date', 'posted'),
-          description: findHeader('description', 'merchant', 'memo', 'details'),
-          credit: findHeader('credit', 'deposit', 'income'),
-          debit: findHeader('debit', 'withdrawal', 'expense'),
-          category: findHeader('category'),
-        });
-        setParsedData(results.data as Record<string, string>[]);
-        setStep("mapping");
-        setIsLoading(false);
-      },
-    });
+        },
+      });
+    } catch (error) {
+      console.error("CSV parser failed to load:", error);
+      setIsLoading(false);
+      toast({
+        variant: "destructive",
+        title: "Unable to read CSV",
+        description: "The CSV tools could not be loaded. Check your connection and try again.",
+      });
+    }
   };
   
   const canProceedToReview = useMemo(() => {
@@ -254,6 +308,7 @@ export function ImportTransactionsDialog({
               type: type,
               category: finalCategory.name,
               categoryId: finalCategory.id,
+              accountId: selectedImportAccountId,
             };
             
             return {
@@ -276,7 +331,15 @@ export function ImportTransactionsDialog({
       });
     });
 
-  }, [step, parsedData, mapping, categories, addCategory, toast]);
+  }, [
+    step,
+    parsedData,
+    mapping,
+    categories,
+    addCategory,
+    selectedImportAccountId,
+    toast,
+  ]);
 
   const importPreview = useMemo(
     () => prepareTransactionImport(
@@ -316,11 +379,13 @@ export function ImportTransactionsDialog({
   const handleCategoryChange = (index: number, newCategory: string) => {
     setProcessedTransactions(current => {
       const newTransactions = [...current];
-      newTransactions[index].transaction.category = newCategory;
-      newTransactions[index].transaction.categoryId = findCategoryByName(
+      const transaction = newTransactions[index].transaction;
+      if (transaction.type === "transfer") return current;
+      transaction.category = newCategory;
+      transaction.categoryId = findCategoryByName(
         categories,
         newCategory,
-        newTransactions[index].transaction.type
+        transaction.type
       )?.id;
       return newTransactions;
     })
@@ -358,8 +423,35 @@ export function ImportTransactionsDialog({
                 Select a CSV file with your transactions. Make sure it has columns for date, description, credit (income), and debit (expense).
               </DialogDescription>
             </DialogHeader>
-            <div className="py-4">
-              <label className="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed rounded-lg cursor-pointer hover:bg-muted">
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="import-account">
+                  Destination account
+                </Label>
+                <Select
+                  value={selectedImportAccountId}
+                  onValueChange={setSelectedImportAccountId}
+                >
+                  <SelectTrigger id="import-account">
+                    <SelectValue placeholder="Select an account" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {activeAccounts.map((account) => (
+                      <SelectItem
+                        key={account.id}
+                        value={account.id}
+                      >
+                        {account.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Every transaction in this file will be assigned to
+                  this account.
+                </p>
+              </div>
+              <label className="flex h-40 w-full cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed hover:bg-muted sm:h-48">
                 <div className="flex flex-col items-center justify-center pt-5 pb-6">
                   <FileUp className="w-10 h-10 mb-3 text-muted-foreground" />
                   <p className="mb-2 text-sm text-muted-foreground">
@@ -373,7 +465,12 @@ export function ImportTransactionsDialog({
             </div>
             <DialogFooter>
               <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-              <Button onClick={handleUpload} disabled={!file || isLoading}>
+              <Button
+                onClick={handleUpload}
+                disabled={
+                  !file || !selectedImportAccountId || isLoading
+                }
+              >
                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Upload & Continue
                 <ArrowRight className="ml-2 h-4 w-4" />
@@ -391,7 +488,7 @@ export function ImportTransactionsDialog({
               </DialogDescription>
             </DialogHeader>
             <div className="py-4 space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                      {(['date', 'description'] as const).map(col => (
                         <div key={col} className="space-y-2">
                             <Label className="capitalize">{col} <span className="text-destructive">*</span></Label>
@@ -534,7 +631,7 @@ export function ImportTransactionsDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-        <DialogTrigger asChild>{children}</DialogTrigger>
+        {children ? <DialogTrigger asChild>{children}</DialogTrigger> : null}
         <DialogContent className="sm:max-w-3xl" onInteractOutside={(e) => e.preventDefault()}>
             {renderContent()}
         </DialogContent>

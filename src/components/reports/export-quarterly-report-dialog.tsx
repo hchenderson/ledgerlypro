@@ -2,8 +2,6 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
 import {
   Dialog,
   DialogContent,
@@ -18,7 +16,6 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { Download, FileType } from "lucide-react";
 import { format } from "date-fns";
-import { Label } from "@/components/ui/label";
 
 interface ExportQuarterlyReportDialogProps {
   reportId: string;
@@ -45,6 +42,10 @@ export function ExportQuarterlyReportDialog({ reportId, reportTitle }: ExportQua
     setIsLoading(true);
 
     try {
+        const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+            import('html2canvas'),
+            import('jspdf'),
+        ]);
         const canvas = await html2canvas(reportElement, {
             scale: 2, // Higher resolution
             useCORS: true,
@@ -85,27 +86,27 @@ export function ExportQuarterlyReportDialog({ reportId, reportTitle }: ExportQua
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
         <DialogTrigger asChild>
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" aria-label={`Export ${reportTitle}`}>
             <Download className="mr-2 h-4 w-4" /> Export
           </Button>
         </DialogTrigger>
-        <DialogContent>
+        <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle>Export Quarterly Report</DialogTitle>
               <DialogDescription>
                 This will generate a PDF of the report for {reportTitle}.
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-4 py-4">
-                <div className="border rounded-md p-4 flex flex-col items-center justify-center gap-2">
+            <div className="space-y-4 py-2 sm:py-4">
+                <div className="flex min-h-36 flex-col items-center justify-center gap-2 rounded-md border p-4 text-center">
                     <FileType className="h-8 w-8 text-red-500" />
-                    <Label>PDF Document</Label>
-                    <p className="text-xs text-muted-foreground text-center">Best for printing, sharing, and archiving.</p>
+                    <p className="font-medium">PDF Document</p>
+                    <p className="max-w-xs text-xs text-muted-foreground">Best for printing, sharing, and archiving.</p>
                 </div>
             </div>
             <DialogFooter>
-                 <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                 <Button onClick={handlePdfExport} disabled={isLoading}>
+                 <DialogClose asChild><Button variant="outline" disabled={isLoading}>Cancel</Button></DialogClose>
+                 <Button onClick={handlePdfExport} disabled={isLoading} aria-busy={isLoading}>
                     {isLoading ? "Exporting..." : "Export as PDF"}
                  </Button>
             </DialogFooter>

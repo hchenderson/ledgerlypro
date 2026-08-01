@@ -19,10 +19,12 @@ import {
   Pie,
   Cell,
 } from "recharts";
-import { jsPDF } from "jspdf";
-import html2canvas from "html2canvas";
 import type { PieLabelRenderProps } from "recharts";
 import { useAuth } from '@/hooks/use-auth';
+import { useIsMobile } from "@/hooks/use-mobile";
+import { startOfYear } from "date-fns";
+import { transactionBalanceDelta } from "@/lib/accounts";
+import { useAccounts } from "@/hooks/use-accounts";
 
 interface EOYReportProps {
   allTransactions: Transaction[];
@@ -52,10 +54,18 @@ const formatCurrency = (value: number) => {
     }).format(value);
 }
 
+const formatCompactCurrency = (value: number) =>
+  new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(value);
+
 const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
         return (
-            <div className="bg-background p-3 border rounded-lg shadow-lg">
+            <div className="max-w-[calc(100vw-2rem)] rounded-lg border bg-background p-3 text-xs shadow-lg sm:text-sm">
                 <p className="font-bold">{label}</p>
                 {payload.map((p: any) => (
                     <p key={p.name} style={{ color: p.color }}>{`${p.name}: ${formatCurrency(p.value)}`}</p>
@@ -70,7 +80,7 @@ const CustomPieTooltip = ({ active, payload }: any) => {
   if (active && payload && payload.length) {
     const data = payload[0];
     return (
-      <div className="bg-background p-3 border rounded-lg shadow-lg">
+      <div className="max-w-[calc(100vw-2rem)] rounded-lg border bg-background p-3 text-xs shadow-lg sm:text-sm">
         <p className="font-bold">{data.name}</p>
         <p>{formatCurrency(data.value)}</p>
       </div>
@@ -116,12 +126,28 @@ export const EOYReport: React.FC<EOYReportProps> = ({
   startingBalance = 0,
 }) => {
   const { user } = useAuth();
+  const {
+    accounts,
+    allAccountsSelected,
+    selectedAccountIds,
+  } = useAccounts();
+  const isMobile = useIsMobile();
   const now = new Date();
   const [year, setYear] = useState(initialYear ?? now.getFullYear());
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [aiSummary, setAiSummary] = useState<string | null>(null);
   const reportRef = useRef<HTMLDivElement | null>(null);
   const categoryDetailsRef = useRef<HTMLDivElement | null>(null);
+  const accountScopeLabel = allAccountsSelected
+    ? "All accounts"
+    : selectedAccountIds
+        .map(
+          (accountId) =>
+            accounts.find((account) => account.id === accountId)?.name,
+        )
+        .filter(Boolean)
+        .join(", ") || "Selected accounts";
   
   useEffect(() => {
     if (initialYear) {
@@ -134,15 +160,29 @@ export const EOYReport: React.FC<EOYReportProps> = ({
     [allTransactions, categories, year]
   );
 
+  const openingBalanceForReportYear = useMemo(() => {
+    const reportStart = startOfYear(new Date(year, 0, 1)).getTime();
+    return allTransactions.reduce((balance, transaction) => {
+      const transactionTime = new Date(transaction.date).getTime();
+      if (
+        Number.isNaN(transactionTime) ||
+        transactionTime >= reportStart
+      ) {
+        return balance;
+      }
+      return balance + transactionBalanceDelta(transaction);
+    }, startingBalance);
+  }, [allTransactions, startingBalance, year]);
+
   const monthlyChartData = useMemo(() => {
-    let runningBalance = startingBalance;
+    let runningBalance = openingBalanceForReportYear;
   
     return data.monthly.map((m) => {
       const income = Number(m.income);
       const expenses = Number(m.expenses);
-      const net = income - expenses; // or Number(m.net), they should match
+      const net = income - expenses;
   
-      runningBalance += net;
+      runningBalance += m.balanceChange;
   
       return {
         month: m.label,
@@ -152,7 +192,7 @@ export const EOYReport: React.FC<EOYReportProps> = ({
         runningBalance,
       };
     });
-  }, [data, startingBalance]);
+  }, [data, openingBalanceForReportYear]);
 
   const categoryPieData = useMemo(
     () =>
@@ -206,6 +246,7 @@ export const EOYReport: React.FC<EOYReportProps> = ({
   const handleExportPDF = async () => {
     if (!reportRef.current) return;
     const element = reportRef.current;
+    setIsExporting(true);
 
     // Temporarily turn off scrolling for Category Details so all rows render
     const categoryEl = categoryDetailsRef.current;
@@ -221,6 +262,10 @@ export const EOYReport: React.FC<EOYReportProps> = ({
     }
 
     try {
+      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+        import("html2canvas"),
+        import("jspdf"),
+      ]);
       const canvas = await html2canvas(element, {
         scale: 2,
         useCORS: true,
@@ -263,6 +308,7 @@ export const EOYReport: React.FC<EOYReportProps> = ({
         categoryEl.style.maxHeight = previousMaxHeight ?? "";
         categoryEl.style.overflowY = previousOverflowY ?? "";
       }
+      setIsExporting(false);
     }
   };
 
@@ -279,11 +325,14 @@ export const EOYReport: React.FC<EOYReportProps> = ({
   return (
     <div className="space-y-6">
       {/* Controls */}
-      <div className="flex flex-wrap items-center gap-3 justify-between">
-        <div className="flex items-center gap-2">
-          <span className="font-semibold">Year:</span>
+      <div className="flex flex-col gap-3 rounded-xl border bg-card p-3 sm:flex-row sm:items-end sm:justify-between sm:p-4">
+        <div className="w-full space-y-1.5 sm:w-auto">
+          <label htmlFor="eoy-report-year" className="block text-sm font-semibold">
+            Report year
+          </label>
           <select
-            className="border rounded-md px-2 py-1 bg-background"
+            id="eoy-report-year"
+            className="h-11 w-full rounded-md border bg-background px-3 text-base sm:w-32"
             value={year}
             onChange={(e) => setYear(Number(e.target.value))}
           >
@@ -295,24 +344,38 @@ export const EOYReport: React.FC<EOYReportProps> = ({
           </select>
         </div>
 
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={handleExportPDF}>
-            Export as PDF
+        <div className="grid w-full grid-cols-1 gap-2 min-[430px]:grid-cols-2 sm:flex sm:w-auto">
+          <Button
+            variant="outline"
+            onClick={handleExportPDF}
+            disabled={isExporting}
+            aria-busy={isExporting}
+            className="w-full sm:w-auto"
+          >
+            {isExporting ? "Preparing PDF…" : "Export as PDF"}
           </Button>
-          <Button onClick={handleGenerateSummary} disabled={isGenerating}>
+          <Button
+            onClick={handleGenerateSummary}
+            disabled={isGenerating}
+            aria-busy={isGenerating}
+            className="w-full sm:w-auto"
+          >
             {isGenerating ? "Generating summary…" : "Generate AI Summary"}
           </Button>
         </div>
       </div>
 
       {/* Report body */}
-      <div ref={reportRef} className="space-y-6 bg-background p-4 rounded-lg">
-        <h1 className="text-3xl font-bold mb-2">
+      <div ref={reportRef} className="space-y-4 rounded-lg bg-background sm:space-y-6 sm:p-4">
+        <h1 className="mb-2 break-words text-2xl font-bold sm:text-3xl">
           End-of-Year Report – {data.year}
         </h1>
         <p className="text-muted-foreground mb-4">
           A holistic view of your spending, income, and financial priorities
           across the past year.
+        </p>
+        <p className="-mt-2 mb-4 text-sm font-medium">
+          Account scope: {accountScopeLabel}
         </p>
 
         {/* Executive summary */}
@@ -320,23 +383,23 @@ export const EOYReport: React.FC<EOYReportProps> = ({
           <CardHeader>
             <CardTitle>Executive Summary</CardTitle>
           </CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-3">
-            <div>
+          <CardContent className="grid gap-3 sm:grid-cols-3 sm:gap-4">
+            <div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0">
               <p className="text-sm text-muted-foreground">Total Income</p>
-              <p className="text-2xl font-semibold">
+              <p className="break-words text-xl font-semibold sm:text-2xl">
                 {formatCurrency(data.totalIncome)}
               </p>
             </div>
-            <div>
+            <div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0">
               <p className="text-sm text-muted-foreground">Total Expenses</p>
-              <p className="text-2xl font-semibold">
+              <p className="break-words text-xl font-semibold sm:text-2xl">
                 {formatCurrency(data.totalExpenses)}
               </p>
             </div>
-            <div>
+            <div className="rounded-lg bg-muted/30 p-3 sm:bg-transparent sm:p-0">
               <p className="text-sm text-muted-foreground">Net Position</p>
               <p
-                className={`text-2xl font-semibold ${
+                className={`break-words text-xl font-semibold sm:text-2xl ${
                   data.net >= 0 ? "text-emerald-600" : "text-red-600"
                 }`}
               >
@@ -351,44 +414,112 @@ export const EOYReport: React.FC<EOYReportProps> = ({
           <CardHeader>
             <CardTitle>Monthly Cashflow</CardTitle>
           </CardHeader>
-          <CardContent className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={monthlyChartData}>
+          <CardContent className="px-2 pb-4 sm:px-6 sm:pb-6">
+            <div
+              className="h-72 w-full sm:h-80"
+              role="img"
+              aria-label={`Monthly income, expenses, net cash flow, and running balance for ${data.year}`}
+            >
+              <ResponsiveContainer width="100%" height="100%">
+              <LineChart
+                data={monthlyChartData}
+                margin={{
+                  top: 8,
+                  right: isMobile ? 4 : 12,
+                  left: isMobile ? -16 : 8,
+                  bottom: 4,
+                }}
+              >
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
+                <XAxis
+                  dataKey="month"
+                  fontSize={isMobile ? 10 : 12}
+                  tickLine={false}
+                  interval={isMobile ? 1 : 0}
+                />
                 <YAxis
                   type="number"
-                  tickFormatter={(value: number) => formatCurrency(Number(value))}
+                  width={isMobile ? 56 : 84}
+                  fontSize={isMobile ? 10 : 12}
+                  tickLine={false}
+                  tickFormatter={(value: number) => formatCompactCurrency(Number(value))}
                 />
                 <Tooltip content={<CustomTooltip />} />
-                <Legend />
+                <Legend
+                  wrapperStyle={{
+                    fontSize: isMobile ? 10 : 12,
+                    lineHeight: isMobile ? "20px" : "24px",
+                  }}
+                />
                 <Line
                   type="monotone"
                   dataKey="income"
                   stroke="#2ecc71"
                   name="Income"
+                  strokeWidth={2}
+                  dot={false}
+                  activeDot={{ r: isMobile ? 7 : 5 }}
                 />
                 <Line
                   type="monotone"
                   dataKey="expenses"
                   stroke="#e74c3c"
                   name="Expenses"
+                  strokeWidth={2}
+                  dot={false}
+                  activeDot={{ r: isMobile ? 7 : 5 }}
                 />
                 <Line
                   type="monotone"
                   dataKey="net"
                   stroke="#3498db"
                   name="Net"
+                  strokeWidth={2}
+                  dot={false}
+                  activeDot={{ r: isMobile ? 7 : 5 }}
                 />
                 <Line
                   type="monotone"
                   dataKey="runningBalance"
                   stroke="#8e44ad"
                   name="Running Balance"
+                  strokeWidth={2}
+                  dot={false}
+                  activeDot={{ r: isMobile ? 7 : 5 }}
                 />
       
               </LineChart>
             </ResponsiveContainer>
+            </div>
+            <details className="mt-3 rounded-lg border bg-muted/20 text-sm">
+              <summary className="cursor-pointer px-3 py-2 font-medium">
+                View monthly data
+              </summary>
+              <div className="max-h-72 overflow-auto border-t">
+                <table className="w-full min-w-[38rem] text-left text-xs">
+                  <thead className="sticky top-0 bg-background">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">Month</th>
+                      <th className="px-3 py-2 text-right font-medium">Income</th>
+                      <th className="px-3 py-2 text-right font-medium">Expenses</th>
+                      <th className="px-3 py-2 text-right font-medium">Net</th>
+                      <th className="px-3 py-2 text-right font-medium">Running balance</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {monthlyChartData.map((month) => (
+                      <tr key={month.month} className="border-t">
+                        <td className="px-3 py-2">{month.month}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(month.income)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(month.expenses)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(month.net)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(month.runningBalance)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </details>
           </CardContent>
         </Card>
 
@@ -398,16 +529,22 @@ export const EOYReport: React.FC<EOYReportProps> = ({
             <CardHeader>
               <CardTitle>Spending by Category</CardTitle>
             </CardHeader>
-            <CardContent className="h-80">
+            <CardContent className="px-2 pb-4 sm:px-6 sm:pb-6">
               {categoryPieData.length ? (
+                <>
+                <div
+                  className="h-64 sm:h-80"
+                  role="img"
+                  aria-label={`Expense category distribution for ${data.year}`}
+                >
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
                       data={categoryPieData}
                       dataKey="value"
                       nameKey="name"
-                      outerRadius={100}
-                      label={renderCategoryLabel}
+                      outerRadius={isMobile ? 82 : 100}
+                      label={isMobile ? false : renderCategoryLabel}
                       labelLine={false}
                     >
                       {categoryPieData.map((entry, index) => (
@@ -420,8 +557,27 @@ export const EOYReport: React.FC<EOYReportProps> = ({
                     <Tooltip content={<CustomPieTooltip />} />
                   </PieChart>
                 </ResponsiveContainer>
+                </div>
+                <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border p-3 sm:hidden">
+                  {categoryPieData.map((category, index) => (
+                    <div key={category.name} className="flex items-center justify-between gap-3 text-xs">
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span
+                          className="h-2.5 w-2.5 shrink-0 rounded-sm"
+                          style={{ backgroundColor: pieColors[index % pieColors.length] }}
+                          aria-hidden="true"
+                        />
+                        <span className="truncate">{category.name}</span>
+                      </span>
+                      <span className="shrink-0 tabular-nums text-muted-foreground">
+                        {formatCurrency(category.value)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                </>
               ) : (
-                <p className="text-muted-foreground">
+                <p className="flex min-h-48 items-center justify-center px-4 text-center text-muted-foreground">
                   No expense data available for this year.
                 </p>
               )}
@@ -434,20 +590,20 @@ export const EOYReport: React.FC<EOYReportProps> = ({
             </CardHeader>
             <CardContent
               ref={categoryDetailsRef}
-              className="space-y-2 max-h-80 overflow-y-auto"
+              className="max-h-80 space-y-2 overflow-y-auto"
             >
               {data.categories.map((c) => (
                 <div
                   key={c.name}
-                  className="flex items-center justify-between text-sm"
+                  className="flex items-start justify-between gap-3 rounded-lg border-b py-2 text-sm last:border-b-0"
                 >
-                  <div className="flex flex-col">
-                    <span className="font-medium">{c.name}</span>
+                  <div className="flex min-w-0 flex-col">
+                    <span className="break-words font-medium">{c.name}</span>
                     <span className="text-xs text-muted-foreground">
                       {c.percentageOfTotal.toFixed(1)}% of expenses
                     </span>
                   </div>
-                  <span>{formatCurrency(c.total)}</span>
+                  <span className="shrink-0 text-right font-medium tabular-nums">{formatCurrency(c.total)}</span>
                 </div>
               ))}
               {!data.categories.length && (
@@ -464,16 +620,16 @@ export const EOYReport: React.FC<EOYReportProps> = ({
           <CardHeader>
             <CardTitle>Goals Snapshot</CardTitle>
           </CardHeader>
-          <CardContent className="flex flex-wrap gap-6">
-            <div>
+          <CardContent className="grid grid-cols-1 gap-3 min-[430px]:grid-cols-3 sm:gap-6">
+            <div className="rounded-lg bg-muted/30 p-3">
               <p className="text-sm text-muted-foreground">Total Goals</p>
               <p className="text-xl font-semibold">{totalGoals}</p>
             </div>
-            <div>
+            <div className="rounded-lg bg-muted/30 p-3">
               <p className="text-sm text-muted-foreground">Completed Goals</p>
               <p className="text-xl font-semibold">{completedGoals}</p>
             </div>
-            <div>
+            <div className="rounded-lg bg-muted/30 p-3">
               <p className="text-sm text-muted-foreground">
                 Completion Rate
               </p>
@@ -491,7 +647,7 @@ export const EOYReport: React.FC<EOYReportProps> = ({
           <CardHeader>
             <CardTitle>Year-End Narrative</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent aria-live="polite">
             {aiSummary ? (
               <p className="whitespace-pre-line leading-relaxed">
                 {aiSummary}

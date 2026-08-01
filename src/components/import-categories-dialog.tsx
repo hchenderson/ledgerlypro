@@ -14,7 +14,6 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import Papa from "papaparse";
 import { Upload, FileUp, Loader2 } from "lucide-react";
 
 interface ImportCategoriesDialogProps {
@@ -45,49 +44,60 @@ export function ImportCategoriesDialog({ onImport }: ImportCategoriesDialogProps
     }
   };
 
-  const handleImport = () => {
+  const handleImport = async () => {
     if (!file) {
       toast({ variant: "destructive", title: "No file selected." });
       return;
     }
     setIsLoading(true);
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: (results) => {
-        if (results.errors.length) {
-          toast({
-            variant: "destructive",
-            title: "Error parsing CSV",
-            description: results.errors[0].message,
-          });
-          setIsLoading(false);
-          return;
-        }
-
-        const requiredHeaders = ['name', 'type'];
-        const hasHeaders = requiredHeaders.every(h => results.meta.fields?.includes(h));
-        if (!hasHeaders) {
+    try {
+      const { default: Papa } = await import("papaparse");
+      Papa.parse<Record<string, unknown>>(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: (results) => {
+          if (results.errors.length) {
             toast({
-                variant: 'destructive',
-                title: 'Invalid CSV format',
-                description: 'File must contain "name" and "type" columns.'
+              variant: "destructive",
+              title: "Error parsing CSV",
+              description: results.errors[0].message,
             });
             setIsLoading(false);
             return;
-        }
-        
-        // Normalize data, parent_name is optional
-        const data: { name: string; type: 'income' | 'expense'; parent_name: string }[] = (results.data as Record<string, unknown>[]).map(row => ({
+          }
+
+          const requiredHeaders = ['name', 'type'];
+          const hasHeaders = requiredHeaders.every(h => results.meta.fields?.includes(h));
+          if (!hasHeaders) {
+              toast({
+                  variant: 'destructive',
+                  title: 'Invalid CSV format',
+                  description: 'File must contain "name" and "type" columns.'
+              });
+              setIsLoading(false);
+              return;
+          }
+
+          // Normalize data, parent_name is optional
+          const data: { name: string; type: 'income' | 'expense'; parent_name: string }[] = results.data.map(row => ({
             name: String(row.name ?? ''),
             type: row.type === 'income' ? 'income' : 'expense',
             parent_name: String(row.parent_name ?? '')
-        }));
+          }));
 
-        onImport(data);
-        handleClose(false);
-      },
-    });
+          onImport(data);
+          handleClose(false);
+        },
+      });
+    } catch (error) {
+      console.error("CSV parser failed to load:", error);
+      setIsLoading(false);
+      toast({
+        variant: "destructive",
+        title: "Unable to read CSV",
+        description: "The CSV tools could not be loaded. Check your connection and try again.",
+      });
+    }
   };
 
   return (

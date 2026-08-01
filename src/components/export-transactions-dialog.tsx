@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useMemo, type ReactNode, useCallback } from "react";
+import { useState, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -9,13 +9,11 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-  DialogTrigger,
   DialogClose,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import Papa from "papaparse";
-import { Calendar as CalendarIcon, Download, X } from "lucide-react";
+import { Calendar as CalendarIcon, Download } from "lucide-react";
 import { Label } from "./ui/label";
 import type { Transaction, Category, SubCategory } from "@/types";
 import { DateRange } from "react-day-picker";
@@ -26,19 +24,21 @@ import { format } from "date-fns";
 import { Input } from "./ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
+import { useAccounts } from "@/hooks/use-accounts";
 
 interface ExportTransactionsDialogProps {
   transactions: Transaction[];
   categories: Category[];
-  triggerButton: ReactNode;
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
 }
 
 export function ExportTransactionsDialog({
   transactions,
   categories,
-  triggerButton,
+  isOpen,
+  onOpenChange,
 }: ExportTransactionsDialogProps) {
-  const [isOpen, setIsOpen] = useState(false);
   const [exportType, setExportType] = useState<"all" | "filtered">("all");
   
   // Filter states
@@ -48,6 +48,7 @@ export function ExportTransactionsDialog({
   const [maxAmount, setMaxAmount] = useState("");
 
   const { toast } = useToast();
+  const { getAccountName } = useAccounts();
 
   const resetState = () => {
     setDateRange(undefined);
@@ -61,7 +62,7 @@ export function ExportTransactionsDialog({
     if (!open) {
       resetState();
     }
-    setIsOpen(open);
+    onOpenChange(open);
   };
   
   const allCategoryOptions = useMemo(() => {
@@ -126,7 +127,7 @@ export function ExportTransactionsDialog({
     });
   }, [transactions, exportType, dateRange, selectedCategory, minAmount, maxAmount, categories]);
 
-  const handleExport = useCallback(() => {
+  const handleExport = async () => {
     try {
       if (!filteredTransactions || filteredTransactions.length === 0) {
         toast({
@@ -140,11 +141,17 @@ export function ExportTransactionsDialog({
       const exportData = filteredTransactions.map(transaction => ({
         Date: transaction.date ? format(new Date(transaction.date), "yyyy-MM-dd") : '',
         Description: transaction.description || '',
+        Account: getAccountName(transaction.accountId),
         Category: transaction.category || '',
         Type: transaction.type || '',
+        Direction:
+          transaction.type === "transfer"
+            ? transaction.transferDirection ?? ""
+            : "",
         Amount: transaction.amount || 0,
       }));
 
+      const { default: Papa } = await import("papaparse");
       const csv = Papa.unparse(exportData);
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a');
@@ -170,15 +177,14 @@ export function ExportTransactionsDialog({
       toast({
         variant: "destructive",
         title: "Export Failed",
-        description: "An error occurred while exporting transactions.",
+        description: "The export tools could not be loaded or the file could not be created.",
       });
     }
-  }, [filteredTransactions, toast]);
+  };
 
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-        <DialogTrigger asChild>{triggerButton}</DialogTrigger>
         <DialogContent className="sm:max-w-xl" onInteractOutside={(e) => e.preventDefault()}>
             <DialogHeader>
               <DialogTitle>Export Transactions</DialogTitle>
@@ -187,7 +193,7 @@ export function ExportTransactionsDialog({
               </DialogDescription>
             </DialogHeader>
             <div className="py-4 space-y-4">
-                <RadioGroup value={exportType} onValueChange={(val) => setExportType(val as "all" | "filtered")} className="flex space-x-4">
+                <RadioGroup value={exportType} onValueChange={(val) => setExportType(val as "all" | "filtered")} className="grid gap-3 sm:grid-cols-2">
                     <div className="flex items-center space-x-2">
                         <RadioGroupItem value="all" id="all" />
                         <Label htmlFor="all">Export all transactions</Label>

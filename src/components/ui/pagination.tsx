@@ -23,6 +23,39 @@ export function Pagination({
   onPageChange,
   pageNeighbours = 1,
 }: PaginationProps) {
+  if (pageNeighbours === 0) {
+    return (
+      <nav
+        className="flex w-full items-center justify-between gap-3 py-4"
+        aria-label="Pagination"
+      >
+        <Button
+          variant="outline"
+          onClick={() => onPageChange(currentPage - 1)}
+          disabled={currentPage === 1}
+          aria-label="Go to previous page"
+          className="min-w-11"
+        >
+          <ChevronLeft className="h-4 w-4" />
+          <span className="hidden min-[360px]:inline">Previous</span>
+        </Button>
+        <span className="shrink-0 text-sm font-medium tabular-nums">
+          Page {currentPage} of {totalPages}
+        </span>
+        <Button
+          variant="outline"
+          onClick={() => onPageChange(currentPage + 1)}
+          disabled={currentPage === totalPages}
+          aria-label="Go to next page"
+          className="min-w-11"
+        >
+          <span className="hidden min-[360px]:inline">Next</span>
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </nav>
+    );
+  }
+
   const pageNumbers = [];
   const startPage = Math.max(1, currentPage - pageNeighbours);
   const endPage = Math.min(totalPages, currentPage + pageNeighbours);
@@ -46,12 +79,16 @@ export function Pagination({
   }
 
   return (
-    <div className="flex items-center justify-center space-x-2 py-4">
+    <nav
+      className="flex items-center justify-center space-x-2 py-4"
+      aria-label="Pagination"
+    >
       <Button
         variant="outline"
         size="icon"
         onClick={() => onPageChange(1)}
         disabled={currentPage === 1}
+        aria-label="Go to first page"
       >
         <ChevronsLeft className="h-4 w-4" />
       </Button>
@@ -60,6 +97,7 @@ export function Pagination({
         size="icon"
         onClick={() => onPageChange(currentPage - 1)}
         disabled={currentPage === 1}
+        aria-label="Go to previous page"
       >
         <ChevronLeft className="h-4 w-4" />
       </Button>
@@ -73,6 +111,8 @@ export function Pagination({
               variant={currentPage === page ? "default" : "outline"}
               size="icon"
               onClick={() => onPageChange(page)}
+              aria-label={`Go to page ${page}`}
+              aria-current={currentPage === page ? "page" : undefined}
             >
               {page}
             </Button>
@@ -84,6 +124,7 @@ export function Pagination({
         size="icon"
         onClick={() => onPageChange(currentPage + 1)}
         disabled={currentPage === totalPages}
+        aria-label="Go to next page"
       >
         <ChevronRight className="h-4 w-4" />
       </Button>
@@ -92,9 +133,10 @@ export function Pagination({
         size="icon"
         onClick={() => onPageChange(totalPages)}
         disabled={currentPage === totalPages}
+        aria-label="Go to last page"
       >
         <ChevronsRight className="h-4 w-4" />
       </Button>
-    </div>
+    </nav>
   );
 }

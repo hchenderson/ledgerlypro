@@ -59,7 +59,7 @@ export function expandRecurringBetween(
       out.push({
         id: `forecast_${rt.id}_${cursor.toISOString()}`,
         date: cursor.toISOString(),
-        amount: rt.amount,
+        amount: Math.abs(rt.amount),
         type: rt.type,
         category: rt.category,
         description: `(Forecast) ${rt.description}`,

@@ -4,6 +4,11 @@ import React, { useMemo } from "react";
 import { addDays, parseISO, format, startOfDay } from "date-fns";
 import type { ForecastTx } from "@/forecast/expandRecurringBetween";
 
+const currency = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+});
+
 type Row = {
   dateKey: string; // YYYY-MM-DD
   dateLabel: string;
@@ -49,34 +54,34 @@ export function RecurringCommitmentsList({
 
   if (!rows.length) {
     return (
-      <div className="text-sm text-muted-foreground">
+      <div className="flex min-h-40 items-center justify-center rounded-lg border border-dashed px-4 text-center text-sm text-muted-foreground">
         No recurring commitments detected in the next 30 days.
       </div>
     );
   }
 
   return (
-    <div className="space-y-3">
+    <div className="min-w-0 space-y-3">
       {rows.slice(0, 10).map((r) => (
-        <div key={r.dateKey} className="rounded-lg border p-3">
-          <div className="flex items-center justify-between gap-3">
+        <div key={r.dateKey} className="min-w-0 rounded-lg border p-3">
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
             <div className="font-medium">{r.dateLabel}</div>
-            <div className="text-sm text-muted-foreground">
-              {r.incomeTotal ? `+${r.incomeTotal.toFixed(2)} ` : ""}
-              {r.expenseTotal ? `-${r.expenseTotal.toFixed(2)}` : ""}
+            <div className="max-w-full text-sm tabular-nums text-muted-foreground">
+              {r.incomeTotal ? `+${currency.format(r.incomeTotal)} ` : ""}
+              {r.expenseTotal ? `-${currency.format(r.expenseTotal)}` : ""}
             </div>
           </div>
 
           <div className="mt-2 space-y-1 text-sm">
             {r.items.slice(0, 4).map((t) => (
-              <div key={t.id} className="flex items-center justify-between gap-3">
-                <div className="truncate">
+              <div key={t.id} className="flex min-w-0 items-center justify-between gap-3">
+                <div className="min-w-0 truncate" title={`${t.description ?? "Recurring item"}${t.category ? ` • ${t.category}` : ""}`}>
                   {t.description ?? "Recurring item"}
                   {t.category ? <span className="text-muted-foreground"> • {t.category}</span> : null}
                 </div>
-                <div className="shrink-0 tabular-nums">
+                <div className="max-w-[45%] shrink-0 overflow-hidden text-ellipsis whitespace-nowrap tabular-nums" title={`${t.type === "income" ? "+" : "-"}${currency.format(t.amount)}`}>
                   {t.type === "income" ? "+" : "-"}
-                  {t.amount.toFixed(2)}
+                  {currency.format(t.amount)}
                 </div>
               </div>
             ))}

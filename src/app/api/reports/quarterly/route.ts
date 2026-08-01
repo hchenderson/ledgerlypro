@@ -12,13 +12,17 @@ const GenerateReportSchema = z.object({
   endDate: z.string().datetime(),
   notes: z.string().trim().max(2_000).optional(),
   budgetIds: z.array(z.string().min(1)).max(200).optional(),
+  accountIds: z.array(z.string().min(1)).max(100).optional(),
 }).refine(
   ({ startDate, endDate }) => new Date(startDate) < new Date(endDate),
   { message: "The report date range is invalid." }
 );
 
 const DeleteReportSchema = z.object({
-  reportId: z.string().regex(/^Q[1-4] \d{4}$/),
+  reportId: z
+    .string()
+    .trim()
+    .regex(/^Q[1-4] \d{4}(--accounts-[a-z0-9]+)?$/),
 });
 
 export async function POST(req: Request) {
@@ -43,6 +47,7 @@ export async function POST(req: Request) {
       endDate: new Date(parsed.data.endDate),
       notes: parsed.data.notes,
       budgetIds: parsed.data.budgetIds,
+      accountIds: parsed.data.accountIds,
     });
     logServerEvent("info", "quarterly-report.generated", { ...context, period: report.period });
     return NextResponse.json({ report }, {

@@ -2,7 +2,9 @@
 'use client';
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { useUserData } from '@/hooks/use-user-data';
+import dynamic from 'next/dynamic';
+import { useCategories } from '@/hooks/use-categories';
+import { useTransactionRange } from '@/hooks/use-transactions';
 import { 
   Card, 
   CardContent, 
@@ -27,6 +29,7 @@ import {
   Trash2,
   CalendarCheck,
   ArrowRight,
+  ChevronDown,
 } from 'lucide-react';
 import type { QuarterlyReport } from '@/types';
 import { DateRange } from 'react-day-picker';
@@ -45,10 +48,7 @@ import {
 } from 'date-fns';
 import Link from 'next/link';
 
-import { OverviewChart } from '@/components/dashboard/overview-chart';
-import { CategoryPieChart } from '@/components/reports/category-pie-chart';
 import { cn } from '@/lib/utils';
-import { ExportReportDialog } from '@/components/reports/export-report-dialog';
 import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import { collection, onSnapshot } from 'firebase/firestore';
@@ -66,6 +66,11 @@ import {
 } from "@/components/ui/table"
 import { Progress } from '@/components/ui/progress';
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -82,15 +87,61 @@ import { SearchableMultiSelect } from '@/components/ui/searchable-multi-select';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Calendar as CalendarIcon } from 'lucide-react';
-import { ExportQuarterlyReportDialog } from '@/components/reports/export-quarterly-report-dialog';
-import { GenerateQuarterlyReportDialog } from '@/components/reports/generate-quarterly-report-dialog';
 import { findMainCategoryForTransaction } from '@/lib/category-tree';
 import {
-  filterTransactionsByDateRange,
   parseTransactionDate,
   summarizeTransactions,
   transactionAmount,
 } from '@/lib/financial-summary';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useAccounts } from '@/hooks/use-accounts';
+
+const OverviewChart = dynamic(
+  () =>
+    import('@/components/dashboard/overview-chart').then(
+      (module) => module.OverviewChart,
+    ),
+  {
+    ssr: false,
+    loading: () => <Skeleton className="h-[300px] w-full" />,
+  },
+);
+
+const CategoryPieChart = dynamic(
+  () =>
+    import('@/components/reports/category-pie-chart').then(
+      (module) => module.CategoryPieChart,
+    ),
+  {
+    ssr: false,
+    loading: () => <Skeleton className="h-[300px] w-full" />,
+  },
+);
+
+const ExportReportDialog = dynamic(
+  () =>
+    import('@/components/reports/export-report-dialog').then(
+      (module) => module.ExportReportDialog,
+    ),
+  { ssr: false },
+);
+
+const ExportQuarterlyReportDialog = dynamic(
+  () =>
+    import('@/components/reports/export-quarterly-report-dialog').then(
+      (module) => module.ExportQuarterlyReportDialog,
+    ),
+  { ssr: false },
+);
+
+const GenerateQuarterlyReportDialog = dynamic(
+  () =>
+    import('@/components/reports/generate-quarterly-report-dialog').then(
+      (module) => module.GenerateQuarterlyReportDialog,
+    ),
+  { ssr: false },
+);
 
 const PRESET_RANGES = [
   { label: 'This Month', value: 'this-month' },
@@ -116,8 +167,9 @@ const formatStoredReportDate = (value: string) =>
   format(parseISO(value.slice(0, 10)), 'MMM d, yyyy');
 
 function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
-  const { allTransactions, categories } = useUserData();
+  const { categories } = useCategories();
   const { activeYear } = useAuth();
+  const isMobile = useIsMobile();
   
   const defaultDateRange = useMemo(() => {
     const baseDate = new Date(activeYear, new Date().getMonth(), 1);
@@ -137,6 +189,7 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
   const [dateRange, setDateRange] = useState<DateRange | undefined>(defaultDateRange);
   const [selectedIncomeCategories, setSelectedIncomeCategories] = useState<string[]>([]);
   const [selectedExpenseCategories, setSelectedExpenseCategories] = useState<string[]>([]);
+  const [filtersOpen, setFiltersOpen] = useState(true);
   
   useEffect(() => {
     setDateRange(defaultDateRange);
@@ -206,17 +259,22 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
     setDateRange({ from: fromDate, to: toDate });
   };
 
-  const dateFilteredTransactions = useMemo(() => {
-    return dateRange?.from && dateRange?.to
-      ? filterTransactionsByDateRange(allTransactions, {
-          from: dateRange.from,
-          to: dateRange.to,
-        })
-      : allTransactions;
-  }, [allTransactions, dateRange]);
+  const transactionRange = useMemo(
+    () => ({
+      from: dateRange?.from ?? defaultDateRange.from,
+      to: dateRange?.to ?? dateRange?.from ?? defaultDateRange.to,
+    }),
+    [dateRange, defaultDateRange],
+  );
+  const {
+    transactions: dateFilteredTransactions,
+    loading: transactionLoading,
+    error: transactionError,
+  } = useTransactionRange(transactionRange);
 
   const { totalIncome, totalExpenses, netIncome } = useMemo(() => {
     const includedTransactions = dateFilteredTransactions.filter(t => {
+      if (t.type === "transfer") return false;
       const selectedCategories = t.type === 'income'
         ? selectedIncomeCategories
         : selectedExpenseCategories;
@@ -334,6 +392,7 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
   const { overviewData, trendStats } = useMemo(() => {
     const dataByPeriod: { [key: string]: { name: string; income: number; expense: number } } = {};
     dateFilteredTransactions.forEach(t => {
+      if (t.type === "transfer") return;
       const tDate = parseTransactionDate(t.date);
       if (!tDate) return;
       
@@ -415,21 +474,56 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
   }, [dateFilteredTransactions, selectedExpenseCategories, categories]);
 
 
+  if (transactionLoading) {
+    return (
+      <div className="space-y-4" role="status" aria-label="Loading report data">
+        <Skeleton className="h-28 w-full" />
+        <Skeleton className="h-96 w-full" />
+      </div>
+    );
+  }
+
+  if (transactionError) {
+    return (
+      <Card>
+        <CardContent className="p-6 text-sm text-destructive">
+          Report data is temporarily unavailable. Please try again.
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <div className="space-y-6">
-       <Card>
-            <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
+       <Collapsible open={filtersOpen} onOpenChange={setFiltersOpen} asChild>
+        <Card>
+            <CardHeader className="py-4">
+              <CollapsibleTrigger asChild>
+                <Button
+                  variant="ghost"
+                  className="-mx-2 flex h-auto w-[calc(100%+1rem)] justify-between px-2 py-1 text-left"
+                  aria-label={`${filtersOpen ? 'Hide' : 'Show'} report filters`}
+                >
+                  <span className="flex items-center gap-2 font-semibold">
                     <Filter className="h-4 w-4" />
                     Filters
-                </CardTitle>
+                  </span>
+                  <ChevronDown
+                    className={cn(
+                      "h-4 w-4 transition-transform",
+                      filtersOpen && "rotate-180"
+                    )}
+                  />
+                </Button>
+              </CollapsibleTrigger>
             </CardHeader>
-            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <CollapsibleContent>
+            <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2">
                  <div className="space-y-2">
                     <Label className="text-sm">Date Range</Label>
-                    <div className="flex gap-2">
+                    <div className="flex flex-col gap-2 sm:flex-row">
                         <Select onValueChange={handlePresetChange}>
-                            <SelectTrigger className="w-[180px]">
+                            <SelectTrigger className="w-full sm:w-[180px]">
                                 <SelectValue placeholder="Select a preset" />
                             </SelectTrigger>
                             <SelectContent>
@@ -442,10 +536,12 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
                             <PopoverTrigger asChild>
                                 <Button
                                     variant="outline"
-                                    className={cn('flex-1 justify-start text-left font-normal', !dateRange && 'text-muted-foreground')}
+                                    className={cn('min-w-0 flex-1 justify-start overflow-hidden text-left font-normal', !dateRange && 'text-muted-foreground')}
                                 >
                                     <CalendarIcon className="mr-2 h-4 w-4" />
-                                    {dateRange?.from ? (dateRange.to ? (`${format(dateRange.from, 'LLL dd, y')} - ${format(dateRange.to, 'LLL dd, y')}`) : format(dateRange.from, 'LLL dd, y')) : (<span>Pick a date</span>)}
+                                    <span className="truncate">
+                                      {dateRange?.from ? (dateRange.to ? (`${format(dateRange.from, 'LLL dd, y')} - ${format(dateRange.to, 'LLL dd, y')}`) : format(dateRange.from, 'LLL dd, y')) : 'Pick a date'}
+                                    </span>
                                 </Button>
                             </PopoverTrigger>
                             <PopoverContent className="w-auto p-0" align="start">
@@ -455,42 +551,46 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
                                     defaultMonth={dateRange?.from}
                                     selected={dateRange}
                                     onSelect={setDateRange}
-                                    numberOfMonths={2}
+                                    numberOfMonths={isMobile ? 1 : 2}
                                 />
                             </PopoverContent>
                         </Popover>
                     </div>
                 </div>
             </CardContent>
+            </CollapsibleContent>
         </Card>
+       </Collapsible>
         <Card id="overview-chart-card">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2"><TrendingUp/> Income vs. Expense Overview</CardTitle>
+          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <CardTitle className="flex items-center gap-2 text-lg sm:text-xl"><TrendingUp className="h-5 w-5 shrink-0"/> Income vs. Expense Overview</CardTitle>
               <CardDescription>
                 A summary of your cash flow for the selected period.
               </CardDescription>
             </div>
-            <ExportReportDialog 
-              transactions={dateFilteredTransactions} 
-              dateRange={dateRange} 
-              chartId="overview-chart-card"
-              chartTitle="Income vs Expense Overview"
-            />
+            <div className="w-full sm:w-auto [&>button]:w-full">
+              <ExportReportDialog
+                transactions={dateFilteredTransactions}
+                dateRange={dateRange}
+                chartId="overview-chart-card"
+                chartTitle="Income vs Expense Overview"
+              />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-3 gap-4 mb-6 border-b pb-4">
-              <div className="text-center">
+            <div className="mb-6 grid grid-cols-1 gap-3 border-b pb-4 min-[440px]:grid-cols-3">
+              <div className="rounded-lg bg-muted/30 p-3 text-center min-[440px]:rounded-none min-[440px]:bg-transparent min-[440px]:p-0">
                 <p className="text-sm text-muted-foreground">Total Income</p>
-                <p className="text-2xl font-bold text-emerald-500">{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalIncome)}</p>
+                <p className="break-words text-xl font-bold text-emerald-500 sm:text-2xl">{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalIncome)}</p>
               </div>
-              <div className="text-center">
+              <div className="rounded-lg bg-muted/30 p-3 text-center min-[440px]:rounded-none min-[440px]:bg-transparent min-[440px]:p-0">
                 <p className="text-sm text-muted-foreground">Total Expense</p>
-                <p className="text-2xl font-bold text-red-500">{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalExpenses)}</p>
+                <p className="break-words text-xl font-bold text-red-500 sm:text-2xl">{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalExpenses)}</p>
               </div>
-              <div className="text-center">
+              <div className="rounded-lg bg-muted/30 p-3 text-center min-[440px]:rounded-none min-[440px]:bg-transparent min-[440px]:p-0">
                 <p className="text-sm text-muted-foreground">Net Income</p>
-                <p className={cn("text-2xl font-bold", netIncome >= 0 ? "text-foreground" : "text-destructive")}>{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(netIncome)}</p>
+                <p className={cn("break-words text-xl font-bold sm:text-2xl", netIncome >= 0 ? "text-foreground" : "text-destructive")}>{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(netIncome)}</p>
               </div>
             </div>
             <OverviewChart data={overviewData} />
@@ -520,19 +620,21 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card id="income-breakdown-card">
           <CardHeader>
-            <div className="flex justify-between items-center">
-              <div>
-                <CardTitle className="flex items-center gap-2"><PieChartIcon/> Income Breakdown</CardTitle>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <CardTitle className="flex items-center gap-2 text-lg sm:text-xl"><PieChartIcon className="h-5 w-5 shrink-0"/> Income Breakdown</CardTitle>
                 <CardDescription>
                   Where your income comes from. Select a single category to see sub-category details.
                 </CardDescription>
               </div>
-               <ExportReportDialog 
-                transactions={incomeTransactionsForExport} 
-                dateRange={dateRange}
-                chartId="income-breakdown-card"
-                chartTitle="Income Breakdown"
-              />
+              <div className="w-full sm:w-auto [&>button]:w-full">
+                <ExportReportDialog
+                  transactions={incomeTransactionsForExport}
+                  dateRange={dateRange}
+                  chartId="income-breakdown-card"
+                  chartTitle="Income Breakdown"
+                />
+              </div>
             </div>
           </CardHeader>
           <CardContent>
@@ -554,19 +656,21 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
         </Card>
         <Card id="expense-breakdown-card">
           <CardHeader>
-            <div className="flex justify-between items-center">
-              <div>
-                <CardTitle className="flex items-center gap-2"><PieChartIcon/> Expense Breakdown</CardTitle>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <CardTitle className="flex items-center gap-2 text-lg sm:text-xl"><PieChartIcon className="h-5 w-5 shrink-0"/> Expense Breakdown</CardTitle>
                 <CardDescription>
                   Where your money is going. Select a single category to see sub-category details.
                 </CardDescription>
               </div>
-              <ExportReportDialog 
-                transactions={expenseTransactionsForExport} 
-                dateRange={dateRange}
-                chartId="expense-breakdown-card"
-                chartTitle="Expense Breakdown"
-              />
+              <div className="w-full sm:w-auto [&>button]:w-full">
+                <ExportReportDialog
+                  transactions={expenseTransactionsForExport}
+                  dateRange={dateRange}
+                  chartId="expense-breakdown-card"
+                  chartTitle="Expense Breakdown"
+                />
+              </div>
             </div>
           </CardHeader>
           <CardContent>
@@ -593,6 +697,10 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
 
 function AdvancedReportView() {
   const { user } = useAuth();
+  const {
+    allAccountsSelected,
+    selectedAccountIds,
+  } = useAccounts();
   const { toast } = useToast();
   const [reports, setReports] = useState<QuarterlyReport[]>([]);
   const [loading, setLoading] = useState(true);
@@ -610,18 +718,24 @@ function AdvancedReportView() {
       reportsRef,
       (snapshot) => {
         const fetchedReports = snapshot.docs
-          .map(doc => doc.data() as QuarterlyReport)
+          .map(reportDocument => ({
+            ...reportDocument.data(),
+            id: reportDocument.id,
+          }) as QuarterlyReport)
           .sort(
             (a, b) =>
               quarterlyPeriodSortValue(b.period) -
-              quarterlyPeriodSortValue(a.period)
+                quarterlyPeriodSortValue(a.period) ||
+              (a.accountLabel ?? "All accounts").localeCompare(
+                b.accountLabel ?? "All accounts",
+              )
           );
         setReports(fetchedReports);
         setSelectedReport((currentReport) => {
           if (fetchedReports.length === 0) return null;
           if (!currentReport) return fetchedReports[0];
           return fetchedReports.find(
-            (report) => report.period === currentReport.period
+            (report) => report.id === currentReport.id
           ) ?? fetchedReports[0];
         });
         setLoading(false);
@@ -669,6 +783,9 @@ function AdvancedReportView() {
           endDate: endOfQuarter(referenceDate).toISOString(),
           notes,
           budgetIds,
+          accountIds: allAccountsSelected
+            ? undefined
+            : selectedAccountIds,
         }),
       });
       const result = await response.json();
@@ -676,7 +793,7 @@ function AdvancedReportView() {
       if (response.ok && result.report) {
         toast({
           title: "Report Generated",
-          description: `Successfully generated report for ${result.report.period}.`
+          description: `Generated ${result.report.period} for ${result.report.accountLabel ?? "all accounts"}.`
         });
         // This will be picked up by the onSnapshot listener, which will update the UI
         return true;
@@ -711,7 +828,7 @@ function AdvancedReportView() {
         title: "Report Deleted",
         description: `Report "${reportId}" has been deleted.`
       });
-      if (selectedReport?.period === reportId) {
+      if (selectedReport?.id === reportId) {
         setSelectedReport(null);
       }
     } else {
@@ -758,18 +875,26 @@ function AdvancedReportView() {
       Math.abs(totalIncome - incomeSummaryTotal) < 0.01 &&
       Math.abs(totalExpenses - expenseSummaryTotal) < 0.01 &&
       Math.abs(totalIncome - totalExpenses - selectedReport.netIncome) < 0.01;
-    const isCurrentCalculation = selectedReport.calculationVersion === 2;
+    const isCurrentCalculation =
+      (selectedReport.calculationVersion ?? 0) >= 2;
+    const reportDomId = `report-${selectedReport.id.replace(
+      /[^a-zA-Z0-9_-]/g,
+      "-",
+    )}`;
 
     return (
-      <Card id={`report-${selectedReport.period}`}>
-        <CardHeader className="flex flex-row justify-between items-start">
-          <div>
-            <CardTitle>Financial Report - {selectedReport.period}</CardTitle>
+      <Card id={reportDomId}>
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <CardTitle className="text-xl sm:text-2xl">Financial Report - {selectedReport.period}</CardTitle>
             <CardDescription>
               Generated on {format(new Date(selectedReport.createdAt.seconds * 1000), 'PPP')}
               {' · '}Covers {formatStoredReportDate(selectedReport.startDate)}–{formatStoredReportDate(selectedReport.endDate)}
             </CardDescription>
             <div className="mt-2 flex flex-wrap gap-2">
+              <Badge variant="outline">
+                {selectedReport.accountLabel ?? "All accounts"}
+              </Badge>
               <Badge variant={isReconciled ? "secondary" : "destructive"}>
                 {isReconciled ? "Totals reconciled" : "Totals need regeneration"}
               </Badge>
@@ -778,12 +903,14 @@ function AdvancedReportView() {
               )}
             </div>
           </div>
-           <ExportQuarterlyReportDialog
-              reportId={`report-${selectedReport.period}`}
-              reportTitle={`Financial Report - ${selectedReport.period}`}
-            />
+          <div className="w-full sm:w-auto [&>button]:w-full">
+            <ExportQuarterlyReportDialog
+                reportId={reportDomId}
+                reportTitle={`Financial Report - ${selectedReport.period} - ${selectedReport.accountLabel ?? "All accounts"}`}
+              />
+          </div>
         </CardHeader>
-        <CardContent className="space-y-8">
+        <CardContent className="space-y-8 px-4 sm:px-6">
            {/* Executive Summary */}
            <div>
               <h3 className="text-lg font-semibold mb-2 border-b pb-2">Executive Summary</h3>
@@ -857,7 +984,72 @@ function AdvancedReportView() {
           {selectedReport.budgetComparison && selectedReport.budgetComparison.length > 0 && (
             <div>
                 <h3 className="text-lg font-semibold mb-2 border-b pb-2">Budget vs. Actual</h3>
-                <Table>
+                <div className="space-y-3 sm:hidden">
+                  {selectedReport.budgetComparison.map((item) => (
+                    <div key={item.categoryName} className="rounded-lg border p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate font-medium">{item.categoryName}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {formatCurrency(item.actual)} of {formatCurrency(item.budget)}
+                          </p>
+                        </div>
+                        <span
+                          className={cn(
+                            "shrink-0 text-sm font-semibold tabular-nums",
+                            item.variance >= 0 ? "text-emerald-600" : "text-destructive"
+                          )}
+                        >
+                          {item.variance >= 0 ? '+' : ''}{formatCurrency(item.variance)}
+                        </span>
+                      </div>
+                      <div className="mt-3 flex items-center gap-3">
+                        <Progress
+                          value={Math.min(item.percentUsed, 100)}
+                          className={cn("h-2 flex-1", {
+                            '[&>div]:bg-destructive': item.percentUsed > 100,
+                          })}
+                        />
+                        <span className="w-12 text-right text-xs font-medium tabular-nums">
+                          {item.percentUsed.toFixed(0)}%
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                  {selectedReport.budgetComparisonTotals && (
+                    <div className="rounded-lg border bg-muted/30 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-semibold">Total</p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {formatCurrency(selectedReport.budgetComparisonTotals.actual)} of {formatCurrency(selectedReport.budgetComparisonTotals.budget)}
+                          </p>
+                        </div>
+                        <span
+                          className={cn(
+                            "text-sm font-bold tabular-nums",
+                            selectedReport.budgetComparisonTotals.variance >= 0 ? "text-emerald-600" : "text-destructive"
+                          )}
+                        >
+                          {selectedReport.budgetComparisonTotals.variance >= 0 ? '+' : ''}{formatCurrency(selectedReport.budgetComparisonTotals.variance)}
+                        </span>
+                      </div>
+                      <div className="mt-3 flex items-center gap-3">
+                        <Progress
+                          value={Math.min(selectedReport.budgetComparisonTotals.percentUsed, 100)}
+                          className={cn("h-2 flex-1", {
+                            '[&>div]:bg-destructive': selectedReport.budgetComparisonTotals.percentUsed > 100,
+                          })}
+                        />
+                        <span className="w-12 text-right text-xs font-semibold tabular-nums">
+                          {selectedReport.budgetComparisonTotals.percentUsed.toFixed(0)}%
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div className="hidden overflow-x-auto sm:block">
+                  <Table>
                     <TableHeader>
                         <TableRow>
                             <TableHead>Category</TableHead>
@@ -913,7 +1105,8 @@ function AdvancedReportView() {
                             </TableRow>
                         </TableFooter>
                     )}
-                </Table>
+                  </Table>
+                </div>
             </div>
           )}
 
@@ -922,6 +1115,25 @@ function AdvancedReportView() {
             <div>
                 <h3 className="text-lg font-semibold mb-1 border-b pb-2">Goals Snapshot</h3>
                 <p className="mb-3 text-sm text-muted-foreground">Goal balances as they existed when this report was generated.</p>
+                <div className="space-y-3 sm:hidden">
+                  {selectedReport.goalsProgress.map((item) => (
+                    <div key={item.name} className="rounded-lg border p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate font-medium">{item.name}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {formatCurrency(item.savedAmount)} saved of {formatCurrency(item.targetAmount)}
+                          </p>
+                        </div>
+                        <span className="shrink-0 text-sm font-semibold tabular-nums">
+                          {item.progress.toFixed(0)}%
+                        </span>
+                      </div>
+                      <Progress value={item.progress} className="mt-3 h-2 [&>div]:bg-primary"/>
+                    </div>
+                  ))}
+                </div>
+                <div className="hidden overflow-x-auto sm:block">
                  <Table>
                     <TableHeader>
                         <TableRow>
@@ -947,6 +1159,7 @@ function AdvancedReportView() {
                         ))}
                     </TableBody>
                 </Table>
+                </div>
             </div>
           )}
 
@@ -998,12 +1211,12 @@ function AdvancedReportView() {
   return (
     <div className="space-y-6">
         <Card>
-            <CardHeader className="flex-row justify-between items-center">
-                <div>
-                    <CardTitle className="flex items-center gap-2"><CalendarCheck/> End of Year Report</CardTitle>
+            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                    <CardTitle className="flex items-center gap-2 text-lg sm:text-xl"><CalendarCheck className="h-5 w-5 shrink-0"/> End of Year Report</CardTitle>
                     <CardDescription>A comprehensive summary of your financial activity over a full year.</CardDescription>
                 </div>
-                <Button asChild>
+                <Button asChild className="w-full sm:w-auto">
                     <Link href="/reports/eoy">View Report <ArrowRight className="ml-2 h-4 w-4"/></Link>
                 </Button>
             </CardHeader>
@@ -1012,19 +1225,84 @@ function AdvancedReportView() {
         <div>
             <h3 className="text-lg font-semibold mb-4">Quarterly Reports</h3>
             <Card>
-                <CardHeader className="flex flex-row items-center justify-between">
-                <div>
+                <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
                     <CardTitle>Generate Report</CardTitle>
                     <CardDescription>Create a financial snapshot for a specific quarter.</CardDescription>
                 </div>
-              <GenerateQuarterlyReportDialog onGenerate={handleGenerateReport} />
+                <div className="w-full sm:w-auto [&>button]:w-full">
+                  <GenerateQuarterlyReportDialog onGenerate={handleGenerateReport} />
+                </div>
                 </CardHeader>
             </Card>
         </div>
 
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-start">
-        <Card className="md:col-span-1">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-4 md:items-start">
+        <Card className="md:hidden">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Choose a generated report</CardTitle>
+            <CardDescription>Switch reports without leaving the details view.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex items-end gap-2">
+            {loading ? (
+              <div className="py-2 text-sm text-muted-foreground">Loading reports...</div>
+            ) : reports.length === 0 ? (
+              <div className="py-2 text-sm text-muted-foreground">No reports generated yet.</div>
+            ) : (
+              <>
+                <div className="min-w-0 flex-1 space-y-2">
+                  <Label htmlFor="mobile-report-selector">Report period</Label>
+                  <Select
+                    value={selectedReport?.id}
+                    onValueChange={(reportId) => {
+                      const report = reports.find((item) => item.id === reportId);
+                      if (report) setSelectedReport(report);
+                    }}
+                  >
+                    <SelectTrigger id="mobile-report-selector" className="w-full">
+                      <SelectValue placeholder="Select a report" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {reports.map((report) => (
+                        <SelectItem key={report.id} value={report.id}>
+                          {report.period} · {report.accountLabel ?? "All accounts"}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {selectedReport && (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="outline" size="icon" aria-label={`Delete ${selectedReport.period}`}>
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This action cannot be undone. This will permanently delete the report for <strong>{selectedReport.period}</strong>.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={() => handleDeleteReport(selectedReport.id)}
+                          className="bg-red-600 hover:bg-red-700"
+                        >
+                          Delete Report
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
+        <Card className="hidden md:col-span-1 md:block">
           <CardHeader>
             <CardTitle>Generated Reports</CardTitle>
           </CardHeader>
@@ -1036,17 +1314,27 @@ function AdvancedReportView() {
             ) : (
               <div className="space-y-2">
                 {reports.map(report => (
-                  <div key={report.period} className="flex items-center gap-1 group">
+                  <div key={report.id} className="flex items-center gap-1 group">
                     <Button
-                      variant={selectedReport?.period === report.period ? "secondary" : "ghost"}
+                      variant={selectedReport?.id === report.id ? "secondary" : "ghost"}
                       className="w-full justify-start flex-1"
                       onClick={() => setSelectedReport(report)}
                     >
-                      {report.period}
+                      <span className="min-w-0 truncate text-left">
+                        {report.period}
+                        <span className="block text-xs font-normal text-muted-foreground">
+                          {report.accountLabel ?? "All accounts"}
+                        </span>
+                      </span>
                     </Button>
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Delete ${report.period}`}
+                          className="h-11 w-11 opacity-100 transition-opacity sm:h-8 sm:w-8 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+                        >
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </AlertDialogTrigger>
@@ -1060,7 +1348,7 @@ function AdvancedReportView() {
                         <AlertDialogFooter>
                           <AlertDialogCancel>Cancel</AlertDialogCancel>
                           <AlertDialogAction
-                            onClick={() => handleDeleteReport(report.period)}
+                            onClick={() => handleDeleteReport(report.id)}
                             className="bg-red-600 hover:bg-red-700"
                           >
                             Delete Report
@@ -1074,7 +1362,7 @@ function AdvancedReportView() {
             )}
           </CardContent>
         </Card>
-        <div className="md:col-span-3">
+        <div className="min-w-0 md:col-span-3">
           {renderReportDetail()}
         </div>
       </div>
@@ -1083,30 +1371,38 @@ function AdvancedReportView() {
 }
 
 export default function ReportsPage() {
+    const [activeTab, setActiveTab] = useState('monthly');
+
     return (
-        <Tabs defaultValue="monthly" className="w-full">
-            <div className="flex items-center justify-between">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                    <h2 className="text-2xl font-bold tracking-tight font-headline">Reports</h2>
+                    <h2 className="text-2xl font-bold tracking-tight font-headline sm:text-3xl">Reports</h2>
                      <p className="text-muted-foreground">
                         A summary of your financial activity.
                     </p>
                 </div>
-                <TabsList>
-                    <TabsTrigger value="monthly">Monthly</TabsTrigger>
-                    <TabsTrigger value="yearly">Yearly</TabsTrigger>
-                    <TabsTrigger value="advanced">Advanced</TabsTrigger>
+                <TabsList className="grid w-full grid-cols-3 sm:w-auto">
+                    <TabsTrigger value="monthly" className="min-w-0">Monthly</TabsTrigger>
+                    <TabsTrigger value="yearly" className="min-w-0">Yearly</TabsTrigger>
+                    <TabsTrigger value="advanced" className="min-w-0">Advanced</TabsTrigger>
                 </TabsList>
             </div>
-            <TabsContent value="monthly" className="pt-6">
-                <ReportView period="monthly" />
-            </TabsContent>
-            <TabsContent value="yearly" className="pt-6">
-                <ReportView period="yearly" />
-            </TabsContent>
-            <TabsContent value="advanced" className="pt-6">
-                <AdvancedReportView />
-            </TabsContent>
+            {activeTab === 'monthly' && (
+              <TabsContent value="monthly" className="pt-6">
+                  <ReportView period="monthly" />
+              </TabsContent>
+            )}
+            {activeTab === 'yearly' && (
+              <TabsContent value="yearly" className="pt-6">
+                  <ReportView period="yearly" />
+              </TabsContent>
+            )}
+            {activeTab === 'advanced' && (
+              <TabsContent value="advanced" className="pt-6">
+                  <AdvancedReportView />
+              </TabsContent>
+            )}
         </Tabs>
     )
 }

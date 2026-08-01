@@ -27,6 +27,21 @@ type ChatMessage = {
   createdAt: number;
 };
 
+const APP_ROUTE_PREFIXES = [
+  "/dashboard",
+  "/transactions",
+  "/accounts",
+  "/categories",
+  "/reports",
+  "/compare",
+  "/budgets",
+  "/goals",
+  "/recurring",
+  "/receipt-scanner",
+  "/projections",
+  "/settings",
+] as const;
+
 function uid() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
@@ -34,25 +49,31 @@ function uid() {
 export function ChatFab() {
   const pathname = usePathname();
   const [open, setOpen] = React.useState(false);
+  const isAppRoute = APP_ROUTE_PREFIXES.some(
+    (route) => pathname === route || pathname.startsWith(`${route}/`),
+  );
 
-  // Optional: don’t show floating widget on the dedicated /chat page
-  if (pathname === "/chat") return null;
+  if (!isAppRoute) return null;
 
   return (
-    <div className="fixed bottom-5 right-5 z-50">
+    <div className="ledgerly-chat-fab fixed z-50">
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetTrigger asChild>
           <Button
             size="icon"
-            className="h-12 w-12 rounded-full shadow-lg"
-            aria-label="Open chat"
+            className="h-[3.25rem] w-[3.25rem] rounded-full shadow-lg motion-reduce:transition-none"
+            aria-label="Open Ledgerly Assistant"
+            title="Open Ledgerly Assistant"
           >
             <MessageSquare className="h-5 w-5" />
           </Button>
         </SheetTrigger>
 
-        <SheetContent side="right" className="w-full sm:max-w-lg p-0">
-          <SheetHeader className="border-b px-4 py-3">
+        <SheetContent
+          side="right"
+          className="flex h-[100dvh] max-h-[100dvh] w-full flex-col overflow-hidden p-0 sm:max-w-lg [&>button:last-child]:hidden"
+        >
+          <SheetHeader className="shrink-0 border-b px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
             <div className="flex items-center justify-between">
               <SheetTitle className="text-base">Ledgerly Assistant</SheetTitle>
               <Button
@@ -66,7 +87,9 @@ export function ChatFab() {
             </div>
           </SheetHeader>
 
-          <ChatBody />
+          <div className="min-h-0 flex-1">
+            <ChatBody />
+          </div>
         </SheetContent>
       </Sheet>
     </div>
@@ -88,7 +111,13 @@ function ChatBody() {
   const bottomRef = React.useRef<HTMLDivElement | null>(null);
 
   React.useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const reduceMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    bottomRef.current?.scrollIntoView({
+      behavior: reduceMotion ? "auto" : "smooth",
+      block: "end",
+    });
   }, [messages.length, isSending]);
 
   async function sendMessage() {
@@ -174,32 +203,46 @@ function ChatBody() {
   }
 
   return (
-    <div className="flex h-[calc(100dvh-56px)] flex-col">
-      <ScrollArea className="flex-1">
-        <div className="space-y-4 p-4">
+    <div className="flex h-full min-h-0 flex-col">
+      <ScrollArea className="min-h-0 flex-1" aria-label="Conversation">
+        <div
+          className="space-y-4 p-4"
+          role="log"
+          aria-live="polite"
+          aria-relevant="additions text"
+          aria-busy={isSending}
+        >
           {messages.map((m) => (
             <Bubble key={m.id} role={m.role} content={m.content} />
           ))}
 
           {isSending && (
-            <div className="text-xs text-muted-foreground">Thinking…</div>
+            <div className="text-xs text-muted-foreground" role="status">
+              Thinking…
+            </div>
           )}
 
           <div ref={bottomRef} />
         </div>
       </ScrollArea>
 
-      <div className="border-t p-3">
+      <div className="shrink-0 border-t bg-card px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
         <div className="flex items-end gap-2">
           <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onKeyDown}
             placeholder="Message… (Enter to send)"
-            className="min-h-[44px] resize-none"
+            className="max-h-32 min-h-11 resize-none text-base md:text-sm"
             disabled={isSending}
+            aria-label="Message Ledgerly Assistant"
+            enterKeyHint="send"
           />
-          <Button onClick={() => void sendMessage()} disabled={isSending || !input.trim()}>
+          <Button
+            onClick={() => void sendMessage()}
+            disabled={isSending || !input.trim()}
+            aria-label={isSending ? "Sending message" : "Send message"}
+          >
             Send
           </Button>
         </div>
@@ -214,10 +257,14 @@ function ChatBody() {
 function Bubble({ role, content }: { role: ChatRole; content: string }) {
   const isUser = role === "user";
   return (
-    <div className={cn("flex w-full", isUser ? "justify-end" : "justify-start")}>
+    <div
+      className={cn("flex w-full", isUser ? "justify-end" : "justify-start")}
+      role="article"
+      aria-label={`${isUser ? "You" : "Ledgerly Assistant"} said`}
+    >
       <div
         className={cn(
-          "max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-2 text-sm shadow-sm",
+          "max-w-[90%] [overflow-wrap:anywhere] whitespace-pre-wrap rounded-2xl px-4 py-2 text-sm shadow-sm sm:max-w-[85%]",
           isUser ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
         )}
       >

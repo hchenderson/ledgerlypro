@@ -4,6 +4,9 @@
 
 @layer base {
   :root {
+    --ledgerly-mobile-nav-height: 4rem;
+    --ledgerly-ad-height: 6.625rem;
+
     --background: 150 50% 97%; /* Soft white #F0FAF5 */
     --foreground: 210 16% 12%; /* Charcoal #1A1F24 */
     --card: 0 0% 100%;
@@ -77,13 +80,23 @@
 
   html {
     scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
   }
 
   body {
+    min-height: 100dvh;
     @apply bg-background font-body text-foreground antialiased;
     background-image:
       radial-gradient(circle at 0 0, hsl(var(--secondary) / 0.32), transparent 28rem),
       linear-gradient(to bottom, hsl(var(--background)), hsl(var(--background)));
+  }
+
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    touch-action: manipulation;
   }
 
   h1,
@@ -98,6 +111,21 @@
   ::selection {
     background: hsl(var(--secondary));
     color: hsl(var(--secondary-foreground));
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+      scroll-behavior: auto !important;
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }
 
@@ -114,5 +142,85 @@
       linear-gradient(rgba(40, 89, 67, 0.04) 1px, transparent 1px),
       linear-gradient(90deg, rgba(40, 89, 67, 0.04) 1px, transparent 1px);
     background-size: 32px 32px;
+  }
+
+  .ledgerly-app-content {
+    padding-bottom: calc(
+      var(--ledgerly-mobile-nav-height) + env(safe-area-inset-bottom)
+    );
+  }
+
+  .ledgerly-app-content--with-ads {
+    padding-bottom: calc(
+      var(--ledgerly-mobile-nav-height) + var(--ledgerly-ad-height) +
+        env(safe-area-inset-bottom)
+    );
+  }
+
+  .ledgerly-ad-footer {
+    bottom: calc(
+      var(--ledgerly-mobile-nav-height) + env(safe-area-inset-bottom)
+    );
+  }
+
+  .ledgerly-mobile-sticky-action {
+    bottom: calc(
+      var(--ledgerly-mobile-nav-height) + env(safe-area-inset-bottom) + 0.5rem
+    );
+  }
+
+  body.ledgerly-app-shell--with-ads .ledgerly-mobile-sticky-action {
+    bottom: calc(
+      var(--ledgerly-mobile-nav-height) + var(--ledgerly-ad-height) +
+        env(safe-area-inset-bottom) + 0.5rem
+    );
+  }
+
+  .ledgerly-chat-fab {
+    right: max(1rem, env(safe-area-inset-right));
+    bottom: max(1rem, env(safe-area-inset-bottom));
+    transition:
+      right 200ms ease,
+      bottom 200ms ease;
+  }
+
+  body.ledgerly-app-shell .ledgerly-chat-fab {
+    bottom: calc(
+      var(--ledgerly-mobile-nav-height) + env(safe-area-inset-bottom) + 1rem
+    );
+  }
+
+  body.ledgerly-app-shell.ledgerly-app-shell--with-ads .ledgerly-chat-fab {
+    bottom: calc(
+      var(--ledgerly-mobile-nav-height) + var(--ledgerly-ad-height) +
+        env(safe-area-inset-bottom) + 1rem
+    );
+  }
+
+  @media (min-width: 768px) {
+    .ledgerly-app-content {
+      padding-bottom: 0;
+    }
+
+    .ledgerly-app-content--with-ads {
+      padding-bottom: var(--ledgerly-ad-height);
+    }
+
+    .ledgerly-ad-footer {
+      bottom: 0;
+    }
+
+    .ledgerly-mobile-sticky-action {
+      bottom: auto;
+    }
+
+    body.ledgerly-app-shell .ledgerly-chat-fab {
+      right: 1.25rem;
+      bottom: 1.25rem;
+    }
+
+    body.ledgerly-app-shell.ledgerly-app-shell--with-ads .ledgerly-chat-fab {
+      bottom: calc(var(--ledgerly-ad-height) + 1rem);
+    }
   }
 }

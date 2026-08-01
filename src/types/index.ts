@@ -7,10 +7,54 @@ export type Transaction = {
   date: string;
   description: string;
   amount: number;
-  type: "income" | "expense";
+  type: "income" | "expense" | "transfer";
   category: string;
   categoryId?: string;
+  accountId?: string;
+  transferId?: string;
+  transferDirection?: "in" | "out";
+  linkedTransactionId?: string;
   source?: "actual" | "recurring" | "baseline";
+};
+
+export type AccountType =
+  | "checking"
+  | "savings"
+  | "credit"
+  | "cash"
+  | "other";
+
+export type AccountClassification = "asset" | "liability";
+
+export type Account = {
+  id: string;
+  name: string;
+  type: AccountType;
+  classification: AccountClassification;
+  openingBalance: number;
+  institution?: string;
+  lastFour?: string;
+  currency: "USD";
+  isArchived?: boolean;
+  isDefault?: boolean;
+  createdAt: string;
+};
+
+export type AccountReconciliationStatus =
+  | "reconciled"
+  | "needs-review";
+
+export type AccountReconciliation = {
+  id: string;
+  accountId: string;
+  statementDate: string;
+  statementBalance: number;
+  ledgerBalance: number;
+  difference: number;
+  transactionCount: number;
+  status: AccountReconciliationStatus;
+  note?: string;
+  createdAt: string;
 };
 
 export type NavItem = {
@@ -52,6 +96,7 @@ export type RecurringTransaction = {
   type: "income" | "expense";
   category: string;
   categoryId?: string;
+  accountId?: string;
   frequency: "daily" | "weekly" | "monthly" | "yearly";
   startDate: string;
   lastAddedDate?: string;
@@ -111,7 +156,10 @@ export interface Formula {
 }
 
 export interface QuarterlyReport {
+  id: string;
   period: string;
+  accountIds?: string[];
+  accountLabel?: string;
   startDate: string;
   endDate: string;
   createdAt: Timestamp;

@@ -6,7 +6,10 @@ export type TransactionImportSummary = {
 };
 
 export function transactionFingerprint(
-  transaction: Pick<Transaction, 'date' | 'description' | 'amount' | 'type'>
+  transaction: Pick<
+    Transaction,
+    'date' | 'description' | 'amount' | 'type' | 'accountId'
+  >
 ): string {
   const date = new Date(transaction.date);
   const dateKey = Number.isNaN(date.getTime())
@@ -14,7 +17,13 @@ export function transactionFingerprint(
     : date.toISOString().slice(0, 10);
   const description = transaction.description.trim().toLocaleLowerCase().replace(/\s+/g, ' ');
   const amountInCents = Math.round(Math.abs(transaction.amount) * 100);
-  return [dateKey, description, amountInCents, transaction.type].join('|');
+  return [
+    transaction.accountId ?? 'primary-account',
+    dateKey,
+    description,
+    amountInCents,
+    transaction.type,
+  ].join('|');
 }
 
 export function prepareTransactionImport(

@@ -94,6 +94,13 @@ Recurring occurrences are materialized by the authenticated
 retry or a second browser session updates the same occurrence instead of creating a
 duplicate.
 
+Multi-account data lives in `users/{uid}/accounts`, with each transaction and
+recurring entry assigned to an account. Transfers are stored as an atomically linked
+pair of balance-only entries and are excluded from income, expense, budget, and
+cash-flow metrics. Statement reconciliations are audit records: a mismatch is saved
+for review and never changes transactions automatically. Potential transfer matches
+also require user confirmation before either entry is reclassified.
+
 ## Firebase deployment
 
 Firebase client data is stored below `users/{uid}` and protected by

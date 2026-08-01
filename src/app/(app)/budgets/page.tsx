@@ -2,8 +2,10 @@
 "use client";
 
 import { useState, useMemo, useEffect } from 'react';
-import { useUserData } from '@/hooks/use-user-data';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { useBudgets } from '@/hooks/use-budgets';
+import { useCategories } from '@/hooks/use-categories';
+import { useTransactionsForYears } from '@/hooks/use-transactions';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { PlusCircle, Target, Trash2, Edit, Star, ChevronLeft, ChevronRight, ArrowUp, ArrowDown } from 'lucide-react';
@@ -34,7 +36,7 @@ import { useToast } from '@/hooks/use-toast';
 import type { Budget, Category, SubCategory } from '@/types';
 import { FeatureGate } from '@/components/feature-gate';
 import { cn } from '@/lib/utils';
-import { addMonths, subMonths, format } from 'date-fns';
+import { format } from 'date-fns';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useAuth } from '@/hooks/use-auth';
 import { useComparison } from '@/hooks/use-comparison';
@@ -87,7 +89,8 @@ function ComparisonCard({ deltas, comparisonPeriod }: { deltas: any, comparisonP
 
 function BudgetDialog({ budget, onSave, children, isReadOnly }: { budget?: Budget, onSave: (values: BudgetFormValues, id?: string) => void, children: React.ReactNode, isReadOnly: boolean }) {
   const [isOpen, setIsOpen] = useState(false);
-  const { categories, budgets } = useUserData();
+  const { categories } = useCategories();
+  const { budgets } = useBudgets();
   const { activeYear } = useAuth();
   const { toast } = useToast();
 
@@ -226,9 +229,9 @@ function BudgetDialog({ budget, onSave, children, isReadOnly }: { budget?: Budge
               )}
             />
 
-            <DialogFooter>
-              <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
-              <Button type="submit" disabled={isReadOnly}>Save Budget</Button>
+            <DialogFooter className="gap-2">
+              <DialogClose asChild><Button type="button" variant="outline" className="h-11 sm:h-10">Cancel</Button></DialogClose>
+              <Button type="submit" disabled={isReadOnly} className="h-11 sm:h-10">Save Budget</Button>
             </DialogFooter>
           </form>
         </Form>
@@ -239,9 +242,29 @@ function BudgetDialog({ budget, onSave, children, isReadOnly }: { budget?: Budge
 
 
 function BudgetsPageContent() {
-  const { allTransactions, budgets, addBudget, updateBudget, deleteBudget, toggleFavoriteBudget, loading, getBudgetDetails, categories } = useUserData();
+  const {
+    budgets,
+    addBudget,
+    updateBudget,
+    deleteBudget,
+    toggleFavoriteBudget,
+    loading: budgetsLoading,
+    getBudgetDetails,
+  } = useBudgets();
+  const {
+    categories,
+    loading: categoriesLoading,
+  } = useCategories();
   const { activeYear } = useAuth();
   const { isComparing, comparisonYear } = useComparison();
+  const {
+    transactions: allTransactions,
+    loading: transactionsLoading,
+  } = useTransactionsForYears(
+    comparisonYear ? [activeYear, comparisonYear] : [activeYear],
+  );
+  const loading =
+    budgetsLoading || categoriesLoading || transactionsLoading;
   
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
   const systemYear = new Date().getFullYear();
@@ -299,8 +322,23 @@ function BudgetsPageContent() {
   }
   
   const handleNextMonth = () => {
-    setCurrentMonth(prev => prev === 11 ? 0 : prev - 1);
+    setCurrentMonth(prev => prev === 11 ? 0 : prev + 1);
   }
+
+  const moveBudget = (index: number, direction: -1 | 1) => {
+    if (isReadOnly) return;
+
+    const targetIndex = index + direction;
+    if (!orderedBudgets || targetIndex < 0 || targetIndex >= orderedBudgets.length) return;
+
+    setOrder((currentOrder) => {
+      const nextOrder = currentOrder.length
+        ? [...currentOrder]
+        : orderedBudgets.map((budget) => budget.id);
+      [nextOrder[index], nextOrder[targetIndex]] = [nextOrder[targetIndex], nextOrder[index]];
+      return nextOrder;
+    });
+  };
 
   const handleDragStart = (e: React.DragEvent<HTMLDivElement>, item: any, index: number) => {
     if (isReadOnly) return;
@@ -331,17 +369,22 @@ function BudgetsPageContent() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight font-headline flex items-center gap-2">
-            <Target/> Budgets
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h2 className="flex items-center gap-2 font-headline text-2xl font-bold tracking-tight">
+            <Target className="h-6 w-6 shrink-0"/> Budgets
           </h2>
           <p className="text-muted-foreground">
-            Track your spending against your goals for {activeYear}. You can drag and drop cards to reorder them.
+            Track your spending against your goals for {activeYear}. Reorder cards with the
+            arrow controls on mobile or drag and drop on larger screens.
           </p>
         </div>
         <BudgetDialog onSave={handleSaveBudget} isReadOnly={isReadOnly}>
-             <Button disabled={isReadOnly} title={isReadOnly ? "You cannot add a budget to a past year." : "Create new budget"}>
+             <Button
+                disabled={isReadOnly}
+                title={isReadOnly ? "You cannot add a budget to a past year." : "Create new budget"}
+                className="h-11 w-full sm:h-10 sm:w-auto"
+             >
                 <PlusCircle className="mr-2 h-4 w-4" />
                 New Budget
             </Button>
@@ -349,14 +392,26 @@ function BudgetsPageContent() {
       </div>
 
        <Card>
-            <CardHeader className="flex flex-col items-center gap-4 sm:flex-row sm:justify-between">
-                <CardTitle>Viewing Budgets For</CardTitle>
-                <div className="flex items-center gap-2">
-                    <Button variant="outline" size="icon" onClick={handlePrevMonth}>
+            <CardHeader className="flex flex-col items-stretch gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <CardTitle className="text-center sm:text-left">Viewing Budgets For</CardTitle>
+                <div className="grid grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-11 w-11"
+                      onClick={handlePrevMonth}
+                      aria-label="View previous month"
+                    >
                         <ChevronLeft className="h-4 w-4" />
                     </Button>
-                    <span className="font-semibold text-lg min-w-[150px] text-center">{format(selectedDate, "MMMM yyyy")}</span>
-                    <Button variant="outline" size="icon" onClick={handleNextMonth}>
+                    <span className="min-w-0 text-center text-lg font-semibold">{format(selectedDate, "MMMM yyyy")}</span>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-11 w-11"
+                      onClick={handleNextMonth}
+                      aria-label="View next month"
+                    >
                         <ChevronRight className="h-4 w-4" />
                     </Button>
                 </div>
@@ -390,26 +445,72 @@ function BudgetsPageContent() {
                 onDragEnd={handleDragEnd}
                 className={cn(isReadOnly ? "cursor-default" : "cursor-move", draggedItem?.item.id === budget.id && "opacity-50")}
             >
-                <Card>
+                <Card className="min-w-0 overflow-hidden">
                 <CardHeader>
-                    <div className="flex justify-between items-start">
-                        <div>
-                            <CardTitle>{budget.categoryName}</CardTitle>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                            <CardTitle className="break-words">{budget.categoryName}</CardTitle>
                             <CardDescription>
                                 {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(budget.amount)} / {budget.period === 'yearly' ? 'year' : 'month'}
                             </CardDescription>
                         </div>
-                        <div className="flex gap-1">
-                            <Button variant="ghost" size="icon" onClick={() => !isReadOnly && toggleFavoriteBudget(budget.id)} disabled={isReadOnly}>
+                        <div className="flex flex-wrap items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-11 w-11 md:h-10 md:w-10"
+                              onClick={() => !isReadOnly && toggleFavoriteBudget(budget.id)}
+                              disabled={isReadOnly}
+                              aria-label={budget.isFavorite ? `Remove ${budget.categoryName} from favorites` : `Favorite ${budget.categoryName}`}
+                            >
                                 <Star className={cn("h-4 w-4", budget.isFavorite ? "text-yellow-400 fill-yellow-400" : "text-muted-foreground")}/>
                             </Button>
                             <BudgetDialog budget={budget} onSave={handleSaveBudget} isReadOnly={isReadOnly}>
-                                <Button variant="ghost" size="icon" disabled={isReadOnly}><Edit className="h-4 w-4"/></Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-11 w-11 md:h-10 md:w-10"
+                                  disabled={isReadOnly}
+                                  aria-label={`Edit ${budget.categoryName} budget`}
+                                >
+                                  <Edit className="h-4 w-4"/>
+                                </Button>
                             </BudgetDialog>
-                            <Button variant="ghost" size="icon" onClick={() => !isReadOnly && deleteBudget(budget.id)} disabled={isReadOnly}>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-11 w-11 md:h-10 md:w-10"
+                              onClick={() => !isReadOnly && deleteBudget(budget.id)}
+                              disabled={isReadOnly}
+                              aria-label={`Delete ${budget.categoryName} budget`}
+                            >
                                 <Trash2 className="h-4 w-4 text-red-500"/>
                             </Button>
                         </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 md:hidden">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-11"
+                        onClick={() => moveBudget(index, -1)}
+                        disabled={isReadOnly || index === 0}
+                        aria-label={`Move ${budget.categoryName} budget up`}
+                      >
+                        <ArrowUp className="h-4 w-4" />
+                        Move up
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-11"
+                        onClick={() => moveBudget(index, 1)}
+                        disabled={isReadOnly || index === orderedBudgets.length - 1}
+                        aria-label={`Move ${budget.categoryName} budget down`}
+                      >
+                        <ArrowDown className="h-4 w-4" />
+                        Move down
+                      </Button>
                     </div>
                 </CardHeader>
                 <CardContent>
@@ -419,7 +520,7 @@ function BudgetsPageContent() {
                         <span className="text-sm text-muted-foreground"> Spent</span>
                     </div>
                     <Progress value={budget.progress} className={budget.progress > 100 ? '[&>div]:bg-destructive' : ''} />
-                    <div className="flex justify-between text-sm">
+                    <div className="flex flex-wrap justify-between gap-2 text-sm">
                         <span className="font-medium">
                         {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(budget.amount)} Goal
                         </span>

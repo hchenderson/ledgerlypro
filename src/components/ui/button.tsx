@@ -21,10 +21,10 @@ const buttonVariants = cva(
         link: "text-primary underline-offset-4 shadow-none hover:text-primary/80 hover:underline",
       },
       size: {
-        default: "h-10 px-4 py-2",
-        sm: "h-9 px-3.5",
+        default: "h-11 px-4 py-2 md:h-10",
+        sm: "h-11 px-3.5 md:h-9",
         lg: "h-12 px-7 text-base",
-        icon: "h-10 w-10",
+        icon: "h-11 w-11 md:h-10 md:w-10",
       },
       outline: {
         true: "border border-inherit",

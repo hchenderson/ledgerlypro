@@ -11,7 +11,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { NewCategorySheet } from "@/components/new-category-sheet";
 import { Badge } from "@/components/ui/badge";
 import type { Category, SubCategory } from "@/types";
-import { useUserData } from "@/hooks/use-user-data";
+import { useCategories } from "@/hooks/use-categories";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -75,9 +75,9 @@ function EditCategoryDialog({
                     <Label htmlFor="category-name">New Name</Label>
                     <Input id="category-name" value={newName} onChange={(e) => setNewName(e.target.value)} disabled={isReadOnly} />
                 </div>
-                <DialogFooter>
-                    <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                    <Button onClick={handleSave} disabled={isReadOnly}>Save Changes</Button>
+                <DialogFooter className="gap-2">
+                    <DialogClose asChild><Button variant="outline" className="h-11 sm:h-10">Cancel</Button></DialogClose>
+                    <Button onClick={handleSave} disabled={isReadOnly} className="h-11 sm:h-10">Save Changes</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
@@ -85,7 +85,7 @@ function EditCategoryDialog({
 }
 
 function SubCategoryList({ items, parentId, parentPath = [] }: { items: SubCategory[], parentId: string, parentPath?: string[] }) {
-    const { addSubCategory, updateSubCategory, deleteSubCategory } = useUserData();
+    const { addSubCategory, updateSubCategory, deleteSubCategory } = useCategories();
     const { activeYear } = useAuth();
     const systemYear = new Date().getFullYear();
     const isReadOnly = activeYear < systemYear;
@@ -101,23 +101,39 @@ function SubCategoryList({ items, parentId, parentPath = [] }: { items: SubCateg
     if (!items || items.length === 0) return null;
 
     return (
-        <div className="pl-6 border-l ml-6">
+        <div className="ml-2 border-l pl-3 sm:ml-6 sm:pl-6">
             {items.map(sub => {
                 const Icon = sub.icon ? (icons as any)[sub.icon] as icons.LucideIcon : Sparkles;
                 return (
                     <div key={sub.id} className="py-2">
-                        <div className="flex items-center justify-between group">
-                            <div className="flex items-center gap-4">
-                                <Icon className="h-5 w-5 text-muted-foreground" />
-                                <span>{sub.name}</span>
+                        <div className="group flex min-w-0 items-center justify-between gap-2">
+                            <div className="flex min-w-0 items-center gap-2 sm:gap-4">
+                                <Icon className="h-5 w-5 shrink-0 text-muted-foreground" />
+                                <span className="truncate">{sub.name}</span>
                             </div>
-                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <div className="flex shrink-0 items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
                                 <EditCategoryDialog name={sub.name} onSave={(oldName, newName) => updateSubCategory(parentId, sub.id, oldName, newName, parentPath)} isReadOnly={isReadOnly}>
-                                    <Button variant="ghost" size="icon" disabled={isReadOnly}><Edit className="h-4 w-4"/></Button>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-11 w-11 md:h-10 md:w-10"
+                                        disabled={isReadOnly}
+                                        aria-label={`Edit ${sub.name}`}
+                                    >
+                                        <Edit className="h-4 w-4"/>
+                                    </Button>
                                 </EditCategoryDialog>
                                 <AlertDialog>
                                     <AlertDialogTrigger asChild>
-                                        <Button variant="ghost" size="icon" disabled={isReadOnly}><Trash2 className="h-4 w-4 text-red-500"/></Button>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-11 w-11 md:h-10 md:w-10"
+                                            disabled={isReadOnly}
+                                            aria-label={`Delete ${sub.name}`}
+                                        >
+                                            <Trash2 className="h-4 w-4 text-red-500"/>
+                                        </Button>
                                     </AlertDialogTrigger>
                                     <AlertDialogContent>
                                         <AlertDialogHeader>
@@ -143,7 +159,7 @@ function SubCategoryList({ items, parentId, parentPath = [] }: { items: SubCateg
                                 parentCategoryName={sub.name}
                                 isReadOnly={isReadOnly}
                             >
-                                <button className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors ml-9 mt-2" disabled={isReadOnly}>
+                                <button className="ml-7 mt-2 flex min-h-11 items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-primary sm:ml-9" disabled={isReadOnly}>
                                     <PlusCircle className="h-4 w-4"/>
                                     Add Sub-category
                                 </button>
@@ -157,7 +173,7 @@ function SubCategoryList({ items, parentId, parentPath = [] }: { items: SubCateg
 }
 
 export default function CategoriesPage() {
-    const { categories, addCategory, addSubCategory, updateCategory, deleteCategory, importCategories, loading } = useUserData();
+    const { categories, addCategory, addSubCategory, updateCategory, deleteCategory, importCategories, loading } = useCategories();
     const { toast } = useToast();
     const { activeYear } = useAuth();
     const systemYear = new Date().getFullYear();
@@ -202,21 +218,37 @@ export default function CategoriesPage() {
                 const Icon = category.icon ? (icons as any)[category.icon] as icons.LucideIcon : Sparkles;
                 return (
                     <AccordionItem value={category.id} key={category.id}>
-                        <div className="flex items-center justify-between group">
-                            <AccordionTrigger className="hover:no-underline flex-1">
-                                <div className="flex items-center gap-4 flex-1">
-                                    <Icon className="h-6 w-6 text-muted-foreground" />
-                                    <span className="text-base font-medium">{category.name}</span>
-                                    <Badge variant={category.type === 'income' ? 'default' : 'secondary'}>{category.type}</Badge>
+                        <div className="group flex min-w-0 items-center justify-between">
+                            <AccordionTrigger className="min-w-0 flex-1 hover:no-underline">
+                                <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-4">
+                                    <Icon className="h-6 w-6 shrink-0 text-muted-foreground" />
+                                    <span className="truncate text-left text-base font-medium">{category.name}</span>
+                                    <Badge className="hidden shrink-0 min-[390px]:inline-flex" variant={category.type === 'income' ? 'default' : 'secondary'}>{category.type}</Badge>
                                 </div>
                             </AccordionTrigger>
-                            <div className="flex items-center gap-1 mr-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <div className="mr-1 flex shrink-0 items-center gap-1 opacity-100 transition-opacity md:mr-2 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
                                 <EditCategoryDialog name={category.name} onSave={(oldName, newName) => updateCategory(category.id, oldName, newName)} isReadOnly={isReadOnly}>
-                                    <Button variant="ghost" size="icon" disabled={isReadOnly}><Edit className="h-4 w-4"/></Button>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-11 w-11 md:h-10 md:w-10"
+                                        disabled={isReadOnly}
+                                        aria-label={`Edit ${category.name}`}
+                                    >
+                                        <Edit className="h-4 w-4"/>
+                                    </Button>
                                 </EditCategoryDialog>
                                 <AlertDialog>
                                     <AlertDialogTrigger asChild>
-                                        <Button variant="ghost" size="icon" disabled={isReadOnly}><Trash2 className="h-4 w-4 text-red-500"/></Button>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-11 w-11 md:h-10 md:w-10"
+                                            disabled={isReadOnly}
+                                            aria-label={`Delete ${category.name}`}
+                                        >
+                                            <Trash2 className="h-4 w-4 text-red-500"/>
+                                        </Button>
                                     </AlertDialogTrigger>
                                     <AlertDialogContent>
                                         <AlertDialogHeader>
@@ -234,7 +266,7 @@ export default function CategoriesPage() {
                             </div>
                         </div>
                         <AccordionContent>
-                            <div className="pl-6 space-y-3">
+                            <div className="space-y-3 pl-2 sm:pl-6">
                             <SubCategoryList items={category.subCategories || []} parentId={category.id} />
                                 <NewCategorySheet 
                                     onAddCategory={(name) => handleAddSubCategory(category.id, name)} 
@@ -242,7 +274,7 @@ export default function CategoriesPage() {
                                     parentCategoryName={category.name}
                                     isReadOnly={isReadOnly}
                                 >
-                                    <button className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors" disabled={isReadOnly}>
+                                    <button className="flex min-h-11 items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-primary" disabled={isReadOnly}>
                                         <PlusCircle className="h-4 w-4"/>
                                         Add Sub-category
                                     </button>
@@ -266,14 +298,14 @@ export default function CategoriesPage() {
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center justify-between">
-                <div>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
                     <h2 className="text-2xl font-bold tracking-tight font-headline">Categories</h2>
                     <p className="text-muted-foreground">
                         Organize your transactions with categories and sub-categories.
                     </p>
                 </div>
-                <div className="flex gap-2">
+                <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto [&>button]:h-11 [&>button]:w-full sm:[&>button]:h-10 sm:[&>button]:w-auto [&>button:last-child]:col-span-2">
                     <ImportCategoriesDialog onImport={handleImport}/>
                     <ExportCategoriesDialog categories={categories} />
                     <NewCategorySheet onAddCategory={handleAddCategory} isReadOnly={isReadOnly} />
@@ -284,7 +316,7 @@ export default function CategoriesPage() {
                 <CardHeader>
                     <CardTitle>Income Categories</CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="px-3 sm:px-6">
                     {renderCategoryList(categories.filter(c => c.type === 'income'))}
                 </CardContent>
             </Card>
@@ -293,7 +325,7 @@ export default function CategoriesPage() {
                 <CardHeader>
                     <CardTitle>Expense Categories</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-2">
+                <CardContent className="space-y-2 px-3 sm:px-6">
                     {renderCategoryList(categories.filter(c => c.type === 'expense'))}
                      <NewCategorySheet onAddCategory={handleAddCategory} isReadOnly={isReadOnly}>
                         <Button variant="ghost" className="w-full mt-2" disabled={isReadOnly}>

@@ -53,8 +53,18 @@ export function StatCard({
 
   useEffect(() => {
     if (isDate) return;
+
+    const reduceMotionOrSmallScreen = window.matchMedia(
+      "(prefers-reduced-motion: reduce), (max-width: 767px)"
+    ).matches;
+    if (reduceMotionOrSmallScreen) {
+      setDisplayValue(value);
+      prevValueRef.current = value;
+      return;
+    }
     
     let startTimestamp: number | null = null;
+    let animationFrame = 0;
     const duration = 1000; // 1 second animation
     const startValue = prevValueRef.current;
     const endValue = value;
@@ -67,33 +77,36 @@ export function StatCard({
       setDisplayValue(startValue + (endValue - startValue) * easedProgress);
 
       if (progress < 1) {
-        window.requestAnimationFrame(step);
+        animationFrame = window.requestAnimationFrame(step);
       } else {
         setDisplayValue(endValue);
         prevValueRef.current = endValue;
       }
     };
 
-    window.requestAnimationFrame(step);
+    animationFrame = window.requestAnimationFrame(step);
 
     return () => {
-      // No cleanup needed as requestAnimationFrame stops itself
+      window.cancelAnimationFrame(animationFrame);
     };
   }, [value, isDate]);
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium">{title}</CardTitle>
-        <Icon className="h-4 w-4 text-muted-foreground" />
+    <Card className="min-w-0 overflow-hidden">
+      <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0 p-4 pb-2 sm:p-6 sm:pb-2">
+        <CardTitle className="min-w-0 break-words text-sm font-medium">{title}</CardTitle>
+        <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
       </CardHeader>
-      <CardContent>
+      <CardContent className="px-4 pb-4 sm:px-6 sm:pb-6">
         {!isDate && (
-          <div className="font-code text-2xl font-bold">
+          <div
+            className="break-words font-code text-xl font-bold leading-tight tabular-nums min-[375px]:text-2xl"
+            title={formatValue(value, isPercentage)}
+          >
             {formatValue(displayValue, isPercentage)}
           </div>
         )}
-        <p className={cn("text-xs text-muted-foreground",
+        <p className={cn("break-words text-xs text-muted-foreground",
           isDate && "text-sm font-medium",
           variant === 'success' && 'text-emerald-600',
           variant === 'danger' && 'text-red-600'

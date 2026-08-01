@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { getAdditionalUserInfo } from "firebase/auth";
 import { useAuth } from "@/hooks/use-auth";
+import Link from "next/link";
 import {
   Dialog,
   DialogContent,
@@ -47,7 +48,7 @@ function ForgotPasswordDialog() {
             await sendPasswordResetEmail(email);
             toast({ title: 'Password Reset Email Sent', description: 'Check your inbox for a link to reset your password.' });
             setIsOpen(false);
-        } catch (error) {
+        } catch {
             toast({ variant: 'destructive', title: 'Error', description: 'Could not send password reset email. Please try again.' });
         }
     }
@@ -55,16 +56,26 @@ function ForgotPasswordDialog() {
     return (
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
             <DialogTrigger asChild>
-                <Button variant="link" size="sm" className="w-full px-0 font-normal">Forgot Password?</Button>
+                <Button variant="link" size="sm" className="w-full px-0 font-normal">Forgot password?</Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-lg">
                 <DialogHeader>
                     <DialogTitle>Reset Your Password</DialogTitle>
                     <DialogDescription>Enter your email address and we'll send you a link to reset your password.</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-2">
                     <Label htmlFor="reset-email">Email</Label>
-                    <Input id="reset-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="m@example.com" />
+                    <Input
+                        id="reset-email"
+                        type="email"
+                        autoComplete="email"
+                        autoCapitalize="none"
+                        spellCheck={false}
+                        inputMode="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="m@example.com"
+                    />
                 </div>
                 <DialogFooter>
                     <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
@@ -160,8 +171,8 @@ export default function SignInPage() {
     }
 
     return (
-        <div className="brand-grid flex min-h-screen items-center justify-center bg-brand-mint p-4 lg:p-8">
-            <div className="grid w-full max-w-5xl overflow-hidden rounded-[2rem] border border-primary/10 bg-card shadow-[0_35px_90px_-45px_rgba(41,58,94,0.5)] lg:grid-cols-[0.9fr_1.1fr]">
+        <main className="brand-grid flex min-h-dvh items-start justify-center overflow-y-auto bg-brand-mint px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] sm:items-center lg:p-8">
+            <div className="my-auto grid w-full max-w-5xl overflow-hidden rounded-3xl border border-primary/10 bg-card shadow-[0_35px_90px_-45px_rgba(41,58,94,0.5)] lg:grid-cols-[0.9fr_1.1fr] lg:rounded-[2rem]">
                 <aside className="brand-surface relative hidden min-h-[680px] flex-col justify-between overflow-hidden p-10 text-white lg:flex">
                     <LedgerlyLogo className="absolute -bottom-16 -right-16 h-80 w-80 text-white opacity-[0.055]" />
                     <LedgerlyBrand inverse stacked markClassName="h-12 w-12" />
@@ -184,31 +195,50 @@ export default function SignInPage() {
                     </div>
                 </aside>
 
-                <section className="flex items-center p-6 sm:p-10 lg:p-14">
+                <section className="flex items-center p-5 sm:p-10 lg:p-14">
                   <div className="mx-auto w-full max-w-md">
-                    <LedgerlyBrand className="mb-10 lg:hidden" />
+                    <LedgerlyBrand className="mb-7 lg:hidden" />
                     <Card className="w-full border-0 bg-transparent shadow-none">
-                      <CardHeader className="px-0 pb-7 text-left">
+                      <CardHeader className="px-0 pb-6 text-left">
                         <div className="mb-5 hidden h-12 w-12 items-center justify-center rounded-xl bg-secondary/70 lg:flex">
                             <LedgerlyLogo className="h-8 w-8" />
                         </div>
-                        <CardTitle className="text-3xl text-brand-navy dark:text-white">Welcome back</CardTitle>
+                        <CardTitle className="text-2xl text-brand-navy dark:text-white sm:text-3xl">Welcome back</CardTitle>
                         <CardDescription className="mt-2 text-base">Sign in to continue, or create your Ledgerly Pro account.</CardDescription>
                       </CardHeader>
                       <CardContent className="space-y-5 px-0">
-                     <form onSubmit={handleEmailSignIn} className="space-y-4">
+                     <form onSubmit={handleEmailSignIn} className="space-y-4" aria-busy={isSubmitting}>
                         <div className="space-y-2">
                             <Label htmlFor="email">Email</Label>
-                            <Input id="email" type="email" autoComplete="email" placeholder="you@example.com" required value={email} onChange={e => setEmail(e.target.value)} />
+                            <Input
+                                id="email"
+                                type="email"
+                                inputMode="email"
+                                autoComplete="email"
+                                autoCapitalize="none"
+                                spellCheck={false}
+                                placeholder="you@example.com"
+                                required
+                                value={email}
+                                onChange={e => setEmail(e.target.value)}
+                            />
                         </div>
                         <div className="space-y-2">
                             <div className="flex items-center justify-between">
                                 <Label htmlFor="password">Password</Label>
                             </div>
-                            <Input id="password" type="password" autoComplete="current-password" placeholder="Enter your password" required value={password} onChange={e => setPassword(e.target.value)} />
+                            <Input
+                                id="password"
+                                type="password"
+                                autoComplete="current-password"
+                                placeholder="Enter your password"
+                                required
+                                value={password}
+                                onChange={e => setPassword(e.target.value)}
+                            />
                             <ForgotPasswordDialog />
                         </div>
-                        <div className="grid grid-cols-2 gap-3 pt-1">
+                        <div className="grid grid-cols-1 gap-3 pt-1 min-[380px]:grid-cols-2">
                             <Button type="submit" className="w-full" disabled={isSubmitting}>
                                 {isSubmitting ? 'Signing In...' : 'Sign In'}
                             </Button>
@@ -217,6 +247,9 @@ export default function SignInPage() {
                             </Button>
                         </div>
                     </form>
+                    <p className="sr-only" role="status" aria-live="polite">
+                        {isSubmitting ? "Authentication in progress" : ""}
+                    </p>
 
                     <div className="relative">
                         <div className="absolute inset-0 flex items-center">
@@ -235,10 +268,20 @@ export default function SignInPage() {
                     </Button>
                       </CardContent>
                     </Card>
-                    <p className="mt-8 text-center text-xs leading-5 text-muted-foreground">By continuing, you agree to Ledgerly Pro's terms and acknowledge the privacy policy.</p>
+                    <p className="mt-7 text-center text-xs leading-5 text-muted-foreground">
+                        By continuing, you agree to Ledgerly Pro&apos;s{" "}
+                        <Link className="font-medium text-primary underline-offset-4 hover:underline" href="/terms">
+                            terms
+                        </Link>{" "}
+                        and acknowledge the{" "}
+                        <Link className="font-medium text-primary underline-offset-4 hover:underline" href="/privacy">
+                            privacy policy
+                        </Link>
+                        .
+                    </p>
                   </div>
                 </section>
             </div>
-        </div>
+        </main>
     );
 }

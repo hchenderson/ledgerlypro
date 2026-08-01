@@ -3,11 +3,14 @@
 "use client";
 
 import { useState, useEffect, useMemo } from 'react';
-import { useUserData } from '@/hooks/use-user-data';
+import { useCategories } from '@/hooks/use-categories';
+import { useGoals } from '@/hooks/use-goals';
+import { useAllTransactions } from '@/hooks/use-transactions';
+import { buildProcessedGoals } from '@/lib/goal-progress';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { PlusCircle, Target, Trash2, Edit, Award, Banknote, CalendarIcon, Link2 } from 'lucide-react';
+import { PlusCircle, Target, Trash2, Edit, Award, Banknote, CalendarIcon } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -67,7 +70,7 @@ type GoalFormValues = z.infer<typeof goalFormSchema>;
 function GoalDialog({ goal, onSave, children, isReadOnly }: { goal?: Goal, onSave: (values: GoalFormValues, id?: string) => void, children: React.ReactNode, isReadOnly: boolean }) {
   const [isOpen, setIsOpen] = useState(false);
   const { toast } = useToast();
-  const { categories } = useUserData();
+  const { categories } = useCategories();
 
   const form = useForm<GoalFormValues>({
     resolver: zodResolver(goalFormSchema),
@@ -168,7 +171,7 @@ function GoalDialog({ goal, onSave, children, isReadOnly }: { goal?: Goal, onSav
             <FormField control={form.control} name="targetDate" render={({ field }) => (
                 <FormItem className="flex flex-col">
                   <FormLabel>Target Date (Optional)</FormLabel>
-                  <Popover><PopoverTrigger asChild><FormControl><Button variant="outline" disabled={isReadOnly} className={cn("pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>{field.value ? (format(field.value, "PPP")) : (<span>Pick a date</span>)}<CalendarIcon className="ml-auto h-4 w-4 opacity-50" /></Button></FormControl></PopoverTrigger><PopoverContent className="w-auto p-0" align="start"><Calendar mode="single" selected={field.value} onSelect={field.onChange} disabled={(date) => date < new Date() || isReadOnly} initialFocus /></PopoverContent></Popover>
+                  <Popover><PopoverTrigger asChild><FormControl><Button variant="outline" disabled={isReadOnly} className={cn("h-11 w-full pl-3 text-left font-normal sm:h-10", !field.value && "text-muted-foreground")}>{field.value ? (format(field.value, "PPP")) : (<span>Pick a date</span>)}<CalendarIcon className="ml-auto h-4 w-4 opacity-50" /></Button></FormControl></PopoverTrigger><PopoverContent className="w-auto p-0" align="start"><Calendar mode="single" selected={field.value} onSelect={field.onChange} disabled={(date) => date < new Date() || isReadOnly} initialFocus /></PopoverContent></Popover>
                   <FormMessage />
                 </FormItem>
               )} />
@@ -207,7 +210,7 @@ function GoalDialog({ goal, onSave, children, isReadOnly }: { goal?: Goal, onSav
                             <Popover>
                                 <PopoverTrigger asChild>
                                     <FormControl>
-                                        <Button variant="outline" className={cn("pl-3 text-left font-normal", !field.value && "text-muted-foreground")} disabled={isReadOnly}>
+                                        <Button variant="outline" className={cn("h-11 w-full pl-3 text-left font-normal sm:h-10", !field.value && "text-muted-foreground")} disabled={isReadOnly}>
                                             {field.value ? (format(field.value, "PPP")) : (<span>Pick a start date</span>)}
                                             <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                                         </Button>
@@ -229,9 +232,9 @@ function GoalDialog({ goal, onSave, children, isReadOnly }: { goal?: Goal, onSav
                 />
             )}
             
-            <DialogFooter>
-              <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
-              <Button type="submit" disabled={isReadOnly}>Save Goal</Button>
+            <DialogFooter className="gap-2">
+              <DialogClose asChild><Button type="button" variant="outline" className="h-11 sm:h-10">Cancel</Button></DialogClose>
+              <Button type="submit" disabled={isReadOnly} className="h-11 sm:h-10">Save Goal</Button>
             </DialogFooter>
           </form>
         </Form>
@@ -267,7 +270,12 @@ function AddContributionDialog({ goal, onContribute }: { goal: Goal, onContribut
     return (
          <Dialog open={isOpen} onOpenChange={setIsOpen}>
             <DialogTrigger asChild>
-                <Button size="sm" variant="outline" disabled={!!goal.linkedCategoryId}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={!!goal.linkedCategoryId}
+                  className="h-11 w-full sm:h-9 sm:w-auto"
+                >
                   <Banknote className="mr-2 h-4 w-4" /> Add Funds
                 </Button>
             </DialogTrigger>
@@ -293,11 +301,11 @@ function AddContributionDialog({ goal, onContribute }: { goal: Goal, onContribut
                       }}
                     />
                 </div>
-                <DialogFooter>
+                <DialogFooter className="gap-2">
                     <DialogClose asChild>
-                      <Button variant="outline">Cancel</Button>
+                      <Button variant="outline" className="h-11 sm:h-10">Cancel</Button>
                     </DialogClose>
-                    <Button onClick={handleContribute}>Add Contribution</Button>
+                    <Button onClick={handleContribute} className="h-11 sm:h-10">Add Contribution</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
@@ -305,7 +313,34 @@ function AddContributionDialog({ goal, onContribute }: { goal: Goal, onContribut
 }
 
 function GoalsPageContent() {
-  const { goals, addGoal, updateGoal, deleteGoal, addContributionToGoal, loading } = useUserData();
+  const {
+    goals: rawGoals,
+    addGoal,
+    updateGoal,
+    deleteGoal,
+    addContributionToGoal,
+    loading: goalsLoading,
+  } = useGoals();
+  const {
+    categories,
+    loading: categoriesLoading,
+  } = useCategories();
+  const {
+    transactions: goalTransactions,
+    loading: transactionsLoading,
+  } = useAllTransactions();
+  const loading =
+    goalsLoading || categoriesLoading || transactionsLoading;
+  const goals = useMemo(
+    () =>
+      buildProcessedGoals(
+        rawGoals,
+        categories,
+        goalTransactions,
+        loading,
+      ),
+    [categories, goalTransactions, loading, rawGoals],
+  );
   const { toast } = useToast();
   const { activeYear } = useAuth();
   const systemYear = new Date().getFullYear();
@@ -367,7 +402,7 @@ function GoalsPageContent() {
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-2xl font-bold tracking-tight font-headline flex items-center gap-2">
               <Target/> Savings Goals
@@ -399,17 +434,21 @@ function GoalsPageContent() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight font-headline flex items-center gap-2">
-            <Target/> Savings Goals
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h2 className="flex items-center gap-2 font-headline text-2xl font-bold tracking-tight">
+            <Target className="h-6 w-6 shrink-0"/> Savings Goals
           </h2>
           <p className="text-muted-foreground">
             Set and track your long-term savings goals.
           </p>
         </div>
         <GoalDialog onSave={handleSaveGoal} isReadOnly={isReadOnly}>
-             <Button disabled={isReadOnly} title={isReadOnly ? "You cannot add goals in a past year." : "Add new goal"}>
+             <Button
+               disabled={isReadOnly}
+               title={isReadOnly ? "You cannot add goals in a past year." : "Add new goal"}
+               className="h-11 w-full sm:h-10 sm:w-auto"
+             >
                 <PlusCircle className="mr-2 h-4 w-4" />
                 New Goal
             </Button>
@@ -417,7 +456,7 @@ function GoalsPageContent() {
       </div>
 
       {goals.length === 0 ? (
-        <Card className="flex flex-col items-center justify-center py-12">
+        <Card className="flex flex-col items-center justify-center py-8 sm:py-12">
              <CardHeader className="text-center">
                  <Target className="mx-auto h-12 w-12 text-muted-foreground" />
                 <CardTitle className="mt-4">No Goals Created</CardTitle>
@@ -443,8 +482,8 @@ function GoalsPageContent() {
             return (
               <Card key={processedGoal.id} className={cn(isCompleted && "bg-primary/5 border-primary/20")}>
                 <CardHeader>
-                  <div className="flex justify-between items-start">
-                      <div className="flex-1 min-w-0 pr-2">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0 flex-1 sm:pr-2">
                           <CardTitle className="flex items-center gap-2 flex-wrap">
                             {isCompleted && <Award className="h-5 w-5 text-primary flex-shrink-0"/>}
                             {processedGoal.autoTrackingActive && (
@@ -460,15 +499,27 @@ function GoalsPageContent() {
                               : 'No target date'}
                           </CardDescription>
                       </div>
-                      <div className="flex gap-1 flex-shrink-0">
+                      <div className="flex shrink-0 gap-1">
                           <GoalDialog goal={processedGoal} onSave={handleSaveGoal} isReadOnly={isReadOnly}>
-                               <Button variant="ghost" size="icon" disabled={isReadOnly}>
+                               <Button
+                                 variant="ghost"
+                                 size="icon"
+                                 className="h-11 w-11 md:h-10 md:w-10"
+                                 disabled={isReadOnly}
+                                 aria-label={`Edit ${processedGoal.name}`}
+                               >
                                  <Edit className="h-4 w-4"/>
                                </Button>
                           </GoalDialog>
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
-                              <Button variant="ghost" size="icon" disabled={isReadOnly}>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-11 w-11 md:h-10 md:w-10"
+                                disabled={isReadOnly}
+                                aria-label={`Delete ${processedGoal.name}`}
+                              >
                                 <Trash2 className="h-4 w-4 text-red-500"/>
                               </Button>
                             </AlertDialogTrigger>
@@ -527,7 +578,7 @@ function GoalsPageContent() {
                     </div>
                   </div>
                 </CardContent>
-                <CardFooter>
+                <CardFooter className="block">
                   {!isCompleted && (
                     <AddContributionDialog 
                       goal={processedGoal} 

@@ -21,8 +21,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { SearchableMultiSelect } from "@/components/ui/searchable-multi-select";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { useUserData } from "@/hooks/use-user-data";
+import { useBudgets } from "@/hooks/use-budgets";
+import { useCategories } from "@/hooks/use-categories";
 import { findCategoryPathById } from "@/lib/category-tree";
+import { useAccounts } from "@/hooks/use-accounts";
 
 export function GenerateQuarterlyReportDialog({
   onGenerate,
@@ -34,7 +36,13 @@ export function GenerateQuarterlyReportDialog({
   ) => boolean | Promise<boolean>;
 }) {
   const { toast } = useToast();
-  const { budgets, categories } = useUserData();
+  const { budgets } = useBudgets();
+  const { categories } = useCategories();
+  const {
+    accounts,
+    selectedAccountIds,
+    allAccountsSelected,
+  } = useAccounts();
   const [isOpen, setIsOpen] = useState(false);
   const [referenceDate, setReferenceDate] = useState<Date | undefined>(
     subQuarters(new Date(), 1)
@@ -42,6 +50,15 @@ export function GenerateQuarterlyReportDialog({
   const [notes, setNotes] = useState<string>();
   const [selectedBudgetIds, setSelectedBudgetIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const accountScope = allAccountsSelected
+    ? "All accounts"
+    : selectedAccountIds
+        .map(
+          (accountId) =>
+            accounts.find((account) => account.id === accountId)?.name,
+        )
+        .filter(Boolean)
+        .join(", ");
 
   const budgetOptions = useMemo(
     () =>
@@ -91,7 +108,7 @@ export function GenerateQuarterlyReportDialog({
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button>
+        <Button aria-label="Generate a new quarterly report">
           <PlusCircle className="mr-2 h-4 w-4" />
           New Quarterly Report
         </Button>
@@ -101,23 +118,31 @@ export function GenerateQuarterlyReportDialog({
           <DialogTitle>Generate Quarterly Report</DialogTitle>
           <DialogDescription>
             Select a date within the quarter you want to report on. You can also
-            include specific budgets.
+            include specific budgets. The report will use the current account
+            filter.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4 py-4">
+        <div className="space-y-5 py-2 sm:py-4">
           <div className="space-y-2">
-            <Label>Reference Date</Label>
+            <Label htmlFor="quarterly-report-reference-date">Reference Date</Label>
             <Popover>
               <PopoverTrigger asChild>
                 <Button
+                  id="quarterly-report-reference-date"
                   variant="outline"
-                  className="w-full justify-start text-left font-normal"
+                  className="w-full min-w-0 justify-start overflow-hidden text-left font-normal"
+                  aria-label={`Reference date: ${referenceDate ? format(referenceDate, "PPP") : "not selected"}`}
                 >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {referenceDate ? format(referenceDate, "PPP") : "Select a date"}
+                  <CalendarIcon className="mr-2 h-4 w-4 shrink-0" />
+                  <span className="truncate">
+                    {referenceDate ? format(referenceDate, "PPP") : "Select a date"}
+                  </span>
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-auto p-0">
+              <PopoverContent
+                className="w-auto max-w-[calc(100vw-1rem)] overflow-x-auto p-0"
+                align="center"
+              >
                 <Calendar
                   mode="single"
                   selected={referenceDate}
@@ -138,9 +163,17 @@ export function GenerateQuarterlyReportDialog({
                 .
               </p>
             )}
+            <p className="rounded-lg bg-muted/50 px-3 py-2 text-sm">
+              <span className="font-medium">Account scope:</span>{" "}
+              {accountScope || "Selected accounts"}
+            </p>
           </div>
-          <div className="space-y-2">
-            <Label>
+          <div
+            className="space-y-2"
+            role="group"
+            aria-labelledby="quarterly-report-budgets-label"
+          >
+            <Label id="quarterly-report-budgets-label">
               Budgets to Include ({referenceDate ? getYear(referenceDate) : 'select a year'})
             </Label>
             <SearchableMultiSelect
@@ -150,12 +183,15 @@ export function GenerateQuarterlyReportDialog({
               placeholder="All matching-year budgets"
             />
             <p className="text-xs text-muted-foreground">
-              Leave this empty to include every budget from the report year.
+              {selectedBudgetIds.length > 0
+                ? `${selectedBudgetIds.length} budget${selectedBudgetIds.length === 1 ? "" : "s"} selected.`
+                : "Leave this empty to include every budget from the report year."}
             </p>
           </div>
           <div className="space-y-2">
-            <Label>Notes (Optional)</Label>
+            <Label htmlFor="quarterly-report-notes">Notes (Optional)</Label>
             <Textarea
+              id="quarterly-report-notes"
               placeholder="Add any notes or commentary for this report..."
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
@@ -165,9 +201,9 @@ export function GenerateQuarterlyReportDialog({
         </div>
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="outline">Cancel</Button>
+            <Button variant="outline" disabled={isLoading}>Cancel</Button>
           </DialogClose>
-          <Button onClick={handleGenerate} disabled={isLoading}>
+          <Button onClick={handleGenerate} disabled={isLoading} aria-busy={isLoading}>
             {isLoading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Generating...

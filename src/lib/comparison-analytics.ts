@@ -226,7 +226,7 @@ const computeSnapshot = (
     savingsRate: income > 0 ? (net / income) * 100 : 0,
     transactionCount,
     averageTransaction:
-      transactions.length > 0 ? totalVolume / transactions.length : 0,
+      transactionCount > 0 ? totalVolume / transactionCount : 0,
     averageMonthlyNet: monthCount > 0 ? net / monthCount : 0,
     largestExpense,
   };
@@ -326,7 +326,7 @@ export function computeYearComparison(
         if (transactionDateParts(transaction)?.month !== monthIndex) continue;
         const amount = transactionAmount(transaction);
         if (transaction.type === "income") income += amount;
-        else expenses += amount;
+        else if (transaction.type === "expense") expenses += amount;
       }
       return { income, expenses, net: income - expenses };
     };

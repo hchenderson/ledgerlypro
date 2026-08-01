@@ -47,4 +47,73 @@ describe("computeDashboardAnalytics", () => {
 
     expect(result.overviewData.map((point) => point.name)).toEqual(["Jan", "Mar"]);
   });
+
+  it("keeps transfers out of income and expenses while updating an account balance", () => {
+    const transferOut = {
+      ...transaction(
+        "transfer-out",
+        "2025-03-05T12:00:00.000Z",
+        200,
+        "transfer",
+      ),
+      transferDirection: "out" as const,
+    };
+    const transferIn = {
+      ...transaction(
+        "transfer-in",
+        "2025-03-05T12:00:00.000Z",
+        200,
+        "transfer",
+      ),
+      transferDirection: "in" as const,
+    };
+
+    const allAccounts = computeDashboardAnalytics(
+      [transferOut, transferIn],
+      1_500,
+      new Date(2025, 2, 1),
+    );
+    const sourceAccount = computeDashboardAnalytics(
+      [transferOut],
+      1_000,
+      new Date(2025, 2, 1),
+    );
+
+    expect(allAccounts).toMatchObject({
+      totalIncome: 0,
+      totalExpenses: 0,
+      currentBalance: 1_500,
+      savingsRate: 0,
+    });
+    expect(sourceAccount).toMatchObject({
+      totalIncome: 0,
+      totalExpenses: 0,
+      currentBalance: 800,
+    });
+  });
+
+  it("normalizes legacy negative amounts", () => {
+    const result = computeDashboardAnalytics(
+      [
+        transaction(
+          "legacy-income",
+          "2025-01-01T12:00:00.000Z",
+          -500,
+          "income",
+        ),
+        transaction(
+          "legacy-expense",
+          "2025-01-02T12:00:00.000Z",
+          -125,
+          "expense",
+        ),
+      ],
+      0,
+      new Date(2025, 0, 1),
+    );
+
+    expect(result.totalIncome).toBe(500);
+    expect(result.totalExpenses).toBe(125);
+    expect(result.currentBalance).toBe(375);
+  });
 });

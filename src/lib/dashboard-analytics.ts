@@ -1,6 +1,8 @@
 import { format, getMonth, getYear, parseISO, subMonths } from "date-fns";
 
 import type { Transaction } from "@/types";
+import { transferBalanceDelta } from "@/lib/accounts";
+import { transactionAmount } from "@/lib/financial-summary";
 
 export interface DashboardAnalytics {
   totalIncome: number;
@@ -31,6 +33,7 @@ export function computeDashboardAnalytics(
   let currentMonthExpenses = 0;
   let previousMonthIncome = 0;
   let previousMonthExpenses = 0;
+  let transferNet = 0;
 
   const monthlyData = new Map<
     string,
@@ -40,24 +43,36 @@ export function computeDashboardAnalytics(
   for (const transaction of transactions) {
     const transactionDate = parseISO(transaction.date);
     if (Number.isNaN(transactionDate.getTime())) continue;
+    const amount = transactionAmount(transaction);
 
-    if (transaction.type === "income") totalIncome += transaction.amount;
-    else totalExpenses += transaction.amount;
+    if (transaction.type === "transfer") {
+      transferNet += transferBalanceDelta(transaction);
+      continue;
+    }
+
+    if (transaction.type === "income") totalIncome += amount;
+    else if (transaction.type === "expense") {
+      totalExpenses += amount;
+    }
 
     const transactionMonth = getMonth(transactionDate);
     const transactionYear = getYear(transactionDate);
 
     if (transactionYear === referenceYear && transactionMonth === referenceMonth) {
-      if (transaction.type === "income") currentMonthIncome += transaction.amount;
-      else currentMonthExpenses += transaction.amount;
+      if (transaction.type === "income") currentMonthIncome += amount;
+      else if (transaction.type === "expense") {
+        currentMonthExpenses += amount;
+      }
     }
 
     if (
       transactionYear === previousMonthYear &&
       transactionMonth === previousMonth
     ) {
-      if (transaction.type === "income") previousMonthIncome += transaction.amount;
-      else previousMonthExpenses += transaction.amount;
+      if (transaction.type === "income") previousMonthIncome += amount;
+      else if (transaction.type === "expense") {
+        previousMonthExpenses += amount;
+      }
     }
 
     const monthDate = new Date(transactionYear, transactionMonth, 1);
@@ -68,14 +83,22 @@ export function computeDashboardAnalytics(
       income: 0,
       expense: 0,
     };
-    point[transaction.type] += transaction.amount;
+    if (transaction.type === "income") {
+      point.income += amount;
+    } else if (transaction.type === "expense") {
+      point.expense += amount;
+    }
     monthlyData.set(key, point);
   }
 
   return {
     totalIncome,
     totalExpenses,
-    currentBalance: startingBalanceForYear + totalIncome - totalExpenses,
+    currentBalance:
+      startingBalanceForYear +
+      totalIncome -
+      totalExpenses +
+      transferNet,
     overviewData: [...monthlyData.values()]
       .sort((a, b) => a.date.getTime() - b.date.getTime())
       .map(({ name, income, expense }) => ({ name, income, expense })),

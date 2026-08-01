@@ -3,7 +3,6 @@ import type { ForecastTx } from "./expandRecurringBetween";
 import { normalizeMerchant } from "./merchant-normalize";
 
 type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6;
-type TxType = "income" | "expense";
 
 const avg = (xs: number[]) => (xs.length ? xs.reduce((a,b)=>a+b,0) / xs.length : 0);
 

@@ -116,41 +116,61 @@ export default function WelcomePage() {
     const progress = (step / 2) * 100;
 
     return (
-        <div className="brand-grid flex min-h-screen items-center justify-center bg-brand-mint p-4 md:p-8">
-          <div className="w-full max-w-2xl">
-            <LedgerlyBrand className="mx-auto mb-7" />
-            <Card className="w-full overflow-hidden border-primary/10 shadow-[0_28px_70px_-40px_rgba(41,58,94,0.5)]">
-                <CardHeader>
+        <main className="brand-grid flex min-h-dvh items-start justify-center overflow-y-auto bg-brand-mint px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] sm:items-center md:p-8">
+          <div className="my-auto w-full max-w-2xl">
+            <LedgerlyBrand className="mx-auto mb-5 sm:mb-7" />
+            <Card className="w-full border-primary/10 shadow-[0_28px_70px_-40px_rgba(41,58,94,0.5)]">
+                <CardHeader className="p-4 sm:p-6">
                     <p className="text-center text-xs font-semibold uppercase tracking-[0.18em] text-primary">Account setup</p>
-                    <CardTitle className="text-center text-2xl text-brand-navy dark:text-white">Build your financial foundation</CardTitle>
+                    <CardTitle className="text-center text-xl text-brand-navy dark:text-white sm:text-2xl">Build your financial foundation</CardTitle>
                     <CardDescription className="text-center">Two quick steps, then your workspace is ready.</CardDescription>
                 </CardHeader>
-                <CardContent>
-                    <Progress value={progress} className="mb-8" />
+                <CardContent className="px-4 pb-5 sm:px-6 sm:pb-6">
+                    <Progress
+                        value={progress}
+                        className="mb-6 motion-reduce:[&>div]:transition-none sm:mb-8"
+                        aria-label={`Setup progress: step ${step} of 2`}
+                        aria-valuetext={`Step ${step} of 2`}
+                    />
                     {step === 1 && (
-                        <div className="space-y-4 text-center animate-in fade-in-0 duration-500">
+                        <div className="animate-in space-y-4 text-center fade-in-0 duration-500 motion-reduce:animate-none">
                             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
                                 <User className="h-6 w-6" />
                             </div>
                             <h3 className="text-xl font-semibold">What should we call you?</h3>
                             <p className="text-muted-foreground">This will be used to personalize your experience.</p>
-                             <div className="space-y-2 text-left max-w-sm mx-auto">
+                             <div className="mx-auto max-w-sm space-y-2 text-left">
                                 <Label htmlFor="name">Full Name</Label>
-                                <Input id="name" placeholder="e.g. Jane Doe" value={name} onChange={(e) => setName(e.target.value)} />
+                                <Input
+                                    id="name"
+                                    autoComplete="name"
+                                    enterKeyHint="next"
+                                    placeholder="e.g. Jane Doe"
+                                    value={name}
+                                    onChange={(e) => setName(e.target.value)}
+                                />
                             </div>
                         </div>
                     )}
                     {step === 2 && (
-                         <div className="space-y-4 text-center animate-in fade-in-0 duration-500">
+                         <div className="animate-in space-y-4 text-center fade-in-0 duration-500 motion-reduce:animate-none">
                              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
                                 <Wallet className="h-6 w-6" />
                             </div>
                             <h3 className="text-xl font-semibold">Set up your account</h3>
                             <p className="text-muted-foreground">You can change these settings later.</p>
-                             <div className="space-y-4 text-left max-w-sm mx-auto">
+                             <div className="mx-auto max-w-sm space-y-4 text-left">
                                 <div className="space-y-2">
                                     <Label htmlFor="starting-balance">Starting Balance (Optional)</Label>
-                                    <Input id="starting-balance" type="number" placeholder="0.00" value={startingBalance} onChange={(e) => setStartingBalance(e.target.value)} />
+                                    <Input
+                                        id="starting-balance"
+                                        type="number"
+                                        inputMode="decimal"
+                                        step="0.01"
+                                        placeholder="0.00"
+                                        value={startingBalance}
+                                        onChange={(e) => setStartingBalance(e.target.value)}
+                                    />
                                 </div>
                                 <div className="space-y-2" role="radiogroup" aria-label="How to begin">
                                     {([
@@ -168,7 +188,7 @@ export default function WelcomePage() {
                                                 aria-checked={selected}
                                                 onClick={() => setSetupMode(option.value)}
                                                 className={cn(
-                                                    'flex w-full items-start gap-3 rounded-xl border p-3.5 text-left transition-all',
+                                                    'flex min-h-11 w-full touch-manipulation items-start gap-3 rounded-xl border p-3.5 text-left outline-none transition-all focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none',
                                                     selected ? 'border-primary bg-secondary/45 shadow-sm' : 'hover:border-primary/25 hover:bg-muted/50'
                                                 )}
                                             >
@@ -185,23 +205,26 @@ export default function WelcomePage() {
                         </div>
                     )}
                 </CardContent>
-                <CardFooter className="flex justify-between">
-                    <Button variant="outline" onClick={handleBack} disabled={step === 1 || isSubmitting}>
+                <CardFooter className="sticky bottom-0 z-10 grid grid-cols-2 gap-3 rounded-b-xl border-t bg-card/95 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur-sm sm:px-6 sm:pt-4">
+                    <Button type="button" variant="outline" onClick={handleBack} disabled={step === 1 || isSubmitting}>
                         <ArrowLeft className="mr-2 h-4 w-4" /> Back
                     </Button>
                     {step < 2 ? (
-                        <Button onClick={handleNext} disabled={!name && step === 1}>
+                        <Button type="button" onClick={handleNext} disabled={!name && step === 1}>
                             Next <ArrowRight className="ml-2 h-4 w-4" />
                         </Button>
                     ) : (
-                        <Button onClick={handleFinish} disabled={isSubmitting}>
-                             {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        <Button type="button" onClick={handleFinish} disabled={isSubmitting} aria-busy={isSubmitting}>
+                             {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />}
                             Finish Setup
                         </Button>
                     )}
+                    <span className="sr-only" role="status" aria-live="polite">
+                        {isSubmitting ? "Finishing account setup" : ""}
+                    </span>
                 </CardFooter>
             </Card>
           </div>
-        </div>
+        </main>
     );
 }
