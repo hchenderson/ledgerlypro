@@ -44,6 +44,7 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { FeatureGate } from '@/components/feature-gate';
 import { useAuth } from '@/hooks/use-auth';
+import { useEnvelopes } from '@/hooks/use-envelopes';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -63,6 +64,7 @@ const recurringFormSchema = z.object({
   category: z.string().min(1, 'Please select a category.'),
   categoryId: z.string().min(1, 'Please select a category.'),
   accountId: z.string().min(1, 'Please select an account.'),
+  envelopeId: z.string().optional(),
   frequency: z.enum(['daily', 'weekly', 'monthly', 'yearly']),
   startDate: z.date(),
 });
@@ -85,6 +87,8 @@ function RecurringForm({ transaction, onSave, categories, closeDialog, isReadOnl
     primaryAccountId,
     selectedAccountIds,
   } = useAccounts();
+  const { budgetingMode } = useAuth();
+  const { activeEnvelopes } = useEnvelopes();
   const selectedActiveAccountId =
     selectedAccountIds.length === 1 &&
     activeAccounts.some(
@@ -105,6 +109,7 @@ function RecurringForm({ transaction, onSave, categories, closeDialog, isReadOnl
         selectedActiveAccountId ??
         primaryAccountId ??
         '',
+      envelopeId: transaction.envelopeId ?? 'none',
     } : {
       description: '',
       amount: 0,
@@ -113,6 +118,7 @@ function RecurringForm({ transaction, onSave, categories, closeDialog, isReadOnl
       categoryId: '',
       accountId:
         selectedActiveAccountId ?? primaryAccountId ?? '',
+      envelopeId: 'none',
       frequency: 'monthly',
       startDate: new Date(),
     }
@@ -206,6 +212,23 @@ function RecurringForm({ transaction, onSave, categories, closeDialog, isReadOnl
               <SelectContent>{availableCategories.map(category => (<SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>))}</SelectContent>
             </Select><FormMessage /></FormItem>
         )} />
+        {type === 'expense' && budgetingMode !== 'tracking' && activeEnvelopes.length > 0 ? (
+          <FormField control={form.control} name="envelopeId" render={({ field }) => (
+            <FormItem><FormLabel>Envelope (Optional)</FormLabel>
+              <Select onValueChange={field.onChange} value={field.value} disabled={isReadOnly}>
+                <FormControl><SelectTrigger><SelectValue placeholder="No envelope" /></SelectTrigger></FormControl>
+                <SelectContent>
+                  <SelectItem value="none">No envelope</SelectItem>
+                  {activeEnvelopes.map((envelope) => (
+                    <SelectItem key={envelope.id} value={envelope.id}>{envelope.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Future occurrences will use this envelope when they post.</p>
+              <FormMessage />
+            </FormItem>
+          )} />
+        ) : null}
         <FormField control={form.control} name="frequency" render={({ field }) => (
           <FormItem><FormLabel>Frequency</FormLabel>
             <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isReadOnly}><FormControl><SelectTrigger><SelectValue placeholder="Select frequency" /></SelectTrigger></FormControl>
@@ -346,13 +369,21 @@ function RecurringPageContent() {
     primaryAccountId,
     getAccountName,
   } = useAccounts();
+  const { getEnvelopeName } = useEnvelopes();
   const { activeYear } = useAuth();
   const systemYear = new Date().getFullYear();
   const isReadOnly = activeYear < systemYear;
 
   const handleSave = (values: RecurringFormValues, id?: string) => {
     if (isReadOnly) return;
-    const data = { ...values, startDate: values.startDate.toISOString() };
+    const data = {
+      ...values,
+      envelopeId:
+        values.type === 'expense' && values.envelopeId !== 'none'
+          ? values.envelopeId
+          : undefined,
+      startDate: values.startDate.toISOString(),
+    };
     if (id) {
       updateRecurringTransaction(id, data);
     } else {
@@ -455,6 +486,11 @@ function RecurringPageContent() {
                         <Badge variant="secondary" className="max-w-full truncate">
                           {getAccountName(rt.accountId)}
                         </Badge>
+                        {rt.envelopeId ? (
+                          <Badge variant="outline" className="max-w-full truncate">
+                            {getEnvelopeName(rt.envelopeId)} envelope
+                          </Badge>
+                        ) : null}
                         <span className="capitalize">{rt.frequency}</span>
                       </div>
                     </div>

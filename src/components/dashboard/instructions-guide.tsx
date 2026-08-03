@@ -53,6 +53,13 @@ export function InstructionsGuide() {
             </p>
           </div>
         </div>
+        <div className="border-t pt-4 text-sm text-muted-foreground">
+          Need a more detailed walkthrough? Open the{" "}
+          <Link href="/how-to-use" className="font-medium text-primary underline underline-offset-4">
+            complete How to Use guide
+          </Link>
+          .
+        </div>
       </CardContent>
     </Card>
   );

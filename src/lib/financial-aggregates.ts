@@ -48,6 +48,8 @@ function fingerprintTransactions(transactions: Transaction[]): string {
       transaction.type,
       transaction.accountId ?? "",
       transaction.transferDirection ?? "",
+      transaction.postingStatus ?? "posted",
+      transaction.providerRemovedAt ?? "",
       transactionAmount(transaction).toFixed(2),
       transaction.categoryId ?? transaction.category,
     ].join("|");

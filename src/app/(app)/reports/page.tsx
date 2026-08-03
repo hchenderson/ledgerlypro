@@ -96,6 +96,8 @@ import {
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAccounts } from '@/hooks/use-accounts';
+import { EnvelopeReportView } from '@/components/reports/envelope-report';
+import { isFinancialTransaction } from '@/lib/accounts';
 
 const OverviewChart = dynamic(
   () =>
@@ -267,10 +269,14 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
     [dateRange, defaultDateRange],
   );
   const {
-    transactions: dateFilteredTransactions,
+    transactions: rawDateFilteredTransactions,
     loading: transactionLoading,
     error: transactionError,
   } = useTransactionRange(transactionRange);
+  const dateFilteredTransactions = useMemo(
+    () => rawDateFilteredTransactions.filter(isFinancialTransaction),
+    [rawDateFilteredTransactions],
+  );
 
   const { totalIncome, totalExpenses, netIncome } = useMemo(() => {
     const includedTransactions = dateFilteredTransactions.filter(t => {
@@ -1372,6 +1378,8 @@ function AdvancedReportView() {
 
 export default function ReportsPage() {
     const [activeTab, setActiveTab] = useState('monthly');
+    const { budgetingMode } = useAuth();
+    const showEnvelopeReports = budgetingMode !== 'tracking';
 
     return (
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -1382,10 +1390,11 @@ export default function ReportsPage() {
                         A summary of your financial activity.
                     </p>
                 </div>
-                <TabsList className="grid w-full grid-cols-3 sm:w-auto">
+                <TabsList className={cn("grid w-full sm:w-auto", showEnvelopeReports ? "grid-cols-4" : "grid-cols-3")}>
                     <TabsTrigger value="monthly" className="min-w-0">Monthly</TabsTrigger>
                     <TabsTrigger value="yearly" className="min-w-0">Yearly</TabsTrigger>
                     <TabsTrigger value="advanced" className="min-w-0">Advanced</TabsTrigger>
+                    {showEnvelopeReports ? <TabsTrigger value="envelopes" className="min-w-0">Envelopes</TabsTrigger> : null}
                 </TabsList>
             </div>
             {activeTab === 'monthly' && (
@@ -1401,6 +1410,11 @@ export default function ReportsPage() {
             {activeTab === 'advanced' && (
               <TabsContent value="advanced" className="pt-6">
                   <AdvancedReportView />
+              </TabsContent>
+            )}
+            {showEnvelopeReports && activeTab === 'envelopes' && (
+              <TabsContent value="envelopes" className="pt-6">
+                  <EnvelopeReportView />
               </TabsContent>
             )}
         </Tabs>

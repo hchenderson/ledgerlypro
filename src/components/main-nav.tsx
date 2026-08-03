@@ -18,6 +18,8 @@ import {
   Bot,
   GitCompare,
   WalletCards,
+  BookOpenText,
+  ListChecks,
 } from "lucide-react";
 import {
   SidebarMenu,
@@ -30,6 +32,7 @@ import type { NavItem } from "@/types";
 const navItems: NavItem[] = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, variant: "default" },
   { title: "Transactions", href: "/transactions", icon: ArrowRightLeft, variant: "ghost" },
+  { title: "Needs Categorization", href: "/transactions/review", icon: ListChecks, variant: "ghost", badge: "New" },
   { title: "Accounts", href: "/accounts", icon: WalletCards, variant: "ghost", badge: "New" },
   { title: "Categories", href: "/categories", icon: Tag, variant: "ghost" },
   { title: "Reports", href: "/reports", icon: PieChart, variant: "ghost" },
@@ -44,6 +47,7 @@ const navItems: NavItem[] = [
 
 
 const settingsNavItem: NavItem = { title: "Settings", href: "/settings", icon: Settings, variant: "ghost" };
+const guideNavItem: NavItem = { title: "How to Use", href: "/how-to-use", icon: BookOpenText, variant: "ghost" };
 
 
 export function MainNav() {
@@ -77,6 +81,7 @@ export function MainNav() {
       <SidebarMenuItem>
          <hr className="mx-2 my-2 border-sidebar-border"/>
       </SidebarMenuItem>
+      {renderNavItem(guideNavItem)}
       {renderNavItem(settingsNavItem)}
     </SidebarMenu>
   );

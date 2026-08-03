@@ -27,6 +27,7 @@ import {
 import {
   PRIMARY_ACCOUNT_ID,
   accountClassificationForType,
+  defaultAccountRoleForType,
 } from "@/lib/accounts";
 import { chunkArray } from "@/lib/batching";
 import { db } from "@/lib/firebase";
@@ -66,6 +67,7 @@ export interface AccountsContextType {
   updateAccount: (id: string, values: AccountUpdates) => Promise<void>;
   archiveAccount: (id: string) => Promise<void>;
   restoreAccount: (id: string) => Promise<void>;
+  setPrimaryAccount: (id: string) => Promise<void>;
   setSelectedAccountIds: (ids: string[]) => void;
   toggleAccountSelection: (id: string) => void;
   selectAllAccounts: () => void;
@@ -165,6 +167,7 @@ export function AccountsProvider({
           name: "Primary Account",
           type: "checking",
           classification: "asset",
+          role: "operating",
           openingBalance: Number(settings.startingBalance) || 0,
           currency: "USD",
           isDefault: true,
@@ -184,7 +187,16 @@ export function AccountsProvider({
             userCollectionRef(user.uid, "accounts"),
             primaryAccount.id,
           ),
-          { isDefault: true },
+          { isDefault: true, role: "operating" },
+          { merge: true },
+        );
+      } else if (primaryAccount.role !== "operating") {
+        await setDoc(
+          doc(
+            userCollectionRef(user.uid, "accounts"),
+            primaryAccount.id,
+          ),
+          { role: "operating" },
           { merge: true },
         );
       }
@@ -357,6 +369,7 @@ export function AccountsProvider({
         ...account,
         id: newDocumentRef.id,
         classification: accountClassificationForType(account.type),
+        role: account.role ?? defaultAccountRoleForType(account.type),
         currency: "USD",
         isArchived: false,
         createdAt: new Date().toISOString(),
@@ -374,6 +387,9 @@ export function AccountsProvider({
         ? {
             ...values,
             classification: accountClassificationForType(values.type),
+            ...(values.role
+              ? {}
+              : { role: defaultAccountRoleForType(values.type) }),
           }
         : values;
       await setDoc(doc(collectionRef, id), nextValues, {
@@ -408,6 +424,45 @@ export function AccountsProvider({
     [updateAccount],
   );
 
+  const setPrimaryAccount = useCallback(
+    async (id: string) => {
+      if (!user) throw new Error("User not authenticated");
+      const nextPrimary = getAccount(id);
+      if (!nextPrimary || nextPrimary.isArchived) {
+        throw new Error("Choose an active account as Main.");
+      }
+      if (nextPrimary.classification === "liability") {
+        throw new Error("A debt account cannot be the Main account.");
+      }
+      const batch = writeBatch(db);
+      accounts.forEach((account) => {
+        if (account.id === id) {
+          batch.set(
+            doc(userCollectionRef(user.uid, "accounts"), account.id),
+            { isDefault: true, role: "operating" },
+            { merge: true },
+          );
+        } else if (account.isDefault) {
+          batch.set(
+            doc(userCollectionRef(user.uid, "accounts"), account.id),
+            {
+              isDefault: false,
+              role: defaultAccountRoleForType(account.type),
+            },
+            { merge: true },
+          );
+        }
+      });
+      batch.set(
+        doc(db, "users", user.uid, "settings", "main"),
+        { primaryAccountId: id },
+        { merge: true },
+      );
+      await batch.commit();
+    },
+    [accounts, getAccount, user],
+  );
+
   const value = useMemo<AccountsContextType>(
     () => ({
       accounts,
@@ -422,6 +477,7 @@ export function AccountsProvider({
       updateAccount,
       archiveAccount,
       restoreAccount,
+      setPrimaryAccount,
       setSelectedAccountIds,
       toggleAccountSelection,
       selectAllAccounts,
@@ -446,6 +502,7 @@ export function AccountsProvider({
       primaryAccountId,
       restoreAccount,
       selectAllAccounts,
+      setPrimaryAccount,
       setSelectedAccountIds,
       toggleAccountSelection,
       updateAccount,

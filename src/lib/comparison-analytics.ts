@@ -9,6 +9,7 @@ import {
   type FinancialDateRange,
 } from "@/lib/financial-summary";
 import type { Category, Transaction } from "@/types";
+import { isFinancialTransaction } from "@/lib/accounts";
 
 export type ComparisonRangePreset =
   | "ytd"
@@ -206,6 +207,7 @@ const computeSnapshot = (
   let largestExpense: Transaction | null = null;
 
   for (const transaction of transactions) {
+    if (!isFinancialTransaction(transaction)) continue;
     const amount = transactionAmount(transaction);
     if (transaction.type === "expense") {
       if (!largestExpense || amount > transactionAmount(largestExpense)) {
@@ -324,6 +326,7 @@ export function computeYearComparison(
       let expenses = 0;
       for (const transaction of yearTransactions) {
         if (transactionDateParts(transaction)?.month !== monthIndex) continue;
+        if (!isFinancialTransaction(transaction)) continue;
         const amount = transactionAmount(transaction);
         if (transaction.type === "income") income += amount;
         else if (transaction.type === "expense") expenses += amount;

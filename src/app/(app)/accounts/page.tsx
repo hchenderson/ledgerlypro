@@ -57,9 +57,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PlaidConnectionsCard } from "@/components/plaid/plaid-connections-card";
+import { PlaidLinkButton } from "@/components/plaid/plaid-link-button";
 import { useAccountReconciliations } from "@/hooks/use-account-reconciliations";
 import { useAccounts } from "@/hooks/use-accounts";
 import { useToast } from "@/hooks/use-toast";
+import { useEnvelopes } from "@/hooks/use-envelopes";
 import {
   useAllTransactions,
   useTransactionData,
@@ -74,7 +77,13 @@ import {
   findTransferCandidates,
   type TransferCandidate,
 } from "@/lib/transfer-matching";
-import type { Account, AccountType } from "@/types";
+import type {
+  Account,
+  AccountRole,
+  AccountType,
+  Envelope,
+  TransferPurpose,
+} from "@/types";
 
 const NewTransferSheet = dynamic(
   () =>
@@ -89,6 +98,81 @@ const currency = new Intl.NumberFormat("en-US", {
   currency: "USD",
 });
 
+const ACCOUNT_ROLE_LABELS: Record<AccountRole, string> = {
+  operating: "Main operating account",
+  envelope: "Envelope account",
+  debt: "Debt or credit account",
+  standard: "Standard account",
+};
+
+interface TransferClassificationOption {
+  value: TransferPurpose;
+  label: string;
+  envelopeId?: string;
+  relatedEnvelopeId?: string;
+}
+
+function transferClassificationOptions(
+  candidate: TransferCandidate,
+  primaryAccountId: string | null,
+  envelopes: Envelope[],
+): TransferClassificationOption[] {
+  const options: TransferClassificationOption[] = [
+    { value: "ordinary", label: "Internal transfer only" },
+  ];
+  const sourceEnvelope = envelopes.find(
+    (envelope) =>
+      envelope.backingAccountId === candidate.outgoing.accountId,
+  );
+  const destinationEnvelope = envelopes.find(
+    (envelope) =>
+      envelope.backingAccountId === candidate.incoming.accountId,
+  );
+
+  if (
+    candidate.outgoing.accountId === primaryAccountId &&
+    destinationEnvelope
+  ) {
+    options.push(
+      {
+        value: "fund-envelope",
+        label: `Fund ${destinationEnvelope.name}`,
+        envelopeId: destinationEnvelope.id,
+      },
+      {
+        value: "return-unused",
+        label: `Return unused ${destinationEnvelope.name} money`,
+        envelopeId: destinationEnvelope.id,
+      },
+    );
+  } else if (
+    sourceEnvelope &&
+    candidate.incoming.accountId === primaryAccountId
+  ) {
+    options.push(
+      {
+        value: "release-to-spend",
+        label: `Release ${sourceEnvelope.name} money to spend`,
+        envelopeId: sourceEnvelope.id,
+      },
+      {
+        value: "unassign",
+        label: `Unassign money from ${sourceEnvelope.name}`,
+        envelopeId: sourceEnvelope.id,
+      },
+    );
+  } else if (sourceEnvelope && destinationEnvelope) {
+    options.push({
+      value: "reallocate",
+      label: `Move ${sourceEnvelope.name} to ${destinationEnvelope.name}`,
+      envelopeId: sourceEnvelope.id,
+      relatedEnvelopeId: destinationEnvelope.id,
+    });
+  }
+
+  return options;
+}
+
 function AccountDialog({
   account,
   open,
@@ -98,10 +182,11 @@ function AccountDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { addAccount, updateAccount } = useAccounts();
+  const { addAccount, updateAccount, setPrimaryAccount } = useAccounts();
   const { toast } = useToast();
   const [name, setName] = useState("");
   const [type, setType] = useState<AccountType>("checking");
+  const [role, setRole] = useState<AccountRole>("standard");
   const [institution, setInstitution] = useState("");
   const [lastFour, setLastFour] = useState("");
   const [openingBalance, setOpeningBalance] = useState("");
@@ -111,6 +196,11 @@ function AccountDialog({
     if (!open) return;
     setName(account?.name ?? "");
     setType(account?.type ?? "checking");
+    setRole(
+      account?.isDefault
+        ? "operating"
+        : account?.role ?? (account?.type === "credit" ? "debt" : "standard"),
+    );
     setInstitution(account?.institution ?? "");
     setLastFour(account?.lastFour ?? "");
     setOpeningBalance(
@@ -141,6 +231,7 @@ function AccountDialog({
       const values = {
         name: normalizedName,
         type,
+        role,
         openingBalance: normalizeOpeningBalance(
           type,
           numericBalance,
@@ -148,11 +239,20 @@ function AccountDialog({
         institution: institution.trim() || undefined,
         lastFour:
           lastFour.replace(/\D/g, "").slice(-4) || undefined,
+        ...(account?.openingBalanceEstimated
+          ? { openingBalanceEstimated: false }
+          : {}),
       };
       if (account) {
         await updateAccount(account.id, values);
+        if (role === "operating" && !account.isDefault) {
+          await setPrimaryAccount(account.id);
+        }
       } else {
-        await addAccount(values);
+        const added = await addAccount(values);
+        if (role === "operating") {
+          await setPrimaryAccount(added.id);
+        }
       }
       toast({
         title: account ? "Account updated" : "Account added",
@@ -200,9 +300,12 @@ function AccountDialog({
             <Label htmlFor="account-type">Account type</Label>
             <Select
               value={type}
-              onValueChange={(value) =>
-                setType(value as AccountType)
-              }
+              onValueChange={(value) => {
+                const nextType = value as AccountType;
+                setType(nextType);
+                if (nextType === "credit") setRole("debt");
+                else if (role === "debt") setRole("standard");
+              }}
             >
               <SelectTrigger id="account-type">
                 <SelectValue />
@@ -217,6 +320,30 @@ function AccountDialog({
                 )}
               </SelectContent>
             </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="account-role">Budgeting role</Label>
+            <Select
+              value={account?.isDefault ? "operating" : role}
+              disabled={Boolean(account?.isDefault)}
+              onValueChange={(value) => setRole(value as AccountRole)}
+            >
+              <SelectTrigger id="account-role"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {Object.entries(ACCOUNT_ROLE_LABELS).map(([value, label]) => (
+                  <SelectItem
+                    key={value}
+                    value={value}
+                    disabled={value === "operating" && type === "credit"}
+                  >
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Making this the Main account safely moves the Primary designation. Connect Envelope accounts from the Budgets page.
+            </p>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
@@ -304,7 +431,9 @@ export default function AccountsPage() {
     archiveAccount,
     restoreAccount,
     getAccountName,
+    primaryAccountId,
   } = useAccounts();
+  const { activeEnvelopes } = useEnvelopes();
   const {
     transactions,
     loading: transactionsLoading,
@@ -322,6 +451,8 @@ export default function AccountsPage() {
   const [transferOpen, setTransferOpen] = useState(false);
   const [linkingCandidateId, setLinkingCandidateId] =
     useState<string | null>(null);
+  const [transferPurposeByCandidate, setTransferPurposeByCandidate] =
+    useState<Record<string, TransferPurpose>>({});
 
   const accountBalances = useMemo(
     () =>
@@ -392,6 +523,7 @@ export default function AccountsPage() {
 
   const handleLinkTransfer = async (
     candidate: TransferCandidate,
+    classification: TransferClassificationOption,
   ) => {
     setLinkingCandidateId(candidate.id);
     try {
@@ -405,6 +537,9 @@ export default function AccountsPage() {
         outgoingTransactionId: candidate.outgoing.id,
         incomingTransactionId: candidate.incoming.id,
         description: `Transfer from ${sourceName} to ${destinationName}`,
+        purpose: classification.value,
+        envelopeId: classification.envelopeId,
+        relatedEnvelopeId: classification.relatedEnvelopeId,
       });
       toast({
         title: "Entries linked as a transfer",
@@ -444,6 +579,7 @@ export default function AccountsPage() {
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
+          <PlaidLinkButton variant="outline" />
           <Button
             variant="outline"
             onClick={() => setTransferOpen(true)}
@@ -465,6 +601,8 @@ export default function AccountsPage() {
           </Button>
         </div>
       </div>
+
+      <PlaidConnectionsCard />
 
       <div className="grid gap-4 sm:grid-cols-3">
         {loading ? (
@@ -529,6 +667,18 @@ export default function AccountsPage() {
               const destinationName = getAccountName(
                 candidate.incoming.accountId,
               );
+              const classificationOptions =
+                transferClassificationOptions(
+                  candidate,
+                  primaryAccountId,
+                  activeEnvelopes,
+                );
+              const selectedPurpose =
+                transferPurposeByCandidate[candidate.id] ?? "ordinary";
+              const selectedClassification =
+                classificationOptions.find(
+                  (option) => option.value === selectedPurpose,
+                ) ?? classificationOptions[0];
               return (
                 <div
                   key={candidate.id}
@@ -593,14 +743,52 @@ export default function AccountsPage() {
                           transfer. They will no longer count toward
                           income, expenses, budgets, or cash-flow
                           reports. Their account balances will remain
-                          unchanged.
+                          unchanged. Choose an envelope purpose below only
+                          when this transfer assigned or moved planned money.
                         </AlertDialogDescription>
+                        {classificationOptions.length > 1 ? (
+                          <div className="space-y-2 pt-2 text-left">
+                            <Label
+                              htmlFor={`transfer-purpose-${candidate.id}`}
+                            >
+                              What did this transfer do?
+                            </Label>
+                            <Select
+                              value={selectedClassification.value}
+                              onValueChange={(value) =>
+                                setTransferPurposeByCandidate((current) => ({
+                                  ...current,
+                                  [candidate.id]: value as TransferPurpose,
+                                }))
+                              }
+                            >
+                              <SelectTrigger
+                                id={`transfer-purpose-${candidate.id}`}
+                              >
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {classificationOptions.map((option) => (
+                                  <SelectItem
+                                    key={option.value}
+                                    value={option.value}
+                                  >
+                                    {option.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        ) : null}
                       </AlertDialogHeader>
                       <AlertDialogFooter>
                         <AlertDialogCancel>Cancel</AlertDialogCancel>
                         <AlertDialogAction
                           onClick={() =>
-                            void handleLinkTransfer(candidate)
+                            void handleLinkTransfer(
+                              candidate,
+                              selectedClassification,
+                            )
                           }
                         >
                           Link as transfer
@@ -664,6 +852,11 @@ export default function AccountsPage() {
                           Archived
                         </span>
                       ) : null}
+                      {!account.isDefault && !account.isArchived && account.role ? (
+                        <span className="rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">
+                          {ACCOUNT_ROLE_LABELS[account.role]}
+                        </span>
+                      ) : null}
                     </div>
                   </CardHeader>
                   <CardContent>
@@ -677,6 +870,44 @@ export default function AccountsPage() {
                     <p className="mt-1 font-headline text-2xl font-semibold">
                       {currency.format(displayedBalance)}
                     </p>
+                    {account.plaidAccountId ? (
+                      <div className="mt-3 rounded-lg bg-secondary/50 p-3 text-sm">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-muted-foreground">Institution available</span>
+                          <span className="font-medium tabular-nums">
+                            {account.institutionAvailableBalance == null
+                              ? "Not reported"
+                              : currency.format(account.institutionAvailableBalance)}
+                          </span>
+                        </div>
+                        <div className="mt-1 flex items-center justify-between gap-3">
+                          <span className="text-muted-foreground">Institution current</span>
+                          <span className="font-medium tabular-nums">
+                            {account.institutionCurrentBalance == null
+                              ? "Not reported"
+                              : currency.format(account.institutionCurrentBalance)}
+                          </span>
+                        </div>
+                        {account.institutionBalanceUpdatedAt ? (
+                          <p className="mt-2 text-xs text-muted-foreground">
+                            Bank balance checked {format(new Date(account.institutionBalanceUpdatedAt), "MMM d, yyyy 'at' h:mm a")}
+                          </p>
+                        ) : null}
+                        {account.institutionCurrentBalance != null ? (
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Bank minus Ledgerly: {currency.format(
+                              account.institutionCurrentBalance - displayedBalance,
+                            )}
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {account.openingBalanceEstimated ? (
+                      <p className="mt-3 flex items-start gap-2 text-xs text-amber-700">
+                        <AlertTriangle className="h-4 w-4 shrink-0" />
+                        Opening balance was estimated from imported history. Edit this account or reconcile a statement to confirm it.
+                      </p>
+                    ) : null}
                     {latestReconciliation ? (
                       <div className="mt-3 flex items-center gap-2 text-xs">
                         {latestReconciliation.status ===

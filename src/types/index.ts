@@ -2,6 +2,35 @@
 import type { LucideIcon } from "lucide-react";
 import { Timestamp } from "firebase/firestore";
 
+export type BudgetingMode = "tracking" | "envelope" | "hybrid";
+
+export interface EnvelopeSettings {
+  minimumOperatingBalance: number;
+  fundingSuggestions: boolean;
+}
+
+export type TransferPurpose =
+  | "ordinary"
+  | "fund-envelope"
+  | "release-to-spend"
+  | "return-unused"
+  | "unassign"
+  | "reallocate";
+
+export type TransactionPostingStatus = "pending" | "posted" | "removed";
+
+export type CategorizationStatus =
+  | "needs-categorization"
+  | "auto-categorized"
+  | "manually-categorized"
+  | "needs-review";
+
+export type CategorizationSource =
+  | "manual"
+  | "rule"
+  | "plaid"
+  | "uncategorized";
+
 export type Transaction = {
   id: string;
   date: string;
@@ -11,10 +40,36 @@ export type Transaction = {
   category: string;
   categoryId?: string;
   accountId?: string;
+  envelopeId?: string | null;
   transferId?: string;
   transferDirection?: "in" | "out";
+  transferPurpose?: TransferPurpose;
+  relatedEnvelopeId?: string;
   linkedTransactionId?: string;
-  source?: "actual" | "recurring" | "baseline";
+  source?: "actual" | "recurring" | "baseline" | "plaid";
+  postingStatus?: TransactionPostingStatus;
+  provider?: "plaid";
+  providerItemId?: string;
+  providerAccountId?: string;
+  providerTransactionId?: string;
+  pendingProviderTransactionId?: string;
+  providerDescription?: string;
+  merchantName?: string;
+  merchantLogoUrl?: string;
+  authorizedDate?: string;
+  providerCategoryPrimary?: string;
+  providerCategoryDetailed?: string;
+  providerCategoryConfidence?: string;
+  providerLastSyncedAt?: string;
+  providerRemovedAt?: string;
+  categorizationStatus?: CategorizationStatus;
+  categorizationSource?: CategorizationSource;
+  categorizationRuleId?: string;
+  categorizationConflictRuleIds?: string[];
+  classificationLocked?: boolean;
+  categorizedAt?: string;
+  reviewedAt?: string;
+  possibleTransfer?: boolean;
 };
 
 export type AccountType =
@@ -26,6 +81,12 @@ export type AccountType =
 
 export type AccountClassification = "asset" | "liability";
 
+export type AccountRole =
+  | "operating"
+  | "envelope"
+  | "debt"
+  | "standard";
+
 export type Account = {
   id: string;
   name: string;
@@ -35,10 +96,131 @@ export type Account = {
   institution?: string;
   lastFour?: string;
   currency: "USD";
+  role?: AccountRole;
   isArchived?: boolean;
   isDefault?: boolean;
   createdAt: string;
+  plaidItemId?: string;
+  plaidAccountId?: string;
+  institutionId?: string;
+  institutionName?: string;
+  institutionCurrentBalance?: number | null;
+  institutionAvailableBalance?: number | null;
+  institutionCreditLimit?: number | null;
+  institutionBalanceUpdatedAt?: string;
+  institutionBalanceIsRealtime?: boolean;
+  plaidConnectionStatus?: PlaidItemStatus;
+  openingBalanceEstimated?: boolean;
 };
+
+export type PlaidItemStatus =
+  | "connecting"
+  | "healthy"
+  | "syncing"
+  | "needs-attention"
+  | "permission-expiring"
+  | "delayed"
+  | "disconnected";
+
+export interface PlaidAvailableAccount {
+  plaidAccountId: string;
+  name: string;
+  officialName?: string | null;
+  mask?: string | null;
+  type: string;
+  subtype?: string | null;
+  currentBalance?: number | null;
+  availableBalance?: number | null;
+  creditLimit?: number | null;
+  currency?: string | null;
+}
+
+export interface PlaidItem {
+  id: string;
+  plaidItemId: string;
+  institutionId?: string | null;
+  institutionName?: string | null;
+  status: PlaidItemStatus;
+  syncCursor?: string | null;
+  lastSuccessfulSync?: string;
+  lastBalanceUpdate?: string;
+  lastWebhookAt?: string;
+  consentExpiresAt?: string | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  availableAccounts?: PlaidAvailableAccount[];
+  mappedAccountCount?: number;
+  historyScope?: string;
+  products: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CategorizationRuleOperator = "exact" | "contains";
+
+export interface CategorizationRule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  priority: number;
+  conditions: {
+    direction?: "income" | "expense";
+    accountIds?: string[];
+    merchantMatch?: {
+      operator: CategorizationRuleOperator;
+      value: string;
+    };
+    descriptionMatch?: {
+      operator: CategorizationRuleOperator;
+      value: string;
+    };
+    providerCategoryPrimary?: string;
+    providerCategoryDetailed?: string;
+    minimumAmount?: number;
+    maximumAmount?: number;
+  };
+  actions: {
+    categoryId: string;
+    categoryName: string;
+    envelopeId?: string | null;
+    markReviewed: boolean;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CategorizationAuditEvent {
+  id: string;
+  type: "rule-created" | "rule-updated" | "rule-deleted" | "bulk-applied" | "conflict";
+  ruleId?: string;
+  transactionId?: string;
+  matchedCount?: number;
+  note?: string;
+  createdAt: string;
+}
+
+export interface PlaidSyncJob {
+  id: string;
+  plaidItemId: string;
+  status: "queued" | "running" | "complete" | "failed";
+  reason: "initial" | "webhook" | "manual" | "scheduled";
+  attemptCount: number;
+  error?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
+}
+
+export interface BalanceSnapshot {
+  id: string;
+  accountId: string;
+  plaidItemId: string;
+  currentBalance?: number | null;
+  availableBalance?: number | null;
+  creditLimit?: number | null;
+  isRealtime: boolean;
+  recordedAt: string;
+}
 
 export type AccountReconciliationStatus =
   | "reconciled"
@@ -89,6 +271,67 @@ export type Budget = {
   isFavorite?: boolean;
 };
 
+export type EnvelopeType =
+  | "monthly-spending"
+  | "bills"
+  | "sinking-fund"
+  | "savings"
+  | "buffer";
+
+export type EnvelopeFundingFrequency =
+  | "manual"
+  | "monthly"
+  | "paycheck"
+  | "target-date";
+
+export type EnvelopeRollover = "rollover" | "reset" | "sweep";
+
+export type Envelope = {
+  id: string;
+  name: string;
+  type: EnvelopeType;
+  backingAccountId?: string;
+  categoryIds: string[];
+  targetAmount?: number;
+  targetDate?: string;
+  dueDay?: number;
+  fundingFrequency: EnvelopeFundingFrequency;
+  fundingAmount?: number;
+  paycheckPercentage?: number;
+  priority: number;
+  rollover: EnvelopeRollover;
+  color: string;
+  icon: string;
+  isArchived?: boolean;
+  createdAt: string;
+};
+
+export type EnvelopeEventType =
+  | "starting-allocation"
+  | "fund"
+  | "release"
+  | "return"
+  | "expense"
+  | "refund"
+  | "unassign"
+  | "reassign-in"
+  | "reassign-out"
+  | "adjustment";
+
+export type EnvelopeEvent = {
+  id: string;
+  envelopeId: string;
+  type: EnvelopeEventType;
+  amount: number;
+  date: string;
+  transactionId?: string;
+  transferId?: string;
+  relatedEnvelopeId?: string;
+  usesReleasedFunds?: boolean;
+  note?: string;
+  createdAt: string;
+};
+
 export type RecurringTransaction = {
   id: string;
   description: string;
@@ -97,6 +340,7 @@ export type RecurringTransaction = {
   category: string;
   categoryId?: string;
   accountId?: string;
+  envelopeId?: string;
   frequency: "daily" | "weekly" | "monthly" | "yearly";
   startDate: string;
   lastAddedDate?: string;
@@ -109,6 +353,7 @@ export type Goal = {
   savedAmount: number;
   targetDate?: string;
   linkedCategoryId?: string;
+  linkedEnvelopeId?: string;
   contributionStartDate?: string;
 }
 

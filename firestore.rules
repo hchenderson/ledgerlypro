@@ -2,9 +2,29 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Allow users to read and write only to their own data
-    match /users/{userId}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    // Bank connection status and balance snapshots are server-managed. Users
+    // can read their own safe metadata, but access tokens never live here.
+    match /users/{userId}/{collectionName}/{document=**} {
+      allow read: if isOwner(userId);
+      allow write: if isOwner(userId)
+        && collectionName != "plaidItems"
+        && collectionName != "balanceSnapshots";
+    }
+
+    // Firebase Admin bypasses rules. Explicit denies prevent any client from
+    // reading encrypted Plaid tokens, item ownership, or webhook jobs.
+    match /plaidSecrets/{document=**} {
+      allow read, write: if false;
+    }
+    match /plaidItemOwners/{document=**} {
+      allow read, write: if false;
+    }
+    match /plaidWebhookInbox/{document=**} {
+      allow read, write: if false;
     }
   }
 }

@@ -1,9 +1,12 @@
 import type {
   Account,
   AccountClassification,
+  AccountRole,
   AccountType,
   Transaction,
+  TransferPurpose,
 } from "@/types";
+import { isTransactionFinalized } from "@/lib/categorization";
 
 export const PRIMARY_ACCOUNT_ID = "primary-account";
 
@@ -19,6 +22,10 @@ export function accountClassificationForType(
   type: AccountType,
 ): AccountClassification {
   return type === "credit" ? "liability" : "asset";
+}
+
+export function defaultAccountRoleForType(type: AccountType): AccountRole {
+  return type === "credit" ? "debt" : "standard";
 }
 
 export function normalizeOpeningBalance(
@@ -41,21 +48,33 @@ export function displayAccountBalance(
 }
 
 export function isFinancialTransaction(
-  transaction: Pick<Transaction, "type">,
+  transaction: Pick<
+    Transaction,
+    "type" | "postingStatus" | "providerRemovedAt" | "possibleTransfer"
+  >,
 ): boolean {
   return (
-    transaction.type === "income" ||
-    transaction.type === "expense"
+    isTransactionFinalized(transaction) &&
+    !transaction.possibleTransfer &&
+    (transaction.type === "income" ||
+      transaction.type === "expense")
   );
 }
 
 export function transferBalanceDelta(
   transaction: Pick<
     Transaction,
-    "type" | "transferDirection" | "amount"
+    | "type"
+    | "transferDirection"
+    | "amount"
+    | "postingStatus"
+    | "providerRemovedAt"
   >,
 ): number {
-  if (transaction.type !== "transfer") return 0;
+  if (
+    transaction.type !== "transfer" ||
+    !isTransactionFinalized(transaction)
+  ) return 0;
   const amount = Math.abs(transaction.amount);
   if (transaction.transferDirection === "in") return amount;
   if (transaction.transferDirection === "out") return -amount;
@@ -65,9 +84,14 @@ export function transferBalanceDelta(
 export function transactionBalanceDelta(
   transaction: Pick<
     Transaction,
-    "type" | "transferDirection" | "amount"
+    | "type"
+    | "transferDirection"
+    | "amount"
+    | "postingStatus"
+    | "providerRemovedAt"
   >,
 ): number {
+  if (!isTransactionFinalized(transaction)) return 0;
   const amount = Math.abs(transaction.amount);
   if (transaction.type === "income") return amount;
   if (transaction.type === "expense") return -amount;
@@ -176,7 +200,12 @@ export function buildAccountLedger(
 ): AccountLedgerEntry[] {
   let runningBalance = account.openingBalance;
   return transactions
-    .filter((transaction) => belongsToAccount(account, transaction))
+    .filter(
+      (transaction) =>
+        belongsToAccount(account, transaction) &&
+        transaction.postingStatus !== "removed" &&
+        !transaction.providerRemovedAt,
+    )
     .sort(
       (left, right) =>
         transactionTime(left) - transactionTime(right) ||
@@ -281,6 +310,9 @@ export interface TransferInput {
   amount: number;
   date: string;
   description?: string;
+  purpose?: TransferPurpose;
+  envelopeId?: string;
+  relatedEnvelopeId?: string;
 }
 
 export function buildTransferTransactions({
@@ -316,6 +348,11 @@ export function buildTransferTransactions({
     type: "transfer" as const,
     category: "Transfer",
     transferId,
+    transferPurpose: input.purpose ?? "ordinary",
+    ...(input.envelopeId ? { envelopeId: input.envelopeId } : {}),
+    ...(input.relatedEnvelopeId
+      ? { relatedEnvelopeId: input.relatedEnvelopeId }
+      : {}),
     source: "actual" as const,
   };
 

@@ -1,5 +1,5 @@
 # apphosting.yaml
-# https://firebase.google.com/docs/app-hosting/configure :contentReference[oaicite:4]{index=4}
+# https://firebase.google.com/docs/app-hosting/configure
 
 runConfig:
   maxInstances: 1
@@ -10,3 +10,27 @@ cors:
 
 # Firebase Admin uses the App Hosting backend's managed service identity.
 # Configure model-provider secrets such as GEMINI_API_KEY in the Firebase console.
+
+# Plaid credentials and encryption/job secrets must be created in Firebase
+# Secret Manager before this configuration is rolled out.
+env:
+  - variable: PLAID_CLIENT_ID
+    secret: PLAID_CLIENT_ID
+  - variable: PLAID_SECRET
+    secret: PLAID_SECRET
+  - variable: PLAID_TOKEN_ENCRYPTION_KEY
+    secret: PLAID_TOKEN_ENCRYPTION_KEY
+  - variable: PLAID_JOB_SECRET
+    secret: PLAID_JOB_SECRET
+  - variable: PLAID_ENV
+    value: sandbox
+  - variable: PLAID_COUNTRY_CODES
+    value: US
+  - variable: PLAID_DAYS_REQUESTED
+    value: "730"
+  - variable: PLAID_REALTIME_BALANCE_ENABLED
+    value: "false"
+  - variable: PLAID_WEBHOOK_URL
+    value: https://ledgerly.business/api/plaid/webhook
+  - variable: PLAID_REDIRECT_URI
+    value: https://ledgerly.business/accounts

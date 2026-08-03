@@ -8,7 +8,7 @@ import { useTransactionsForYears } from '@/hooks/use-transactions';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { PlusCircle, Target, Trash2, Edit, Star, ChevronLeft, ChevronRight, ArrowUp, ArrowDown } from 'lucide-react';
+import { PlusCircle, Target, Trash2, Edit, Star, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, WalletCards } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -40,6 +40,8 @@ import { format } from 'date-fns';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useAuth } from '@/hooks/use-auth';
 import { useComparison } from '@/hooks/use-comparison';
+import { EnvelopePlan } from '@/components/envelopes/envelope-plan';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 const budgetFormSchema = z.object({
   categoryId: z.string().min(1, 'Please select a category.'),
@@ -241,7 +243,7 @@ function BudgetDialog({ budget, onSave, children, isReadOnly }: { budget?: Budge
 }
 
 
-function BudgetsPageContent() {
+function CategoryBudgetsView() {
   const {
     budgets,
     addBudget,
@@ -542,6 +544,70 @@ function BudgetsPageContent() {
         </div>
       )}
     </div>
+  );
+}
+
+function BudgetsPageContent() {
+  const { budgetingMode, setBudgetingMode } = useAuth();
+  const { categories } = useCategories();
+
+  if (budgetingMode === "tracking") {
+    return (
+      <div className="space-y-6">
+        <Card className="border-primary/30 bg-secondary/30">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <WalletCards className="h-5 w-5" />
+              Want to assign actual money to specific purposes?
+            </CardTitle>
+            <CardDescription>
+              Envelope budgeting builds on your accounts and linked transfers.
+              Your existing category budgets and reports stay intact.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-2 sm:flex-row">
+            <Button onClick={() => void setBudgetingMode("envelope")}>
+              Set up envelope budgeting
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => void setBudgetingMode("hybrid")}
+            >
+              Use envelopes and spending limits
+            </Button>
+          </CardContent>
+        </Card>
+        <CategoryBudgetsView />
+      </div>
+    );
+  }
+
+  return (
+    <Tabs defaultValue="envelopes" className="space-y-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <TabsList className="grid h-auto min-h-11 w-full grid-cols-2 sm:w-auto">
+          <TabsTrigger value="envelopes" className="min-h-10">
+            Envelope plan
+          </TabsTrigger>
+          <TabsTrigger value="limits" className="min-h-10">
+            Spending limits
+          </TabsTrigger>
+        </TabsList>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => void setBudgetingMode("tracking")}
+        >
+          Use tracking mode only
+        </Button>
+      </div>
+      <TabsContent value="envelopes" className="mt-0">
+        <EnvelopePlan categories={categories} />
+      </TabsContent>
+      <TabsContent value="limits" className="mt-0">
+        <CategoryBudgetsView />
+      </TabsContent>
+    </Tabs>
   );
 }
 

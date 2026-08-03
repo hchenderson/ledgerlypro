@@ -7,7 +7,13 @@ import {
   useMemo,
   type ReactNode,
 } from "react";
-import { deleteDoc, doc, getDoc, setDoc } from "firebase/firestore";
+import {
+  deleteDoc,
+  deleteField,
+  doc,
+  getDoc,
+  setDoc,
+} from "firebase/firestore";
 
 import { useFirestoreUserCollection } from "@/hooks/use-firestore-user-collection";
 import type { Goal } from "@/types";
@@ -30,6 +36,23 @@ export interface GoalsContextType {
 
 const GoalsContext = createContext<GoalsContextType | null>(null);
 
+function withoutUndefinedValues<T extends Record<string, unknown>>(values: T) {
+  return Object.fromEntries(
+    Object.entries(values).filter(([, value]) => value !== undefined),
+  );
+}
+
+function withDeletedUndefinedValues<T extends Record<string, unknown>>(
+  values: T,
+) {
+  return Object.fromEntries(
+    Object.entries(values).map(([key, value]) => [
+      key,
+      value === undefined ? deleteField() : value,
+    ]),
+  );
+}
+
 export function GoalsProvider({
   children,
   enabled = true,
@@ -49,7 +72,7 @@ export function GoalsProvider({
       if (!collectionRef) return;
       const newDocumentRef = doc(collectionRef);
       await setDoc(newDocumentRef, {
-        ...goal,
+        ...withoutUndefinedValues(goal),
         id: newDocumentRef.id,
       });
     },
@@ -62,7 +85,11 @@ export function GoalsProvider({
       values: Partial<Omit<Goal, "id">>,
     ) => {
       if (!collectionRef) return;
-      await setDoc(doc(collectionRef, id), values, { merge: true });
+      await setDoc(
+        doc(collectionRef, id),
+        withDeletedUndefinedValues(values),
+        { merge: true },
+      );
     },
     [collectionRef],
   );

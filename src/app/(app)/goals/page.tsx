@@ -55,6 +55,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from '@/hooks/use-auth';
+import { useEnvelopes } from '@/hooks/use-envelopes';
 
 const goalFormSchema = z.object({
   name: z.string().min(2, 'Goal name must be at least 2 characters.'),
@@ -62,6 +63,7 @@ const goalFormSchema = z.object({
   savedAmount: z.coerce.number().min(0, "Saved amount can't be negative.").optional(),
   targetDate: z.date().optional(),
   linkedCategoryId: z.string().optional(),
+  linkedEnvelopeId: z.string().optional(),
   contributionStartDate: z.date().optional(),
 });
 
@@ -71,6 +73,7 @@ function GoalDialog({ goal, onSave, children, isReadOnly }: { goal?: Goal, onSav
   const [isOpen, setIsOpen] = useState(false);
   const { toast } = useToast();
   const { categories } = useCategories();
+  const { activeEnvelopes } = useEnvelopes();
 
   const form = useForm<GoalFormValues>({
     resolver: zodResolver(goalFormSchema),
@@ -80,6 +83,7 @@ function GoalDialog({ goal, onSave, children, isReadOnly }: { goal?: Goal, onSav
       savedAmount: 0,
       targetDate: undefined,
       linkedCategoryId: '',
+      linkedEnvelopeId: '',
       contributionStartDate: undefined,
     }
   });
@@ -106,6 +110,7 @@ function GoalDialog({ goal, onSave, children, isReadOnly }: { goal?: Goal, onSav
         savedAmount: goal.savedAmount,
         targetDate: goal.targetDate ? new Date(goal.targetDate) : undefined,
         linkedCategoryId: goal.linkedCategoryId || '',
+        linkedEnvelopeId: goal.linkedEnvelopeId || '',
         contributionStartDate: goal.contributionStartDate ? new Date(goal.contributionStartDate) : undefined,
       } : {
         name: '',
@@ -113,6 +118,7 @@ function GoalDialog({ goal, onSave, children, isReadOnly }: { goal?: Goal, onSav
         savedAmount: 0,
         targetDate: undefined,
         linkedCategoryId: '',
+        linkedEnvelopeId: '',
         contributionStartDate: undefined,
       });
     }
@@ -129,6 +135,9 @@ function GoalDialog({ goal, onSave, children, isReadOnly }: { goal?: Goal, onSav
   };
 
   const linkedCategoryId = form.watch('linkedCategoryId');
+  const linkedEnvelopeId = form.watch('linkedEnvelopeId');
+  const hasLinkedCategory = Boolean(linkedCategoryId && linkedCategoryId !== 'none');
+  const hasLinkedEnvelope = Boolean(linkedEnvelopeId && linkedEnvelopeId !== 'none');
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -146,7 +155,7 @@ function GoalDialog({ goal, onSave, children, isReadOnly }: { goal?: Goal, onSav
             <FormField control={form.control} name="targetAmount" render={({ field }) => (<FormItem><FormLabel>Target Amount</FormLabel><FormControl><Input type="number" step="0.01" placeholder="e.g., 10000" {...field} disabled={isReadOnly} /></FormControl><FormMessage /></FormItem>)} />
             
             {/* Hide starting amount if a category is linked, as it will be calculated */}
-            {!linkedCategoryId && (
+            {!hasLinkedCategory && !hasLinkedEnvelope && (
               <FormField
                 control={form.control}
                 name="savedAmount"
@@ -182,7 +191,16 @@ function GoalDialog({ goal, onSave, children, isReadOnly }: { goal?: Goal, onSav
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Link to Expense Category (Optional)</FormLabel>
-                   <Select onValueChange={field.onChange} value={field.value} disabled={isReadOnly}>
+                   <Select
+                    onValueChange={(value) => {
+                      field.onChange(value);
+                      if (value !== "none") {
+                        form.setValue("linkedEnvelopeId", "none");
+                      }
+                    }}
+                    value={field.value}
+                    disabled={isReadOnly}
+                   >
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="Select a category to track..." />
@@ -200,7 +218,39 @@ function GoalDialog({ goal, onSave, children, isReadOnly }: { goal?: Goal, onSav
               )}
             />
 
-            {linkedCategoryId && linkedCategoryId !== 'none' && (
+            {activeEnvelopes.length > 0 ? (
+              <FormField
+                control={form.control}
+                name="linkedEnvelopeId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Link to Envelope (Optional)</FormLabel>
+                    <Select
+                      onValueChange={(value) => {
+                        field.onChange(value);
+                        if (value !== "none") {
+                          form.setValue("linkedCategoryId", "none");
+                        }
+                      }}
+                      value={field.value}
+                      disabled={isReadOnly}
+                    >
+                      <FormControl><SelectTrigger><SelectValue placeholder="Track an envelope balance…" /></SelectTrigger></FormControl>
+                      <SelectContent>
+                        <SelectItem value="none">None</SelectItem>
+                        {activeEnvelopes.map((envelope) => (
+                          <SelectItem key={envelope.id} value={envelope.id}>{envelope.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">The goal will use the envelope’s available amount.</p>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            ) : null}
+
+            {hasLinkedCategory && (
                 <FormField
                     control={form.control}
                     name="contributionStartDate"
@@ -273,7 +323,7 @@ function AddContributionDialog({ goal, onContribute }: { goal: Goal, onContribut
                 <Button
                   size="sm"
                   variant="outline"
-                  disabled={!!goal.linkedCategoryId}
+                  disabled={!!goal.linkedCategoryId || !!goal.linkedEnvelopeId}
                   className="h-11 w-full sm:h-9 sm:w-auto"
                 >
                   <Banknote className="mr-2 h-4 w-4" /> Add Funds
@@ -326,11 +376,25 @@ function GoalsPageContent() {
     loading: categoriesLoading,
   } = useCategories();
   const {
+    getSummaries,
+    loading: envelopesLoading,
+  } = useEnvelopes();
+  const {
     transactions: goalTransactions,
     loading: transactionsLoading,
   } = useAllTransactions();
   const loading =
-    goalsLoading || categoriesLoading || transactionsLoading;
+    goalsLoading || categoriesLoading || transactionsLoading || envelopesLoading;
+  const envelopeAvailable = useMemo(
+    () =>
+      new Map(
+        getSummaries().map((summary) => [
+          summary.envelope.id,
+          summary.available,
+        ]),
+      ),
+    [getSummaries],
+  );
   const goals = useMemo(
     () =>
       buildProcessedGoals(
@@ -338,8 +402,9 @@ function GoalsPageContent() {
         categories,
         goalTransactions,
         loading,
+        envelopeAvailable,
       ),
-    [categories, goalTransactions, loading, rawGoals],
+    [categories, envelopeAvailable, goalTransactions, loading, rawGoals],
   );
   const { toast } = useToast();
   const { activeYear } = useAuth();
@@ -351,9 +416,10 @@ function GoalsPageContent() {
       const goalData = {
         name: values.name,
         targetAmount: values.targetAmount,
-        savedAmount: values.linkedCategoryId && values.linkedCategoryId !== 'none' ? 0 : (values.savedAmount || 0),
+        savedAmount: (values.linkedCategoryId && values.linkedCategoryId !== 'none') || (values.linkedEnvelopeId && values.linkedEnvelopeId !== 'none') ? 0 : (values.savedAmount || 0),
         targetDate: values.targetDate ? values.targetDate.toISOString() : undefined,
         linkedCategoryId: values.linkedCategoryId === 'none' ? undefined : values.linkedCategoryId,
+        linkedEnvelopeId: values.linkedEnvelopeId === 'none' ? undefined : values.linkedEnvelopeId,
         contributionStartDate: values.contributionStartDate ? values.contributionStartDate.toISOString() : undefined,
       };
       
