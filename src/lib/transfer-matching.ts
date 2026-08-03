@@ -1,4 +1,5 @@
 import type { Transaction } from "@/types";
+import { isTransactionFinalized } from "@/lib/categorization";
 
 export type TransferMatchConfidence = "high" | "possible";
 
@@ -58,6 +59,7 @@ function amountInCents(transaction: Transaction): number {
 
 function isMatchable(transaction: Transaction): boolean {
   return (
+    isTransactionFinalized(transaction) &&
     (transaction.type === "income" ||
       transaction.type === "expense") &&
     Boolean(transaction.accountId) &&

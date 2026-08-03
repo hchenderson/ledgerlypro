@@ -13,6 +13,7 @@ import {
   normalizeCategoryLabel,
 } from '@/lib/category-tree';
 import { transactionAmount } from '@/lib/financial-summary';
+import { isFinancialTransaction } from '@/lib/accounts';
 
 export type FinancialAssistantContext = {
   year: number;
@@ -72,6 +73,7 @@ export function buildFinancialAssistantContext({
   year?: number;
 }): FinancialAssistantContext {
   const yearlyTransactions = transactions.filter((transaction) => {
+    if (!isFinancialTransaction(transaction)) return false;
     const date = new Date(transaction.date);
     return (
       !Number.isNaN(date.getTime()) &&
@@ -131,6 +133,7 @@ export function buildFinancialAssistantContext({
   const terms = questionTerms(question);
   const matchingTransactions = transactions
     .filter((transaction) => {
+      if (!isFinancialTransaction(transaction)) return false;
       if (transaction.type === "transfer") return false;
       if (terms.length === 0) return false;
       const haystack = `${transaction.description} ${transaction.category}`.toLocaleLowerCase();

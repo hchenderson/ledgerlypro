@@ -42,6 +42,7 @@ import dynamic from "next/dynamic";
 import { AppProviders } from "@/app/providers";
 import { AccountSwitcher } from "@/components/account-switcher";
 import { useToast } from "@/hooks/use-toast";
+import { EnvelopesProvider } from "@/hooks/use-envelopes";
 
 const NewTransactionSheet = dynamic(
     () =>
@@ -319,12 +320,14 @@ function AccountDataBoundary({
 
   return (
     <TransactionDataProvider>
-      <UserDataProvider>
-        <ComparisonProvider>
-          <AdSenseScript showAds={showAds} />
-          <MainAppShell>{children}</MainAppShell>
-        </ComparisonProvider>
-      </UserDataProvider>
+      <EnvelopesProvider>
+        <UserDataProvider>
+          <ComparisonProvider>
+            <AdSenseScript showAds={showAds} />
+            <MainAppShell>{children}</MainAppShell>
+          </ComparisonProvider>
+        </UserDataProvider>
+      </EnvelopesProvider>
     </TransactionDataProvider>
   );
 }

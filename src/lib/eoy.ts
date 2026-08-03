@@ -10,6 +10,8 @@ import {
 import type { Transaction, Category, SubCategory } from "@/types";
 import { transferBalanceDelta } from "@/lib/accounts";
 import { transactionAmount } from "@/lib/financial-summary";
+import { isTransactionFinalized } from "@/lib/categorization";
+import { isFinancialTransaction } from "@/lib/accounts";
 
 export interface EOYMonthlyPoint {
   monthIndex: number;
@@ -80,6 +82,7 @@ export function computeEOYReport(
   const end = endOfYear(new Date(year, 11, 31));
 
   const yearTx = allTransactions.filter((tx) => {
+    if (!isTransactionFinalized(tx)) return false;
     const d = parseISO(tx.date);
     return d >= start && d <= end;
   });
@@ -105,9 +108,9 @@ export function computeEOYReport(
   yearTx.forEach((tx) => {
     const m = getMonth(parseISO(tx.date));
     const amount = transactionAmount(tx);
-    if (tx.type === "income") {
+    if (isFinancialTransaction(tx) && tx.type === "income") {
       monthly[m].income += amount;
-    } else if (tx.type === "expense") {
+    } else if (isFinancialTransaction(tx) && tx.type === "expense") {
       monthly[m].expenses += amount;
       if (categoryTotals[tx.category] !== undefined) {
         categoryTotals[tx.category] += amount;

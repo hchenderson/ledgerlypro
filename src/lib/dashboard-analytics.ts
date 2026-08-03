@@ -3,6 +3,8 @@ import { format, getMonth, getYear, parseISO, subMonths } from "date-fns";
 import type { Transaction } from "@/types";
 import { transferBalanceDelta } from "@/lib/accounts";
 import { transactionAmount } from "@/lib/financial-summary";
+import { isTransactionFinalized } from "@/lib/categorization";
+import { isFinancialTransaction } from "@/lib/accounts";
 
 export interface DashboardAnalytics {
   totalIncome: number;
@@ -41,6 +43,7 @@ export function computeDashboardAnalytics(
   >();
 
   for (const transaction of transactions) {
+    if (!isTransactionFinalized(transaction)) continue;
     const transactionDate = parseISO(transaction.date);
     if (Number.isNaN(transactionDate.getTime())) continue;
     const amount = transactionAmount(transaction);
@@ -49,6 +52,7 @@ export function computeDashboardAnalytics(
       transferNet += transferBalanceDelta(transaction);
       continue;
     }
+    if (!isFinancialTransaction(transaction)) continue;
 
     if (transaction.type === "income") totalIncome += amount;
     else if (transaction.type === "expense") {

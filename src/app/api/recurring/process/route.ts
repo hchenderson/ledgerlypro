@@ -5,6 +5,7 @@ import { AuthenticationError, requireUid } from "@/lib/requireUid";
 import { planRecurringOccurrences } from "@/lib/recurring";
 import type { RecurringTransaction } from "@/types";
 import { logServerEvent, requestLogContext } from "@/lib/server-logger";
+import { envelopeEventForTransaction } from "@/lib/envelopes";
 
 const MAX_OCCURRENCES_PER_REQUEST = 400;
 
@@ -15,6 +16,10 @@ export async function POST(req: Request) {
     if (!adminDb) throw new Error("Firebase Admin SDK is not initialized.");
 
     const userRef = adminDb.collection("users").doc(uid);
+    const settingsSnapshot = await userRef.collection("settings").doc("main").get();
+    const operatingAccountId = settingsSnapshot.data()?.primaryAccountId as
+      | string
+      | undefined;
     const recurringSnapshot = await userRef.collection("recurringTransactions").get();
     const batch = adminDb.batch();
     let remainingWrites = MAX_OCCURRENCES_PER_REQUEST;
@@ -35,12 +40,25 @@ export async function POST(req: Request) {
       const plan = planRecurringOccurrences(
         recurring,
         new Date(),
-        remainingWrites - 1
+        Math.floor((remainingWrites - 1) / 2)
       );
 
       for (const occurrence of plan.occurrences) {
         const occurrenceRef = userRef.collection("transactions").doc(occurrence.id);
         batch.set(occurrenceRef, occurrence, { merge: true });
+        remainingWrites -= 1;
+        const envelopeEvent = envelopeEventForTransaction(
+          occurrence,
+          operatingAccountId,
+        );
+        if (envelopeEvent) {
+          batch.set(
+            userRef.collection("envelopeEvents").doc(envelopeEvent.id),
+            envelopeEvent,
+            { merge: true },
+          );
+          remainingWrites -= 1;
+        }
       }
 
       if (plan.lastAddedDate) {
@@ -49,7 +67,6 @@ export async function POST(req: Request) {
       }
 
       upserted += plan.occurrences.length;
-      remainingWrites -= plan.occurrences.length;
       hasMore ||= plan.hasMore;
     }
 

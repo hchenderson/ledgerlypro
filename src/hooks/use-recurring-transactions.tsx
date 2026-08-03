@@ -10,7 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { deleteDoc, doc, setDoc } from "firebase/firestore";
+import { deleteDoc, deleteField, doc, setDoc } from "firebase/firestore";
 import { format } from "date-fns";
 
 import { useAuth } from "@/hooks/use-auth";
@@ -41,6 +41,23 @@ export interface RecurringTransactionsContextType {
 
 const RecurringTransactionsContext =
   createContext<RecurringTransactionsContextType | null>(null);
+
+function withoutUndefinedValues<T extends Record<string, unknown>>(values: T) {
+  return Object.fromEntries(
+    Object.entries(values).filter(([, value]) => value !== undefined),
+  );
+}
+
+function withDeletedUndefinedValues<T extends Record<string, unknown>>(
+  values: T,
+) {
+  return Object.fromEntries(
+    Object.entries(values).map(([key, value]) => [
+      key,
+      value === undefined ? deleteField() : value,
+    ]),
+  );
+}
 
 export function RecurringTransactionsProvider({
   children,
@@ -175,7 +192,7 @@ export function RecurringTransactionsProvider({
       if (!collectionRef) return;
       const newDocumentRef = doc(collectionRef);
       await setDoc(newDocumentRef, {
-        ...transaction,
+        ...withoutUndefinedValues(transaction),
         id: newDocumentRef.id,
         lastAddedDate: null,
       });
@@ -189,7 +206,11 @@ export function RecurringTransactionsProvider({
       values: Partial<Omit<RecurringTransaction, "id">>,
     ) => {
       if (!collectionRef) return;
-      await setDoc(doc(collectionRef, id), values, { merge: true });
+      await setDoc(
+        doc(collectionRef, id),
+        withDeletedUndefinedValues(values),
+        { merge: true },
+      );
     },
     [collectionRef],
   );

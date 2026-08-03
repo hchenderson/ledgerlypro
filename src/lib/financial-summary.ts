@@ -1,6 +1,8 @@
 import { endOfDay, parseISO, startOfDay } from "date-fns";
 
 import type { Transaction } from "@/types";
+import { isFinancialTransaction } from "@/lib/accounts";
+import { isTransactionFinalized } from "@/lib/categorization";
 
 export interface FinancialDateRange {
   from: Date;
@@ -27,12 +29,13 @@ export function filterTransactionsByDateRange(
   transactions: Transaction[],
   range?: FinancialDateRange
 ): Transaction[] {
-  if (!range) return transactions;
+  if (!range) return transactions.filter(isTransactionFinalized);
 
   const from = startOfDay(range.from).getTime();
   const to = endOfDay(range.to).getTime();
 
   return transactions.filter((transaction) => {
+    if (!isTransactionFinalized(transaction)) return false;
     const date = parseTransactionDate(transaction.date);
     if (!date) return false;
     const timestamp = date.getTime();
@@ -48,6 +51,7 @@ export function summarizeTransactions(
   let transactionCount = 0;
 
   for (const transaction of transactions) {
+    if (!isFinancialTransaction(transaction)) continue;
     const amount = transactionAmount(transaction);
     if (transaction.type === "income") {
       income += amount;

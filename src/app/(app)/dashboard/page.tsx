@@ -25,6 +25,9 @@ import {
   usePriorYearsNet,
   useTransactionData,
 } from "@/hooks/use-transactions";
+import { EnvelopeSnapshot } from "@/components/dashboard/envelope-snapshot";
+import { useEnvelopes } from "@/hooks/use-envelopes";
+import { PlaidHealthStrip } from "@/components/plaid/plaid-health-strip";
 
 const OverviewChart = dynamic(
   () => import("@/components/dashboard/overview-chart").then((module) => module.OverviewChart),
@@ -92,6 +95,10 @@ export default function DashboardPage() {
     loading: accountsLoading,
   } = useAccounts();
   const {
+    getSummaries: getEnvelopeSummaries,
+    loading: envelopesLoading,
+  } = useEnvelopes();
+  const {
     transactions,
     loading: transactionsLoading,
   } = useTransactionData();
@@ -100,6 +107,7 @@ export default function DashboardPage() {
     budgetsLoading ||
     categoriesLoading ||
     accountsLoading ||
+    envelopesLoading ||
     transactionsLoading;
   const {
     showInstructions,
@@ -144,10 +152,17 @@ export default function DashboardPage() {
         categories,
         hasLinkedGoals ? goalTransactions : transactions,
         userDataLoading,
+        new Map(
+          getEnvelopeSummaries().map((summary) => [
+            summary.envelope.id,
+            summary.available,
+          ]),
+        ),
       ),
     [
       categories,
       goalTransactions,
+      getEnvelopeSummaries,
       hasLinkedGoals,
       rawGoals,
       transactions,
@@ -194,7 +209,9 @@ export default function DashboardPage() {
   return (
     <div className="min-w-0 space-y-5 sm:space-y-6">
       <h1 className="sr-only">Dashboard</h1>
+      <PlaidHealthStrip transactions={transactions} />
       {(transactions.length === 0 || showInstructions) && <InstructionsGuide />}
+      <EnvelopeSnapshot />
       
       {analytics ? (
         <>

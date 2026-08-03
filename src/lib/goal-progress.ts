@@ -9,12 +9,14 @@ import type {
   Transaction,
 } from "@/types";
 import { transactionAmount } from "@/lib/financial-summary";
+import { isFinancialTransaction } from "@/lib/accounts";
 
 export function buildProcessedGoals(
   goals: Goal[],
   categories: Category[],
   transactions: Transaction[],
   loading: boolean,
+  envelopeAvailable: Map<string, number> = new Map(),
 ): ProcessedGoal[] {
   if (loading) {
     return goals.map((goal) => ({
@@ -26,6 +28,23 @@ export function buildProcessedGoals(
   }
 
   return goals.map((goal) => {
+    if (goal.linkedEnvelopeId) {
+      const savedAmount = envelopeAvailable.get(goal.linkedEnvelopeId);
+      if (savedAmount !== undefined) {
+        return {
+          ...goal,
+          savedAmount,
+          autoTrackingActive: true,
+          autoSavedAmount: savedAmount,
+          contributingTransactions: transactions.filter(
+            (transaction) =>
+              isFinancialTransaction(transaction) &&
+              transaction.envelopeId === goal.linkedEnvelopeId &&
+              transaction.type === "expense",
+          ),
+        };
+      }
+    }
     if (!goal.linkedCategoryId) {
       return {
         ...goal,
@@ -54,6 +73,7 @@ export function buildProcessedGoals(
       ? new Date(goal.contributionStartDate)
       : new Date(0);
     const contributions = transactions.filter((transaction) => {
+      if (!isFinancialTransaction(transaction)) return false;
       if (transaction.type !== "expense") return false;
       if (new Date(transaction.date) < contributionStartDate) return false;
 

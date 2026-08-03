@@ -126,9 +126,34 @@ export function SettingsDataProvider({
         "budgets",
         "recurringTransactions",
         "goals",
+        "envelopes",
+        "envelopeEvents",
+        "accountReconciliations",
       ].map((collectionName) => clearCollection(collectionName)),
     );
-  }, [clearCollection]);
+    if (!user) return;
+    const accountsSnapshot = await getDocs(
+      query(userCollectionRef(user.uid, "accounts")),
+    );
+    for (const accountChunk of chunkArray(accountsSnapshot.docs, 450)) {
+      const batch = writeBatch(db);
+      accountChunk.forEach((accountDocument) => {
+        const account = accountDocument.data();
+        batch.set(
+          accountDocument.ref,
+          {
+            role: account.isDefault
+              ? "operating"
+              : account.type === "credit"
+                ? "debt"
+                : "standard",
+          },
+          { merge: true },
+        );
+      });
+      await batch.commit();
+    }
+  }, [clearCollection, user]);
 
   const value = useMemo<SettingsDataContextType>(
     () => ({

@@ -12,7 +12,6 @@ import {
 } from "react";
 import {
   collection,
-  deleteDoc,
   deleteField,
   doc,
   getDoc,
@@ -20,7 +19,6 @@ import {
   onSnapshot,
   orderBy,
   query,
-  setDoc,
   where,
   writeBatch,
 } from "firebase/firestore";
@@ -41,11 +39,17 @@ import {
   type TransactionImportSummary,
 } from "@/lib/transaction-import";
 import type { FinancialDateRange } from "@/lib/financial-summary";
-import type { Transaction } from "@/types";
+import type { Envelope, EnvelopeEvent, Transaction } from "@/types";
 import {
   buildTransferTransactions,
+  calculateAccountBalance,
   type TransferInput,
 } from "@/lib/accounts";
+import {
+  calculateEnvelopeSummary,
+  envelopeEventForTransaction,
+  envelopeEventsForTransfer,
+} from "@/lib/envelopes";
 
 interface TransactionQueryResult {
   transactions: Transaction[];
@@ -73,6 +77,9 @@ export interface TransactionDataContextType extends TransactionQueryResult {
     outgoingTransactionId: string;
     incomingTransactionId: string;
     description?: string;
+    purpose?: TransferInput["purpose"];
+    envelopeId?: string;
+    relatedEnvelopeId?: string;
   }) => Promise<void>;
 }
 
@@ -86,6 +93,10 @@ const TransactionDataContext =
 
 function transactionCollection(uid: string) {
   return collection(db, "users", uid, "transactions");
+}
+
+function envelopeEventCollection(uid: string) {
+  return collection(db, "users", uid, "envelopeEvents");
 }
 
 function transactionFromSnapshot(
@@ -658,10 +669,11 @@ export function TransactionDataProvider({
 }: {
   children: ReactNode;
 }) {
-  const { user, activeYear } = useAuth();
+  const { user, activeYear, envelopeSettings } = useAuth();
   const {
     primaryAccountId,
     filterTransactions,
+    getAccount,
   } = useAccounts();
   const activeYearQuery = useTransactionsForYear(activeYear, {
     respectAccountFilter: false,
@@ -717,6 +729,132 @@ export function TransactionDataProvider({
     [user],
   );
 
+  const validateEnvelopeTransfer = useCallback(
+    async (
+      transfer: Pick<
+        TransferInput,
+        | "amount"
+        | "destinationAccountId"
+        | "envelopeId"
+        | "purpose"
+        | "relatedEnvelopeId"
+        | "sourceAccountId"
+      >,
+    ) => {
+      if (!user || !transfer.purpose || transfer.purpose === "ordinary") {
+        return;
+      }
+      if (!transfer.envelopeId) {
+        throw new Error("Select an envelope for this transfer.");
+      }
+
+      const envelopeSnapshot = await getDoc(
+        doc(db, "users", user.uid, "envelopes", transfer.envelopeId),
+      );
+      if (!envelopeSnapshot.exists()) {
+        throw new Error("That envelope is no longer available.");
+      }
+      const transferEnvelope = {
+        ...envelopeSnapshot.data(),
+        id: envelopeSnapshot.id,
+      } as Envelope;
+      if (!transferEnvelope.backingAccountId || transferEnvelope.isArchived) {
+        throw new Error("Choose an active account-backed envelope.");
+      }
+
+      let relatedEnvelope: Envelope | undefined;
+      if (transfer.purpose === "reallocate") {
+        if (!transfer.relatedEnvelopeId) {
+          throw new Error("Select a destination envelope.");
+        }
+        const relatedSnapshot = await getDoc(
+          doc(
+            db,
+            "users",
+            user.uid,
+            "envelopes",
+            transfer.relatedEnvelopeId,
+          ),
+        );
+        if (!relatedSnapshot.exists()) {
+          throw new Error("The destination envelope is unavailable.");
+        }
+        relatedEnvelope = {
+          ...relatedSnapshot.data(),
+          id: relatedSnapshot.id,
+        } as Envelope;
+        if (
+          relatedEnvelope.isArchived ||
+          !relatedEnvelope.backingAccountId ||
+          relatedEnvelope.id === transferEnvelope.id
+        ) {
+          throw new Error(
+            "Choose a different active account-backed destination envelope.",
+          );
+        }
+      }
+
+      const expectedFromMain =
+        transfer.purpose === "fund-envelope" ||
+        transfer.purpose === "return-unused";
+      const expectedSource = expectedFromMain
+        ? primaryAccountId
+        : transferEnvelope.backingAccountId;
+      const expectedDestination = expectedFromMain
+        ? transferEnvelope.backingAccountId
+        : transfer.purpose === "reallocate"
+          ? relatedEnvelope?.backingAccountId
+          : primaryAccountId;
+      if (
+        transfer.sourceAccountId !== expectedSource ||
+        transfer.destinationAccountId !== expectedDestination
+      ) {
+        throw new Error(
+          "The selected accounts do not match this envelope transfer purpose.",
+        );
+      }
+
+      const eventSnapshot = await getDocs(
+        query(
+          envelopeEventCollection(user.uid),
+          where("envelopeId", "==", transferEnvelope.id),
+        ),
+      );
+      const summary = calculateEnvelopeSummary(
+        transferEnvelope,
+        eventSnapshot.docs.map(
+          (eventDocument) =>
+            ({
+              ...eventDocument.data(),
+              id: eventDocument.id,
+            }) as EnvelopeEvent,
+        ),
+      );
+      if (
+        ["release-to-spend", "unassign", "reallocate"].includes(
+          transfer.purpose,
+        ) &&
+        Math.abs(transfer.amount) > Math.max(0, summary.available) + 0.004
+      ) {
+        throw new Error(
+          `${transferEnvelope.name} does not have enough available money for this transfer.`,
+        );
+      }
+      if (
+        transfer.purpose === "return-unused" &&
+        Math.abs(transfer.amount) > summary.reservedInOperating + 0.004
+      ) {
+        throw new Error(
+          `Only ${new Intl.NumberFormat("en-US", {
+            style: "currency",
+            currency: "USD",
+          }).format(summary.reservedInOperating)} is currently reserved in Main for ${transferEnvelope.name}.`,
+        );
+      }
+    },
+    [primaryAccountId, user],
+  );
+
   const addTransaction = useCallback(
     async (transaction: Omit<Transaction, "id">) => {
       if (!user) throw new Error("User not authenticated");
@@ -727,11 +865,24 @@ export function TransactionDataProvider({
         );
       }
       const newDocRef = doc(transactionCollection(user.uid));
-      await setDoc(newDocRef, {
+      const nextTransaction: Transaction = {
         ...transaction,
         accountId,
         id: newDocRef.id,
-      });
+      };
+      const event = envelopeEventForTransaction(
+        nextTransaction,
+        primaryAccountId,
+      );
+      const batch = writeBatch(db);
+      batch.set(newDocRef, nextTransaction);
+      if (event) {
+        batch.set(
+          doc(envelopeEventCollection(user.uid), event.id),
+          event,
+        );
+      }
+      await batch.commit();
       const year = new Date(transaction.date).getFullYear();
       if (Number.isFinite(year) && year !== activeYear) {
         await rebuildYears([year]);
@@ -766,11 +917,25 @@ export function TransactionDataProvider({
         existingTransactions,
       );
 
-      for (const transactionChunk of chunkArray(prepared.transactions, 450)) {
+      for (const transactionChunk of chunkArray(prepared.transactions, 225)) {
         const batch = writeBatch(db);
         for (const transaction of transactionChunk) {
           const newDocRef = doc(collRef);
-          batch.set(newDocRef, { ...transaction, id: newDocRef.id });
+          const nextTransaction: Transaction = {
+            ...transaction,
+            id: newDocRef.id,
+          };
+          batch.set(newDocRef, nextTransaction);
+          const event = envelopeEventForTransaction(
+            nextTransaction,
+            primaryAccountId,
+          );
+          if (event) {
+            batch.set(
+              doc(envelopeEventCollection(user.uid), event.id),
+              event,
+            );
+          }
         }
         await batch.commit();
       }
@@ -792,6 +957,34 @@ export function TransactionDataProvider({
   const addTransfer = useCallback(
     async (transfer: TransferInput) => {
       if (!user) throw new Error("User not authenticated");
+      await validateEnvelopeTransfer(transfer);
+      if (
+        transfer.purpose === "fund-envelope" &&
+        transfer.sourceAccountId === primaryAccountId &&
+        envelopeSettings.minimumOperatingBalance > 0
+      ) {
+        const operatingAccount = getAccount(primaryAccountId ?? undefined);
+        if (operatingAccount) {
+          const accountSnapshot = await getDocs(
+            query(transactionCollection(user.uid)),
+          );
+          const currentBalance = calculateAccountBalance(
+            operatingAccount,
+            accountSnapshot.docs.map(transactionFromSnapshot),
+          );
+          if (
+            currentBalance - Math.abs(transfer.amount) <
+            envelopeSettings.minimumOperatingBalance
+          ) {
+            throw new Error(
+              `This transfer would move the Main account below its ${new Intl.NumberFormat(
+                "en-US",
+                { style: "currency", currency: "USD" },
+              ).format(envelopeSettings.minimumOperatingBalance)} cushion.`,
+            );
+          }
+        }
+      }
       const transactionsRef = transactionCollection(user.uid);
       const outgoingRef = doc(transactionsRef);
       const incomingRef = doc(transactionsRef);
@@ -806,6 +999,20 @@ export function TransactionDataProvider({
       const batch = writeBatch(db);
       batch.set(outgoingRef, outgoing);
       batch.set(incomingRef, incoming);
+      envelopeEventsForTransfer({
+        transferId,
+        envelopeId: transfer.envelopeId,
+        relatedEnvelopeId: transfer.relatedEnvelopeId,
+        purpose: transfer.purpose,
+        amount: transfer.amount,
+        date: transfer.date,
+        note: transfer.description,
+      }).forEach((event) => {
+        batch.set(
+          doc(envelopeEventCollection(user.uid), event.id),
+          event,
+        );
+      });
       await batch.commit();
 
       const year = new Date(transfer.date).getFullYear();
@@ -813,7 +1020,15 @@ export function TransactionDataProvider({
         await rebuildYears([year]);
       }
     },
-    [activeYear, rebuildYears, user],
+    [
+      activeYear,
+      envelopeSettings.minimumOperatingBalance,
+      getAccount,
+      primaryAccountId,
+      rebuildYears,
+      user,
+      validateEnvelopeTransfer,
+    ],
   );
 
   const linkTransactionsAsTransfer = useCallback(
@@ -821,10 +1036,16 @@ export function TransactionDataProvider({
       outgoingTransactionId,
       incomingTransactionId,
       description,
+      purpose,
+      envelopeId,
+      relatedEnvelopeId,
     }: {
       outgoingTransactionId: string;
       incomingTransactionId: string;
       description?: string;
+      purpose?: TransferInput["purpose"];
+      envelopeId?: string;
+      relatedEnvelopeId?: string;
     }) => {
       if (!user) throw new Error("User not authenticated");
       if (
@@ -881,12 +1102,24 @@ export function TransactionDataProvider({
         );
       }
 
+      await validateEnvelopeTransfer({
+        amount: outgoing.amount,
+        destinationAccountId: incoming.accountId,
+        envelopeId,
+        purpose,
+        relatedEnvelopeId,
+        sourceAccountId: outgoing.accountId,
+      });
+
       const transferId = outgoingRef.id;
       const sharedValues = {
         type: "transfer" as const,
         category: "Transfer",
         categoryId: deleteField(),
         transferId,
+        transferPurpose: purpose ?? "ordinary",
+        envelopeId: envelopeId ?? deleteField(),
+        relatedEnvelopeId: relatedEnvelopeId ?? deleteField(),
         amount: Math.abs(outgoing.amount),
         source: "actual" as const,
         ...(description?.trim()
@@ -912,6 +1145,32 @@ export function TransactionDataProvider({
         },
         { merge: true },
       );
+      batch.delete(
+        doc(
+          envelopeEventCollection(user.uid),
+          `transaction-${outgoingRef.id}`,
+        ),
+      );
+      batch.delete(
+        doc(
+          envelopeEventCollection(user.uid),
+          `transaction-${incomingRef.id}`,
+        ),
+      );
+      envelopeEventsForTransfer({
+        transferId,
+        envelopeId,
+        relatedEnvelopeId,
+        purpose,
+        amount: outgoing.amount,
+        date: outgoing.date,
+        note: description ?? outgoing.description,
+      }).forEach((event) => {
+        batch.set(
+          doc(envelopeEventCollection(user.uid), event.id),
+          event,
+        );
+      });
       await batch.commit();
 
       await rebuildYears(
@@ -920,7 +1179,7 @@ export function TransactionDataProvider({
           .filter(Number.isFinite),
       );
     },
-    [rebuildYears, user],
+    [rebuildYears, user, validateEnvelopeTransfer],
   );
 
   const updateTransaction = useCallback(
@@ -956,18 +1215,52 @@ export function TransactionDataProvider({
             merge: true,
           });
         });
+        const linkedEnvelopeEvents = await getDocs(
+          query(
+            envelopeEventCollection(user.uid),
+            where("transferId", "==", previous.transferId),
+          ),
+        );
+        linkedEnvelopeEvents.docs.forEach((eventDocument) => {
+          batch.set(
+            eventDocument.ref,
+            {
+              ...(values.date ? { date: values.date } : {}),
+              ...(values.description
+                ? { note: values.description }
+                : {}),
+              ...(values.amount !== undefined
+                ? { amount: Math.abs(values.amount) }
+                : {}),
+            },
+            { merge: true },
+          );
+        });
         await batch.commit();
       } else {
-        await setDoc(
-          transactionRef,
-          {
-            ...values,
-            ...(values.accountId || previous?.accountId
-              ? {}
-              : { accountId: primaryAccountId }),
-          },
-          { merge: true },
+        const nextTransaction = {
+          ...previous,
+          ...values,
+          id,
+          accountId:
+            values.accountId ??
+            previous?.accountId ??
+            primaryAccountId ??
+            undefined,
+        } as Transaction;
+        const event = envelopeEventForTransaction(
+          nextTransaction,
+          primaryAccountId,
         );
+        const batch = writeBatch(db);
+        batch.set(transactionRef, values, { merge: true });
+        const eventRef = doc(
+          envelopeEventCollection(user.uid),
+          `transaction-${id}`,
+        );
+        if (event) batch.set(eventRef, event);
+        else batch.delete(eventRef);
+        await batch.commit();
       }
       const years = [
         previous?.date,
@@ -1006,9 +1299,26 @@ export function TransactionDataProvider({
           if (transfer.date) affectedDates.push(transfer.date);
           batch.delete(transferDocument.ref);
         });
+        const linkedEnvelopeEvents = await getDocs(
+          query(
+            envelopeEventCollection(user.uid),
+            where("transferId", "==", previous.transferId),
+          ),
+        );
+        linkedEnvelopeEvents.docs.forEach((eventDocument) =>
+          batch.delete(eventDocument.ref),
+        );
         await batch.commit();
       } else {
-        await deleteDoc(transactionRef);
+        const batch = writeBatch(db);
+        batch.delete(transactionRef);
+        batch.delete(
+          doc(
+            envelopeEventCollection(user.uid),
+            `transaction-${id}`,
+          ),
+        );
+        await batch.commit();
       }
       const nonActiveYears = affectedDates
         .map((date) => new Date(date).getFullYear())
@@ -1029,11 +1339,42 @@ export function TransactionDataProvider({
       const snapshot = await getDocs(
         query(transactionCollection(user.uid), ...constraints),
       );
-      for (const documentChunk of chunkArray(snapshot.docs, 450)) {
+      for (const documentChunk of chunkArray(snapshot.docs, 90)) {
         const batch = writeBatch(db);
+        const transferIds = new Set<string>();
         for (const documentSnapshot of documentChunk) {
           batch.delete(documentSnapshot.ref);
+          batch.delete(
+            doc(
+              envelopeEventCollection(user.uid),
+              `transaction-${documentSnapshot.id}`,
+            ),
+          );
+          const transaction = documentSnapshot.data() as Transaction;
+          if (transaction.transferId) {
+            transferIds.add(transaction.transferId);
+          }
         }
+        transferIds.forEach((transferId) => {
+          batch.delete(
+            doc(
+              envelopeEventCollection(user.uid),
+              `transfer-${transferId}`,
+            ),
+          );
+          batch.delete(
+            doc(
+              envelopeEventCollection(user.uid),
+              `transfer-${transferId}-out`,
+            ),
+          );
+          batch.delete(
+            doc(
+              envelopeEventCollection(user.uid),
+              `transfer-${transferId}-in`,
+            ),
+          );
+        });
         await batch.commit();
       }
     },
@@ -1112,11 +1453,42 @@ export function TransactionDataProvider({
 
       for (const documentChunk of chunkArray(
         [...documentsToDelete.values()],
-        450,
+        90,
       )) {
         const batch = writeBatch(db);
+        const transferIds = new Set<string>();
         documentChunk.forEach((documentSnapshot) => {
           batch.delete(documentSnapshot.ref);
+          batch.delete(
+            doc(
+              envelopeEventCollection(user.uid),
+              `transaction-${documentSnapshot.id}`,
+            ),
+          );
+          const transaction = documentSnapshot.data() as Transaction;
+          if (transaction.transferId) {
+            transferIds.add(transaction.transferId);
+          }
+        });
+        transferIds.forEach((transferId) => {
+          batch.delete(
+            doc(
+              envelopeEventCollection(user.uid),
+              `transfer-${transferId}`,
+            ),
+          );
+          batch.delete(
+            doc(
+              envelopeEventCollection(user.uid),
+              `transfer-${transferId}-out`,
+            ),
+          );
+          batch.delete(
+            doc(
+              envelopeEventCollection(user.uid),
+              `transfer-${transferId}-in`,
+            ),
+          );
         });
         await batch.commit();
       }

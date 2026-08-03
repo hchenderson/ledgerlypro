@@ -10,6 +10,7 @@ import {
   transactionAmount,
 } from "./financial-summary";
 import type { Budget, Category, Goal, Transaction } from "@/types";
+import { isFinancialTransaction } from "./accounts";
 
 export interface QuarterlyReportMetrics {
   totalIncome: number;
@@ -51,7 +52,10 @@ function summarizeByCategory(
   categories: Category[]
 ): Record<string, number> {
   return transactions
-    .filter((transaction) => transaction.type === type)
+    .filter(
+      (transaction) =>
+        isFinancialTransaction(transaction) && transaction.type === type,
+    )
     .reduce<Record<string, number>>((totals, transaction) => {
       const mainCategory = findMainCategoryForTransaction(transaction, categories);
       totals[mainCategory] =
@@ -96,7 +100,10 @@ export function calculateQuarterlyReportMetrics({
       );
       const actual = transactions
         .filter((transaction) => {
-          if (transaction.type !== "expense") return false;
+          if (
+            !isFinancialTransaction(transaction) ||
+            transaction.type !== "expense"
+          ) return false;
           if (transaction.categoryId) {
             return categoryIds.has(transaction.categoryId);
           }

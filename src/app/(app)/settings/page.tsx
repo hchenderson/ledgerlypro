@@ -31,10 +31,11 @@ import {
     displayAccountBalance,
     normalizeOpeningBalance,
 } from '@/lib/accounts';
+import { PlaidConnectionsCard } from '@/components/plaid/plaid-connections-card';
 
 export default function SettingsPage() {
     const { toast } = useToast();
-    const { user, showInstructions, setShowInstructions, forecastSettings, setForecastSettings } = useAuth();
+    const { user, showInstructions, setShowInstructions, budgetingMode, setBudgetingMode, envelopeSettings, setEnvelopeSettings, forecastSettings, setForecastSettings } = useAuth();
     const { categories } = useCategories();
     const { clearAllData } = useSettingsData();
     const {
@@ -59,6 +60,7 @@ export default function SettingsPage() {
     const [name, setName] = useState('');
     const [startingBalance, setStartingBalance] = useState('');
     const [email, setEmail] = useState('');
+    const [minimumOperatingBalance, setMinimumOperatingBalance] = useState('0');
     const [dateRange, setDateRange] = useState<DateRange | undefined>();
     const isMobile = useIsMobile();
 
@@ -72,6 +74,10 @@ export default function SettingsPage() {
     useEffect(() => {
         setStartingBalance(savedStartingBalance.toString());
     }, [savedStartingBalance]);
+
+    useEffect(() => {
+        setMinimumOperatingBalance(envelopeSettings.minimumOperatingBalance.toString());
+    }, [envelopeSettings.minimumOperatingBalance]);
 
     const handleSaveProfile = async () => {
         if (user) {
@@ -127,7 +133,7 @@ export default function SettingsPage() {
         await clearAllData();
         toast({
             title: "All Data Cleared",
-            description: "All transaction and category data has been reset.",
+            description: "All financial planning data has been reset. Your account list remains available.",
         });
     }
 
@@ -261,6 +267,70 @@ export default function SettingsPage() {
                     </div>
                 </CardContent>
                 </Card>
+                <Card>
+                    <CardHeader className="p-4 sm:p-6">
+                        <CardTitle>Budgeting Method</CardTitle>
+                        <CardDescription>
+                            Choose how Ledgerly helps organize your money. Changing this view never changes transactions or report totals.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="grid gap-3 px-4 pb-4 sm:grid-cols-3 sm:px-6 sm:pb-6">
+                        {[
+                            { value: "tracking" as const, title: "Tracking", description: "Use category spending limits and bookkeeping reports." },
+                            { value: "envelope" as const, title: "Envelope", description: "Assign real cash to account-backed purposes." },
+                            { value: "hybrid" as const, title: "Hybrid", description: "Use envelopes and category limits together." },
+                        ].map((option) => (
+                            <button
+                                type="button"
+                                key={option.value}
+                                onClick={() => void setBudgetingMode(option.value)}
+                                aria-pressed={budgetingMode === option.value}
+                                className={cn(
+                                    "rounded-xl border p-4 text-left transition-colors hover:border-primary/50",
+                                    budgetingMode === option.value && "border-primary bg-secondary/50 ring-1 ring-primary",
+                                )}
+                            >
+                                <span className="font-semibold">{option.title}</span>
+                                <span className="mt-1 block text-sm text-muted-foreground">{option.description}</span>
+                            </button>
+                        ))}
+                        <div className="space-y-2 rounded-xl border p-4 sm:col-span-3">
+                            <Label htmlFor="minimum-operating-balance">Minimum Main account cushion</Label>
+                            <div className="flex flex-col gap-2 sm:flex-row">
+                                <Input
+                                    id="minimum-operating-balance"
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={minimumOperatingBalance}
+                                    onChange={(event) => setMinimumOperatingBalance(event.target.value)}
+                                />
+                                <Button
+                                    variant="outline"
+                                    onClick={() => {
+                                        const amount = Math.max(0, Number(minimumOperatingBalance) || 0);
+                                        void setEnvelopeSettings({ minimumOperatingBalance: amount });
+                                        toast({ title: "Envelope safeguard saved" });
+                                    }}
+                                >
+                                    Save cushion
+                                </Button>
+                            </div>
+                            <p className="text-sm text-muted-foreground">Envelope funding is blocked when it would push the Main account below this amount.</p>
+                        </div>
+                        <div className="flex items-center justify-between gap-4 rounded-xl border p-4 sm:col-span-3">
+                            <div>
+                                <Label htmlFor="funding-suggestions">Funding suggestions</Label>
+                                <p className="text-sm text-muted-foreground">Show recommended envelope transfers after income arrives. Suggestions never move money automatically.</p>
+                            </div>
+                            <Switch
+                                id="funding-suggestions"
+                                checked={envelopeSettings.fundingSuggestions}
+                                onCheckedChange={(fundingSuggestions) => void setEnvelopeSettings({ fundingSuggestions })}
+                            />
+                        </div>
+                    </CardContent>
+                </Card>
                  <Card>
                     <CardHeader className="p-4 sm:p-6">
                         <CardTitle>Forecast Settings</CardTitle>
@@ -380,7 +450,7 @@ export default function SettingsPage() {
                     <div className="flex flex-col items-stretch gap-4 rounded-lg border border-destructive/50 p-4 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                             <p className="font-medium">Clear All Data</p>
-                            <p className="text-sm text-muted-foreground">Permanently delete all transactions and categories.</p>
+                            <p className="text-sm text-muted-foreground">Permanently delete transactions, categories, budgets, goals, recurring schedules, envelopes, and reconciliations.</p>
                         </div>
                          <AlertDialog>
                           <AlertDialogTrigger asChild>
@@ -390,7 +460,7 @@ export default function SettingsPage() {
                             <AlertDialogHeader>
                               <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                               <AlertDialogDescription>
-                                This action cannot be undone. This will permanently delete all of your transaction and category data.
+                                This action cannot be undone. It permanently deletes all financial activity and planning data. Your account list and sign-in remain available.
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
@@ -404,6 +474,8 @@ export default function SettingsPage() {
                     </div>
                  </CardContent>
             </Card>
+
+            <PlaidConnectionsCard compact />
 
         </div>
     )

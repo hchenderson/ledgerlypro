@@ -2,11 +2,12 @@
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
-import { MoreHorizontal, Upload, Calendar as CalendarIcon, X, Loader2, Edit, Trash2, ArrowRightLeft } from "lucide-react";
+import { MoreHorizontal, Upload, Calendar as CalendarIcon, X, Loader2, Edit, Trash2, ArrowRightLeft, ListChecks } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
@@ -26,6 +27,8 @@ import { useAuth } from "@/hooks/use-auth";
 import { useIsMobile } from "@/hooks/use-mobile";
 import dynamic from "next/dynamic";
 import { useAccounts } from "@/hooks/use-accounts";
+import { useEnvelopes } from "@/hooks/use-envelopes";
+import { isTransactionReviewable } from "@/lib/categorization";
 
 const NewTransactionSheet = dynamic(
   () =>
@@ -74,6 +77,7 @@ export default function TransactionsPage() {
   } = useTransactionData();
   const { categories = [] } = useCategories();
   const { getAccountName } = useAccounts();
+  const { getEnvelopeName } = useEnvelopes();
   const { activeYear } = useAuth();
   const isMobile = useIsMobile();
   
@@ -179,9 +183,23 @@ export default function TransactionsPage() {
   }, [addTransaction, toast]);
 
   const handleTransactionUpdated = useCallback(async (id: string, values: any) => {
-    await updateTransaction(id, {...values, date: values.date.toISOString()});
+    const existing = allTransactions.find((transaction) => transaction.id === id);
+    const now = new Date().toISOString();
+    await updateTransaction(id, {
+      ...values,
+      date: values.date.toISOString(),
+      ...(existing?.provider === "plaid"
+        ? {
+            classificationLocked: true,
+            categorizationStatus: "manually-categorized" as const,
+            categorizationSource: "manual" as const,
+            categorizedAt: now,
+            reviewedAt: now,
+          }
+        : {}),
+    });
     toast({ title: "Transaction Updated", description: "The transaction has been successfully updated." });
-  }, [updateTransaction, toast]);
+  }, [allTransactions, updateTransaction, toast]);
 
   const handleDelete = useCallback(async (id: string) => {
       const transaction = allTransactions.find((item) => item.id === id);
@@ -224,6 +242,7 @@ export default function TransactionsPage() {
   }, []);
   
   const isFiltering = descriptionFilter || categoryFilter !== 'all' || dateRange || minAmount || maxAmount;
+  const reviewCount = allTransactions.filter(isTransactionReviewable).length;
 
   if (userDataLoading && allTransactions.length === 0) {
     return <TransactionsSkeleton />;
@@ -332,15 +351,23 @@ export default function TransactionsPage() {
               }
             </CardDescription>
           </div>
-          <Button
-            variant="outline"
-            disabled={allTransactions.length === 0}
-            className="h-11 w-full sm:w-auto"
-            onClick={() => setIsExportOpen(true)}
-          >
-            <Upload className="mr-2 h-4 w-4" />
-            Export
-          </Button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button variant="outline" className="h-11 w-full sm:w-auto" asChild>
+              <Link href="/transactions/review">
+                <ListChecks className="mr-2 h-4 w-4" />
+                Needs categorization{reviewCount > 0 ? ` (${reviewCount})` : ""}
+              </Link>
+            </Button>
+            <Button
+              variant="outline"
+              disabled={allTransactions.length === 0}
+              className="h-11 w-full sm:w-auto"
+              onClick={() => setIsExportOpen(true)}
+            >
+              <Upload className="mr-2 h-4 w-4" />
+              Export
+            </Button>
+          </div>
           {isExportOpen ? (
             <ExportTransactionsDialog
               transactions={allTransactions}
@@ -373,6 +400,11 @@ export default function TransactionsPage() {
                         <Badge variant="secondary" className="max-w-full truncate">
                           {getAccountName(transaction.accountId)}
                         </Badge>
+                        {transaction.envelopeId ? (
+                          <Badge variant="outline" className="max-w-full truncate border-primary/30 text-primary">
+                            {getEnvelopeName(transaction.envelopeId)} envelope
+                          </Badge>
+                        ) : null}
                         {transaction.type === "transfer" ? (
                           <Badge className="gap-1">
                             <ArrowRightLeft className="h-3 w-3" />
@@ -380,6 +412,17 @@ export default function TransactionsPage() {
                               ? "Transfer in"
                               : "Transfer out"}
                           </Badge>
+                        ) : null}
+                        {transaction.postingStatus === "pending" ? (
+                          <Badge variant="outline">Pending</Badge>
+                        ) : null}
+                        {transaction.postingStatus === "removed" ? (
+                          <Badge variant="outline">Removed by bank</Badge>
+                        ) : null}
+                        {isTransactionReviewable(transaction) ? (
+                          <Badge variant="destructive">Needs category</Badge>
+                        ) : transaction.categorizationSource === "rule" ? (
+                          <Badge variant="secondary">Auto</Badge>
                         ) : null}
                         <time
                           dateTime={transaction.date}
@@ -500,12 +543,28 @@ export default function TransactionsPage() {
                       <Badge variant="outline">
                         {transaction.category}
                       </Badge>
+                      {transaction.envelopeId ? (
+                        <Badge variant="outline" className="ml-2 hidden border-primary/30 text-primary xl:inline-flex">
+                          {getEnvelopeName(transaction.envelopeId)}
+                        </Badge>
+                      ) : null}
                       {transaction.type === "transfer" ? (
                         <Badge className="ml-2 hidden xl:inline-flex">
                           {transaction.transferDirection === "in"
                             ? "In"
                             : "Out"}
                         </Badge>
+                      ) : null}
+                      {transaction.postingStatus === "pending" ? (
+                        <Badge variant="outline" className="ml-2">Pending</Badge>
+                      ) : null}
+                      {transaction.postingStatus === "removed" ? (
+                        <Badge variant="outline" className="ml-2">Removed</Badge>
+                      ) : null}
+                      {isTransactionReviewable(transaction) ? (
+                        <Badge variant="destructive" className="ml-2 hidden xl:inline-flex">Needs category</Badge>
+                      ) : transaction.categorizationSource === "rule" ? (
+                        <Badge variant="secondary" className="ml-2 hidden xl:inline-flex">Auto</Badge>
                       ) : null}
                     </TableCell>
                     <TableCell className="hidden max-w-44 truncate lg:table-cell">

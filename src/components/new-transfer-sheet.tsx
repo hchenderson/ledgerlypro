@@ -39,6 +39,8 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { useAccounts } from "@/hooks/use-accounts";
+import { useAuth } from "@/hooks/use-auth";
+import { useEnvelopes } from "@/hooks/use-envelopes";
 import type { TransferInput } from "@/lib/accounts";
 import { cn } from "@/lib/utils";
 
@@ -53,6 +55,16 @@ const transferSchema = z
       .positive("Amount must be greater than zero."),
     date: z.date(),
     description: z.string().max(120).optional(),
+    purpose: z.enum([
+      "ordinary",
+      "fund-envelope",
+      "release-to-spend",
+      "return-unused",
+      "unassign",
+      "reallocate",
+    ]),
+    envelopeId: z.string().optional(),
+    relatedEnvelopeId: z.string().optional(),
   })
   .refine(
     (values) =>
@@ -61,7 +73,27 @@ const transferSchema = z
       message: "Choose two different accounts.",
       path: ["destinationAccountId"],
     },
-  );
+  )
+  .superRefine((values, context) => {
+    if (values.purpose !== "ordinary" && !values.envelopeId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["envelopeId"],
+        message: "Select the envelope this transfer belongs to.",
+      });
+    }
+    if (
+      values.purpose === "reallocate" &&
+      (!values.relatedEnvelopeId ||
+        values.relatedEnvelopeId === values.envelopeId)
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["relatedEnvelopeId"],
+        message: "Select a different destination envelope.",
+      });
+    }
+  });
 
 type TransferFormValues = z.infer<typeof transferSchema>;
 
@@ -69,60 +101,130 @@ export function NewTransferSheet({
   isOpen,
   onOpenChange,
   onTransferCreated,
+  initialValues,
 }: {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   onTransferCreated: (transfer: TransferInput) => Promise<void>;
+  initialValues?: Partial<TransferInput>;
 }) {
   const {
     activeAccounts,
     primaryAccountId,
     selectedAccountIds,
   } = useAccounts();
+  const { budgetingMode } = useAuth();
+  const { activeEnvelopes } = useEnvelopes();
   const [isSaving, setIsSaving] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const form = useForm<TransferFormValues>({
     resolver: zodResolver(transferSchema),
+    defaultValues: { purpose: "ordinary" },
   });
 
   useEffect(() => {
     if (!isOpen) return;
     setSubmitError(null);
-    const sourceAccountId =
+    const defaultSourceAccountId =
       selectedAccountIds.length === 1 &&
       activeAccounts.some(
         (account) => account.id === selectedAccountIds[0],
       )
         ? selectedAccountIds[0]
         : primaryAccountId ?? activeAccounts[0]?.id ?? "";
+    const sourceAccountId =
+      initialValues?.sourceAccountId ?? defaultSourceAccountId;
     form.reset({
       sourceAccountId,
       destinationAccountId:
+        initialValues?.destinationAccountId ??
         activeAccounts.find(
           (account) => account.id !== sourceAccountId,
         )?.id ?? "",
-      amount: "" as unknown as number,
-      date: new Date(),
-      description: "",
+      amount:
+        initialValues?.amount ?? ("" as unknown as number),
+      date: initialValues?.date
+        ? new Date(initialValues.date)
+        : new Date(),
+      description: initialValues?.description ?? "",
+      purpose: initialValues?.purpose ?? "ordinary",
+      envelopeId: initialValues?.envelopeId,
+      relatedEnvelopeId: initialValues?.relatedEnvelopeId,
     });
   }, [
     activeAccounts,
     form,
     isOpen,
+    initialValues,
     primaryAccountId,
     selectedAccountIds,
   ]);
 
   const sourceAccountId = form.watch("sourceAccountId");
+  const purpose = form.watch("purpose");
+  const envelopeId = form.watch("envelopeId");
+
+  const applyEnvelopeAccounts = (
+    nextEnvelopeId: string,
+    nextPurpose: TransferFormValues["purpose"] = purpose,
+    relatedEnvelopeId?: string,
+  ) => {
+    const envelope = activeEnvelopes.find(
+      (candidate) => candidate.id === nextEnvelopeId,
+    );
+    const relatedEnvelope = activeEnvelopes.find(
+      (candidate) => candidate.id === relatedEnvelopeId,
+    );
+    if (!envelope?.backingAccountId || !primaryAccountId) return;
+    if (
+      nextPurpose === "fund-envelope" ||
+      nextPurpose === "return-unused"
+    ) {
+      form.setValue("sourceAccountId", primaryAccountId);
+      form.setValue(
+        "destinationAccountId",
+        envelope.backingAccountId,
+        { shouldValidate: true },
+      );
+    } else if (
+      nextPurpose === "release-to-spend" ||
+      nextPurpose === "unassign"
+    ) {
+      form.setValue("sourceAccountId", envelope.backingAccountId);
+      form.setValue("destinationAccountId", primaryAccountId, {
+        shouldValidate: true,
+      });
+    } else if (
+      nextPurpose === "reallocate" &&
+      relatedEnvelope?.backingAccountId
+    ) {
+      form.setValue("sourceAccountId", envelope.backingAccountId);
+      form.setValue(
+        "destinationAccountId",
+        relatedEnvelope.backingAccountId,
+        { shouldValidate: true },
+      );
+    }
+  };
 
   const onSubmit = async (values: TransferFormValues) => {
     setIsSaving(true);
     setSubmitError(null);
     try {
       await onTransferCreated({
-        ...values,
+        sourceAccountId: values.sourceAccountId,
+        destinationAccountId: values.destinationAccountId,
         amount: Math.abs(values.amount),
         date: values.date.toISOString(),
+        description: values.description,
+        purpose: values.purpose,
+        ...(values.purpose !== "ordinary" && values.envelopeId
+          ? { envelopeId: values.envelopeId }
+          : {}),
+        ...(values.purpose === "reallocate" &&
+        values.relatedEnvelopeId
+          ? { relatedEnvelopeId: values.relatedEnvelopeId }
+          : {}),
       });
       onOpenChange(false);
     } catch (error) {
@@ -154,6 +256,151 @@ export function NewTransferSheet({
             onSubmit={form.handleSubmit(onSubmit)}
             className="space-y-4 py-5"
           >
+            {budgetingMode !== "tracking" &&
+            activeEnvelopes.length > 0 ? (
+              <FormField
+                control={form.control}
+                name="purpose"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Transfer purpose</FormLabel>
+                    <Select
+                      value={field.value}
+                      onValueChange={(value) => {
+                        const nextPurpose =
+                          value as TransferFormValues["purpose"];
+                        field.onChange(nextPurpose);
+                        if (nextPurpose === "ordinary") {
+                          form.setValue("envelopeId", undefined);
+                          form.setValue("relatedEnvelopeId", undefined);
+                        } else if (envelopeId) {
+                          applyEnvelopeAccounts(
+                            envelopeId,
+                            nextPurpose,
+                            form.getValues("relatedEnvelopeId"),
+                          );
+                        }
+                      }}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="ordinary">
+                          Ordinary account transfer
+                        </SelectItem>
+                        <SelectItem value="fund-envelope">
+                          Fund an envelope
+                        </SelectItem>
+                        <SelectItem value="release-to-spend">
+                          Release envelope money to spend
+                        </SelectItem>
+                        <SelectItem value="return-unused">
+                          Return unused money
+                        </SelectItem>
+                        <SelectItem value="unassign">
+                          Unassign envelope money
+                        </SelectItem>
+                        <SelectItem value="reallocate">
+                          Move between envelopes
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            ) : null}
+            {purpose !== "ordinary" ? (
+              <FormField
+                control={form.control}
+                name="envelopeId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      {purpose === "reallocate"
+                        ? "From envelope"
+                        : "Envelope"}
+                    </FormLabel>
+                    <Select
+                      value={field.value}
+                      onValueChange={(value) => {
+                        field.onChange(value);
+                        applyEnvelopeAccounts(
+                          value,
+                          purpose,
+                          form.getValues("relatedEnvelopeId"),
+                        );
+                      }}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select an envelope" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {activeEnvelopes.map((envelope) => (
+                          <SelectItem
+                            key={envelope.id}
+                            value={envelope.id}
+                          >
+                            {envelope.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            ) : null}
+            {purpose === "reallocate" ? (
+              <FormField
+                control={form.control}
+                name="relatedEnvelopeId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>To envelope</FormLabel>
+                    <Select
+                      value={field.value}
+                      onValueChange={(value) => {
+                        field.onChange(value);
+                        if (envelopeId) {
+                          applyEnvelopeAccounts(
+                            envelopeId,
+                            purpose,
+                            value,
+                          );
+                        }
+                      }}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Destination envelope" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {activeEnvelopes
+                          .filter(
+                            (envelope) => envelope.id !== envelopeId,
+                          )
+                          .map((envelope) => (
+                            <SelectItem
+                              key={envelope.id}
+                              value={envelope.id}
+                            >
+                              {envelope.name}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            ) : null}
             <FormField
               control={form.control}
               name="sourceAccountId"

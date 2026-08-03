@@ -54,6 +54,8 @@ import {
 } from "@/components/ui/dialog"
 import { useCategories } from "@/hooks/use-categories"
 import { useAccounts } from "@/hooks/use-accounts"
+import { useAuth } from "@/hooks/use-auth"
+import { useEnvelopes } from "@/hooks/use-envelopes"
 
 const formSchema = z.object({
   type: z.enum(["income", "expense"], {
@@ -74,6 +76,7 @@ const formSchema = z.object({
   accountId: z.string().min(1, {
     message: "Please select an account.",
   }),
+  envelopeId: z.string().nullable().optional(),
   category: z.string().optional(),
 })
 
@@ -202,6 +205,8 @@ export function NewTransactionSheet({
     primaryAccountId,
     selectedAccountIds,
   } = useAccounts()
+  const { budgetingMode } = useAuth()
+  const { activeEnvelopes, suggestEnvelope } = useEnvelopes()
   const selectedActiveAccountId =
     selectedAccountIds.length === 1 &&
     activeAccounts.some(
@@ -237,6 +242,7 @@ export function NewTransactionSheet({
             selectedActiveAccountId ??
             primaryAccountId ??
             undefined,
+          envelopeId: transaction.envelopeId ?? "none",
         });
         setDateInput(format(transactionDate, "MM/dd/yyyy"));
       } else {
@@ -250,6 +256,7 @@ export function NewTransactionSheet({
             selectedActiveAccountId ??
             primaryAccountId ??
             undefined,
+          envelopeId: "none",
           date: today,
         });
         setDateInput(format(today, "MM/dd/yyyy"));
@@ -282,7 +289,12 @@ export function NewTransactionSheet({
 
     const submissionValues = {
       ...values,
-      category: categoryName || 'Uncategorized'
+      category: categoryName || 'Uncategorized',
+      envelopeId:
+        values.envelopeId &&
+        values.envelopeId !== "none"
+          ? values.envelopeId
+          : null,
     };
 
     if (transaction && transaction.id) {
@@ -389,6 +401,62 @@ export function NewTransactionSheet({
                 </FormItem>
               )}
             />
+            {(transactionType === "expense" || transactionType === "income") &&
+            budgetingMode !== "tracking" &&
+            activeEnvelopes.length > 0 ? (
+              <FormField
+                control={form.control}
+                name="envelopeId"
+                render={({ field }) => {
+                  const suggestion = suggestEnvelope({
+                    type: transactionType,
+                    accountId: form.getValues("accountId"),
+                    categoryId: form.getValues("categoryId"),
+                  });
+                  return (
+                    <FormItem>
+                      <FormLabel>
+                        {transactionType === "income"
+                          ? "Refund to envelope"
+                          : "Envelope"}
+                      </FormLabel>
+                      <Select
+                        value={field.value ?? "none"}
+                        onValueChange={field.onChange}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="No envelope" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="none">
+                            No envelope
+                          </SelectItem>
+                          {activeEnvelopes.map((envelope) => (
+                            <SelectItem
+                              key={envelope.id}
+                              value={envelope.id}
+                            >
+                              {envelope.name}
+                              {suggestion?.id === envelope.id
+                                ? " (Suggested)"
+                                : ""}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        {transactionType === "income"
+                          ? "Use this only when income is a refund returning money to an envelope."
+                          : "Spending reduces the selected envelope once. Account transfers remain excluded from expenses."}
+                      </p>
+                      <FormMessage />
+                    </FormItem>
+                  );
+                }}
+              />
+            ) : null}
             <FormField
               control={form.control}
               name="type"

@@ -8,6 +8,7 @@ import {
   parseISO, format, startOfWeek, isWithinInterval
 } from 'date-fns';
 import type { Transaction, RecurringTransaction } from '@/types';
+import { isFinancialTransaction } from '@/lib/accounts';
 
 export interface ForecastDataPoint {
   date: string; // MMM dd
@@ -84,6 +85,7 @@ export function buildWeeklyProfile(actuals: Transaction[], lookbackWeeks = 13): 
   const start = addWeeks(today, -lookbackWeeks);
 
   const windowTx = actuals.filter(t => {
+    if (!isFinancialTransaction(t)) return false;
     const d = parseISO(t.date);
     return isWithinInterval(d, { start, end: today }) && !t.description.startsWith("(Recurring)");
   });
