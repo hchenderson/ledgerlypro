@@ -2,14 +2,16 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { CheckCircle2, ListChecks, Loader2, Plus, Sparkles, Trash2 } from "lucide-react";
+import { Check, CheckCircle2, ChevronsUpDown, ListChecks, Loader2, Plus, Sparkles, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { useAccounts } from "@/hooks/use-accounts";
@@ -19,6 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAllTransactions, useTransactionData } from "@/hooks/use-transactions";
 import { useEnvelopes } from "@/hooks/use-envelopes";
 import { isTransactionReviewable } from "@/lib/categorization";
+import { cn } from "@/lib/utils";
 import type { Category, SubCategory } from "@/types";
 
 const currency = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
@@ -42,10 +45,72 @@ function flattenCategories(categories: Category[]) {
   return result;
 }
 
+interface CategoryPickerProps {
+  disabled?: boolean;
+  emptyMessage?: string;
+  onValueChange: (value: string) => void;
+  options: CategoryOption[];
+  placeholder: string;
+  value: string;
+}
+
+function CategoryPicker({
+  disabled = false,
+  emptyMessage = "No matching categories.",
+  onValueChange,
+  options,
+  placeholder,
+  value,
+}: CategoryPickerProps) {
+  const [open, setOpen] = useState(false);
+  const selectedOption = options.find((option) => option.id === value);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          disabled={disabled}
+          className="h-11 w-full justify-between px-3 font-normal md:h-10"
+        >
+          <span className={cn("truncate", !selectedOption && "text-muted-foreground")}>
+            {selectedOption?.label ?? placeholder}
+          </span>
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Search categories…" />
+          <CommandList>
+            <CommandEmpty>{emptyMessage}</CommandEmpty>
+            {options.map((option) => (
+              <CommandItem
+                key={option.id}
+                value={`${option.label} ${option.id}`}
+                onSelect={() => {
+                  onValueChange(option.id);
+                  setOpen(false);
+                }}
+              >
+                <Check className={cn("mr-2 h-4 w-4", value === option.id ? "opacity-100" : "opacity-0")} />
+                <span className="truncate">{option.label}</span>
+              </CommandItem>
+            ))}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export default function NeedsCategorizationPage() {
   const { transactions, loading } = useAllTransactions({ respectAccountFilter: false });
   const { updateTransaction } = useTransactionData();
-  const { categories } = useCategories();
+  const { categories, loading: categoriesLoading, error: categoriesError } = useCategories();
   const { getAccountName, activeAccounts } = useAccounts();
   const { activeEnvelopes } = useEnvelopes();
   const { rules, addRule, updateRule, deleteRule, applyRules } = useCategorizationRules();
@@ -53,6 +118,7 @@ export default function NeedsCategorizationPage() {
   const [selected, setSelected] = useState<string[]>([]);
   const [categoryId, setCategoryId] = useState("");
   const [saving, setSaving] = useState(false);
+  const [savingTransactionId, setSavingTransactionId] = useState<string | null>(null);
   const [ruleName, setRuleName] = useState("");
   const [merchantText, setMerchantText] = useState("");
   const [ruleType, setRuleType] = useState<"expense" | "income">("expense");
@@ -73,23 +139,55 @@ export default function NeedsCategorizationPage() {
   const selectedType = selectedTransactions[0]?.type;
   const mixedTypes = selectedTransactions.some((transaction) => transaction.type !== selectedType);
 
+  const manualCategoryValues = (category: CategoryOption) => {
+    const now = new Date().toISOString();
+    return {
+      categoryId: category.id,
+      category: category.label,
+      categorizationStatus: "manually-categorized" as const,
+      categorizationSource: "manual" as const,
+      classificationLocked: true,
+      categorizedAt: now,
+      reviewedAt: now,
+      possibleTransfer: false,
+    };
+  };
+
+  const categorizeOne = async (
+    transactionId: string,
+    transactionType: "income" | "expense" | "transfer",
+    nextCategoryId: string,
+  ) => {
+    const category = options.find(
+      (option) => option.id === nextCategoryId && option.type === transactionType,
+    );
+    if (!category) return;
+    setSavingTransactionId(transactionId);
+    try {
+      await updateTransaction(transactionId, manualCategoryValues(category));
+      toast({
+        title: "Transaction categorized",
+        description: `Assigned to ${category.label}.`,
+      });
+      setSelected((current) => current.filter((id) => id !== transactionId));
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Transaction could not be updated",
+        description: error instanceof Error ? error.message : "Try again.",
+      });
+    } finally {
+      setSavingTransactionId(null);
+    }
+  };
+
   const categorizeSelected = async () => {
     const category = options.find((option) => option.id === categoryId);
     if (!category || selectedTransactions.length === 0 || mixedTypes || category.type !== selectedType) return;
     setSaving(true);
     try {
-      const now = new Date().toISOString();
       for (const transaction of selectedTransactions) {
-        await updateTransaction(transaction.id, {
-          categoryId: category.id,
-          category: category.label,
-          categorizationStatus: "manually-categorized",
-          categorizationSource: "manual",
-          classificationLocked: true,
-          categorizedAt: now,
-          reviewedAt: now,
-          possibleTransfer: false,
-        });
+        await updateTransaction(transaction.id, manualCategoryValues(category));
       }
       toast({ title: "Transactions categorized", description: `${selectedTransactions.length} transaction${selectedTransactions.length === 1 ? " was" : "s were"} updated.` });
       setSelected([]);
@@ -169,31 +267,64 @@ export default function NeedsCategorizationPage() {
             <div className="flex flex-col gap-3 rounded-xl border bg-secondary/30 p-3 sm:flex-row sm:items-end">
               <div className="flex-1 space-y-1.5">
                 <Label>Category for selected transactions</Label>
-                <Select value={categoryId} onValueChange={setCategoryId} disabled={mixedTypes || selected.length === 0}>
-                  <SelectTrigger><SelectValue placeholder={mixedTypes ? "Select only income or only expenses" : "Choose a category"} /></SelectTrigger>
-                  <SelectContent>
-                    {options.filter((option) => !selectedType || option.type === selectedType).map((option) => <SelectItem key={option.id} value={option.id}>{option.label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <CategoryPicker
+                  value={categoryId}
+                  onValueChange={setCategoryId}
+                  options={options.filter((option) => !selectedType || option.type === selectedType)}
+                  disabled={mixedTypes || selected.length === 0 || categoriesLoading || Boolean(categoriesError)}
+                  placeholder={
+                    mixedTypes
+                      ? "Select only income or only expenses"
+                      : selected.length === 0
+                        ? "Select transactions below first"
+                        : categoriesLoading
+                          ? "Loading categories…"
+                          : "Search for a category"
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  {selected.length === 0
+                    ? "Use the checkboxes for a bulk update, or choose a category directly on one transaction below."
+                    : `${selected.length} transaction${selected.length === 1 ? "" : "s"} selected.`}
+                </p>
               </div>
               <Button onClick={categorizeSelected} disabled={!categoryId || selected.length === 0 || mixedTypes || saving}>{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />} Categorize {selected.length || "selected"}</Button>
             </div>
           ) : null}
           {loading ? <p className="text-sm text-muted-foreground">Loading imported activity…</p> : null}
+          {categoriesError ? (
+            <div className="rounded-xl border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive" role="alert">
+              Categories could not be loaded. Refresh this page, then check your <Link href="/categories" className="font-medium underline">Categories</Link> page if the problem continues.
+            </div>
+          ) : null}
+          {!categoriesLoading && !categoriesError && options.length === 0 ? (
+            <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+              No categories are set up yet. <Link href="/categories" className="font-medium underline">Create categories</Link> before reviewing imported transactions.
+            </div>
+          ) : null}
           {!loading && reviewable.length === 0 ? (
             <div className="rounded-xl border border-dashed p-8 text-center"><CheckCircle2 className="mx-auto h-8 w-8 text-emerald-600" /><p className="mt-3 font-semibold">Everything is categorized</p><p className="mt-1 text-sm text-muted-foreground">New unmatched bank transactions will appear here after the next sync.</p></div>
           ) : null}
           <div className="space-y-2">
             {reviewable.map((transaction) => (
-              <label key={transaction.id} className="flex cursor-pointer items-start gap-3 rounded-xl border p-3 hover:bg-secondary/30">
-                <Checkbox className="mt-1" checked={selected.includes(transaction.id)} onCheckedChange={(checked) => setSelected((current) => checked ? [...new Set([...current, transaction.id])] : current.filter((id) => id !== transaction.id))} />
+              <div key={transaction.id} className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 rounded-xl border p-3 hover:bg-secondary/30 sm:grid-cols-[auto_minmax(0,1fr)_minmax(12rem,18rem)_auto] sm:items-start">
+                <Checkbox id={`review-${transaction.id}`} className="mt-1" checked={selected.includes(transaction.id)} onCheckedChange={(checked) => setSelected((current) => checked ? [...new Set([...current, transaction.id])] : current.filter((id) => id !== transaction.id))} />
                 <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2"><p className="truncate font-medium">{transaction.description}</p>{transaction.postingStatus === "pending" ? <Badge variant="outline">Pending</Badge> : null}{transaction.possibleTransfer ? <Badge variant="secondary">Possible transfer</Badge> : null}</div>
+                  <div className="flex flex-wrap items-center gap-2"><Label htmlFor={`review-${transaction.id}`} className="cursor-pointer truncate font-medium">{transaction.description}</Label>{transaction.postingStatus === "pending" ? <Badge variant="outline">Pending</Badge> : null}{transaction.possibleTransfer ? <Badge variant="secondary">Possible transfer</Badge> : null}</div>
                   <p className="mt-1 text-sm text-muted-foreground">{new Date(transaction.date).toLocaleDateString()} · {getAccountName(transaction.accountId)}{transaction.providerCategoryPrimary ? ` · ${transaction.providerCategoryPrimary.replaceAll("_", " ").toLowerCase()}` : ""}</p>
                   {transaction.possibleTransfer ? <Link href="/accounts" className="mt-1 inline-block text-sm font-medium text-primary underline-offset-4 hover:underline">Review transfer matches</Link> : null}
                 </div>
-                <p className={`font-semibold tabular-nums ${transaction.type === "expense" ? "text-destructive" : "text-emerald-700"}`}>{transaction.type === "expense" ? "−" : "+"}{currency.format(transaction.amount)}</p>
-              </label>
+                <div className="col-span-2 min-w-0 sm:col-span-1">
+                  <CategoryPicker
+                    value=""
+                    onValueChange={(nextCategoryId) => void categorizeOne(transaction.id, transaction.type, nextCategoryId)}
+                    options={options.filter((option) => option.type === transaction.type)}
+                    disabled={categoriesLoading || Boolean(categoriesError) || savingTransactionId === transaction.id || transaction.type === "transfer"}
+                    placeholder={savingTransactionId === transaction.id ? "Saving…" : categoriesLoading ? "Loading categories…" : "Choose category"}
+                  />
+                </div>
+                <p className={`col-span-2 text-right font-semibold tabular-nums sm:col-span-1 sm:pt-2 ${transaction.type === "expense" ? "text-destructive" : "text-emerald-700"}`}>{transaction.type === "expense" ? "−" : "+"}{currency.format(transaction.amount)}</p>
+              </div>
             ))}
           </div>
         </CardContent>
@@ -211,7 +342,17 @@ export default function NeedsCategorizationPage() {
             <div className="space-y-1.5"><Label>Match style</Label><Select value={ruleOperator} onValueChange={(value) => setRuleOperator(value as "contains" | "exact")}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="contains">Contains</SelectItem><SelectItem value="exact">Exact match</SelectItem></SelectContent></Select></div>
             <div className="space-y-1.5"><Label htmlFor="merchant-text">Text to match</Label><Input id="merchant-text" value={merchantText} onChange={(event) => setMerchantText(event.target.value)} placeholder="STARBUCKS" /></div>
             <div className="space-y-1.5"><Label>Transaction type</Label><Select value={ruleType} onValueChange={(value) => { setRuleType(value as "expense" | "income"); setRuleCategoryId(""); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="expense">Expense</SelectItem><SelectItem value="income">Income</SelectItem></SelectContent></Select></div>
-            <div className="space-y-1.5"><Label>Assign category</Label><Select value={ruleCategoryId} onValueChange={setRuleCategoryId}><SelectTrigger><SelectValue placeholder="Choose category" /></SelectTrigger><SelectContent>{options.filter((option) => option.type === ruleType).map((option) => <SelectItem key={option.id} value={option.id}>{option.label}</SelectItem>)}</SelectContent></Select></div>
+            <div className="space-y-1.5">
+              <Label>Assign category</Label>
+              <CategoryPicker
+                value={ruleCategoryId}
+                onValueChange={setRuleCategoryId}
+                options={options.filter((option) => option.type === ruleType)}
+                disabled={categoriesLoading || Boolean(categoriesError)}
+                placeholder={categoriesLoading ? "Loading categories…" : `Search ${ruleType} categories`}
+              />
+              <p className="text-xs text-muted-foreground">The list follows the transaction type selected above.</p>
+            </div>
             <div className="space-y-1.5"><Label>Account</Label><Select value={ruleAccountId} onValueChange={setRuleAccountId}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Every account</SelectItem>{activeAccounts.map((account) => <SelectItem key={account.id} value={account.id}>{account.name}</SelectItem>)}</SelectContent></Select></div>
             <div className="space-y-1.5"><Label>Assign envelope (optional)</Label><Select value={ruleEnvelopeId} onValueChange={setRuleEnvelopeId}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">No envelope</SelectItem>{activeEnvelopes.map((envelope) => <SelectItem key={envelope.id} value={envelope.id}>{envelope.name}</SelectItem>)}</SelectContent></Select></div>
             <div className="space-y-1.5"><Label htmlFor="minimum-amount">Minimum amount</Label><Input id="minimum-amount" type="number" min="0" step="0.01" value={ruleMinimum} onChange={(event) => setRuleMinimum(event.target.value)} placeholder="Any" /></div>
