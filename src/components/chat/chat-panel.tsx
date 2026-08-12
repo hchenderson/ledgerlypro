@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
+import { authenticatedFetch } from "@/lib/authenticated-fetch";
 
 type ChatRole = "user" | "assistant";
 
@@ -80,12 +81,10 @@ export function ChatPanel() {
     setIsSending(true);
 
     try {
-      const idToken = await user.getIdToken();
-      const res = await fetch("/api/chat", {
+      const res = await authenticatedFetch(user, "/api/chat", {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${idToken}`
         },
         body: JSON.stringify({
           messages: [...messages, userMsg]

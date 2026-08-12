@@ -4,10 +4,12 @@ import { NextResponse } from "next/server";
 
 import { adminDb } from "@/lib/firebaseAdmin";
 import { verifyPlaidWebhook } from "@/lib/plaid-webhook";
+import { logServerEvent, requestLogContext } from "@/lib/server-logger";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
+  const context = requestLogContext(request, "plaid.webhook");
   if (!adminDb) {
     return NextResponse.json({ error: "Server unavailable." }, { status: 503 });
   }
@@ -16,7 +18,7 @@ export async function POST(request: Request) {
     rawBody,
     request.headers.get("plaid-verification"),
   ).catch((error) => {
-    console.error("Plaid webhook verification failed:", error);
+    logServerEvent("warn", "plaid.webhook.verification_failed", context, error);
     return false;
   });
   if (!verified) return NextResponse.json({ error: "Invalid webhook." }, { status: 401 });
@@ -39,8 +41,10 @@ export async function POST(request: Request) {
         ? "needs-attention"
         : undefined;
   const id = createHash("sha256").update(rawBody).digest("hex");
-  await adminDb.collection("plaidWebhookInbox").doc(id).set(
-    {
+  const jobReference = adminDb.collection("plaidWebhookInbox").doc(id);
+  const created = await adminDb.runTransaction(async (transaction) => {
+    if ((await transaction.get(jobReference)).exists) return false;
+    transaction.create(jobReference, {
       id,
       uid: owner.data()!.uid,
       plaidItemId,
@@ -50,9 +54,9 @@ export async function POST(request: Request) {
       attemptCount: 0,
       createdAt: now,
       updatedAt: now,
-    },
-    { merge: true },
-  );
+    });
+    return true;
+  });
   await adminDb
     .collection("users")
     .doc(owner.data()!.uid)
@@ -66,5 +70,11 @@ export async function POST(request: Request) {
       },
       { merge: true },
     );
-  return NextResponse.json({ received: true });
+  logServerEvent("info", "plaid.webhook.received", {
+    ...context,
+    plaidItemId,
+    webhookCode: webhookCode || null,
+    queued: created,
+  });
+  return NextResponse.json({ received: true, queued: created });
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Building2, Loader2, RefreshCw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,7 @@ declare global {
     Plaid?: {
       create: (options: {
         token: string;
+        receivedRedirectUri?: string;
         onSuccess: (
           publicToken: string,
           metadata: { institution?: { institution_id?: string; name?: string } },
@@ -41,6 +42,23 @@ declare global {
 }
 
 let scriptPromise: Promise<void> | null = null;
+let oauthResumeInProgress = false;
+const OAUTH_SESSION_KEY = "ledgerly:plaid-oauth";
+const OAUTH_SESSION_MAX_AGE_MS = 30 * 60 * 1000;
+
+interface PlaidOAuthSession {
+  token: string;
+  uid: string;
+  reconnectItemId?: string;
+  createdAt: number;
+}
+
+function clearOAuthStateFromUrl() {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("oauth_state_id")) return;
+  url.searchParams.delete("oauth_state_id");
+  window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+}
 
 function loadPlaidScript() {
   if (typeof window === "undefined") return Promise.resolve();
@@ -72,10 +90,12 @@ function defaultRole(type: string, subtype?: string | null): AccountRole {
 
 export function PlaidLinkButton({
   reconnectItemId,
+  resumeOAuth = false,
   size = "default",
   variant = "default",
 }: {
   reconnectItemId?: string;
+  resumeOAuth?: boolean;
   size?: "default" | "sm";
   variant?: "default" | "outline";
 }) {
@@ -85,6 +105,7 @@ export function PlaidLinkButton({
   const [busy, setBusy] = useState(false);
   const [mappingItem, setMappingItem] = useState<PlaidItem | null>(null);
   const [mappingSelections, setMappingSelections] = useState<Record<string, string>>({});
+  const resumeAttempted = useRef(false);
 
   useEffect(() => {
     if (!mappingItem) return;
@@ -104,23 +125,40 @@ export function PlaidLinkButton({
     [mappingSelections],
   );
 
-  const openLink = async () => {
+  const openLink = useCallback(async (resumeSession?: PlaidOAuthSession) => {
     setBusy(true);
     try {
       await loadPlaidScript();
-      const token = await plaid.createLinkToken(reconnectItemId);
+      const activeReconnectItemId = resumeSession?.reconnectItemId ?? reconnectItemId;
+      const token = resumeSession?.token ?? await plaid.createLinkToken(activeReconnectItemId);
+      if (!resumeSession) {
+        if (!plaid.userUid) throw new Error("Sign in before connecting an institution.");
+        sessionStorage.setItem(OAUTH_SESSION_KEY, JSON.stringify({
+          token,
+          uid: plaid.userUid,
+          reconnectItemId: activeReconnectItemId,
+          createdAt: Date.now(),
+        } satisfies PlaidOAuthSession));
+      }
+      const cleanupOAuthSession = () => {
+        sessionStorage.removeItem(OAUTH_SESSION_KEY);
+        clearOAuthStateFromUrl();
+        oauthResumeInProgress = false;
+      };
       const handler = window.Plaid?.create({
         token,
+        ...(resumeSession ? { receivedRedirectUri: window.location.href } : {}),
         onSuccess: (publicToken, metadata) => {
           void (async () => {
             try {
-              if (reconnectItemId) {
-                await plaid.sync(reconnectItemId);
+              if (activeReconnectItemId) {
+                await plaid.sync(activeReconnectItemId);
                 toast({ title: "Institution reconnected", description: "Ledgerly is syncing the latest activity." });
               } else {
                 const item = await plaid.exchangePublicToken(publicToken, metadata.institution);
                 setMappingItem(item);
               }
+              cleanupOAuthSession();
             } catch (error) {
               toast({ variant: "destructive", title: "Connection could not finish", description: error instanceof Error ? error.message : "Try again." });
             } finally {
@@ -132,6 +170,7 @@ export function PlaidLinkButton({
         onExit: (error) => {
           setBusy(false);
           handler?.destroy();
+          cleanupOAuthSession();
           if (error) {
             toast({ variant: "destructive", title: "Bank connection closed", description: error.display_message || error.error_message || "You can try again whenever you are ready." });
           }
@@ -141,9 +180,41 @@ export function PlaidLinkButton({
       handler.open();
     } catch (error) {
       setBusy(false);
+      oauthResumeInProgress = false;
       toast({ variant: "destructive", title: "Bank connection unavailable", description: error instanceof Error ? error.message : "Try again." });
     }
-  };
+  }, [plaid, reconnectItemId, toast]);
+
+  useEffect(() => {
+    if (!resumeOAuth || resumeAttempted.current || oauthResumeInProgress) return;
+    if (!new URL(window.location.href).searchParams.has("oauth_state_id")) return;
+    resumeAttempted.current = true;
+    try {
+      const raw = sessionStorage.getItem(OAUTH_SESSION_KEY);
+      const session = raw ? JSON.parse(raw) as PlaidOAuthSession : null;
+      if (
+        !session ||
+        !session.token ||
+        session.uid !== plaid.userUid ||
+        Date.now() - session.createdAt > OAUTH_SESSION_MAX_AGE_MS
+      ) {
+        sessionStorage.removeItem(OAUTH_SESSION_KEY);
+        clearOAuthStateFromUrl();
+        toast({
+          variant: "destructive",
+          title: "Bank connection expired",
+          description: "Select Connect bank to restart the secure connection.",
+        });
+        return;
+      }
+      oauthResumeInProgress = true;
+      void openLink(session);
+    } catch {
+      sessionStorage.removeItem(OAUTH_SESSION_KEY);
+      clearOAuthStateFromUrl();
+      oauthResumeInProgress = false;
+    }
+  }, [openLink, plaid.userUid, resumeOAuth, toast]);
 
   const finishMapping = async () => {
     if (!mappingItem) return;
@@ -168,7 +239,7 @@ export function PlaidLinkButton({
 
   return (
     <>
-      <Button type="button" size={size} variant={variant} onClick={openLink} disabled={busy || !canConnect}>
+      <Button type="button" size={size} variant={variant} onClick={() => void openLink()} disabled={busy || !canConnect}>
         {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : reconnectItemId ? <RefreshCw className="mr-2 h-4 w-4" /> : <Building2 className="mr-2 h-4 w-4" />}
         {reconnectItemId ? "Reconnect" : canConnect ? "Connect bank" : "Plaid setup required"}
       </Button>

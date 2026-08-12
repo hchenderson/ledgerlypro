@@ -6,7 +6,7 @@ import { adminCredentialIssue, adminDb } from '@/lib/firebaseAdmin';
 import { buildFinancialAssistantContext } from '@/lib/financial-assistant-context';
 import { AuthenticationError, requireUid } from '@/lib/requireUid';
 import { logServerEvent, requestLogContext } from '@/lib/server-logger';
-import { checkRateLimit } from '@/lib/rate-limit';
+import { checkDistributedRateLimit } from '@/lib/distributed-rate-limit';
 import type { Budget, Category, Goal, RecurringTransaction, Transaction } from '@/types';
 
 const ChatRequestSchema = z.object({
@@ -37,7 +37,7 @@ export async function POST(req: Request) {
         { status: 503, headers: { 'x-request-id': logContext.requestId } }
       );
     }
-    const rateLimit = checkRateLimit({ key: `chat:${uid}`, limit: 20, windowMs: 60_000 });
+    const rateLimit = await checkDistributedRateLimit({ key: `chat:${uid}`, limit: 20, windowMs: 60_000 });
     if (!rateLimit.allowed) {
       logServerEvent('warn', 'chat.reply.rate_limited', { ...logContext, uid });
       return NextResponse.json(

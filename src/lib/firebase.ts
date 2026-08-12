@@ -2,6 +2,11 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getFirestore, enableNetwork } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
+import {
+  initializeAppCheck,
+  ReCaptchaEnterpriseProvider,
+  type AppCheck,
+} from "firebase/app-check";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -23,6 +28,16 @@ if (!firebaseConfig.apiKey) {
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const db = getFirestore(app);
 const auth = getAuth(app);
+let appCheck: AppCheck | null = null;
+
+if (typeof window !== "undefined" && process.env.NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY) {
+  appCheck = initializeAppCheck(app, {
+    provider: new ReCaptchaEnterpriseProvider(
+      process.env.NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY,
+    ),
+    isTokenAutoRefreshEnabled: true,
+  });
+}
 
 // Force the client to go online. This can help in environments like
 // Cloud Workstations where the SDK might incorrectly flag itself as offline.
@@ -30,4 +45,4 @@ enableNetwork(db).catch((err) => {
     console.warn("Firestore network could not be enabled:", err);
 });
 
-export { app, db, auth };
+export { app, db, auth, appCheck };

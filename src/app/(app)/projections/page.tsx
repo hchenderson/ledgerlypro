@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useTransactionData } from "@/hooks/use-transactions";
 import { useAuth } from "@/hooks/use-auth";
+import { authenticatedFetch } from "@/lib/authenticated-fetch";
 import { Rocket, Sparkles, AlertTriangle, Loader2, ArrowRight } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -64,16 +65,14 @@ function ProjectionsPageContent() {
 
     try {
       if (!user) throw new Error("You must be signed in.");
-      const idToken = await user.getIdToken();
       const input = {
         historicalData: JSON.stringify(financialTransactions),
         userPrompt: userPrompt || undefined,
       };
-      const response = await fetch('/api/ai/projections', {
+      const response = await authenticatedFetch(user, '/api/ai/projections', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${idToken}`,
         },
         body: JSON.stringify(input),
       });

@@ -32,6 +32,9 @@ receipt extraction and narrative projections.
    NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=
    NEXT_PUBLIC_FIREBASE_APP_ID=
    NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=
+   NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY=
+   FIREBASE_APP_CHECK_ENFORCED=false
+   NEXT_PUBLIC_ADSENSE_ENABLED=false
    GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/ledgerly-pro-service-account.json
    GEMINI_API_KEY=
    PLAID_CLIENT_ID=
@@ -44,6 +47,7 @@ receipt extraction and narrative projections.
    PLAID_REALTIME_BALANCE_ENABLED=false
    PLAID_WEBHOOK_URL=http://localhost:9002/api/plaid/webhook
    PLAID_REDIRECT_URI=http://localhost:9002/accounts
+   PLAID_BALANCE_SNAPSHOT_RETENTION_DAYS=400
    ```
 
    To create the local Admin credential file, open Firebase Console, select
@@ -96,9 +100,8 @@ UI with:
 npm run genkit:watch
 ```
 
-AI endpoints validate request sizes and schemas and apply a per-instance rate
-limit. For production abuse protection across multiple instances, enable Firebase
-App Check or replace the in-memory limiter with a shared store.
+AI endpoints validate request sizes and schemas, use Firestore-backed rate limits
+that work across App Hosting instances, and can require Firebase App Check tokens.
 
 ## Architecture
 
@@ -130,6 +133,16 @@ assigned expense or refund creates a deterministic envelope event in the same ba
 as its transaction. Standard income, expense, cash-flow, comparison, quarterly, and
 EOY calculations continue to ignore transfers. The envelope report intentionally
 reports allocation movement separately.
+
+Monthly and yearly reports use the deterministic calculation pipeline in
+`src/lib/report-analytics.ts`. The same filtered transaction set supplies summary
+cards, charts, category movement, insights, budget performance, transaction detail,
+and CSV exports. Account balances are calculated separately from the complete
+ledger so category filters cannot turn a real account balance into a partial cash-flow
+number. Named report configurations live in `users/{uid}/reportViews` and include
+dates, account/category/status filters, comparison settings, visible metrics, and
+section order. Compare accepts an exact-date handoff from Reports and uses the shared
+category-key resolver in `src/lib/financial-category.ts`.
 
 For an account-backed envelope, releasing funds to the Main account does not reduce
 the envelope's available amount. It increases `reservedInOperating` until an expense
@@ -165,8 +178,9 @@ Before deploying Plaid:
 1. Create Firebase secrets named `PLAID_CLIENT_ID`, `PLAID_SECRET`,
    `PLAID_TOKEN_ENCRYPTION_KEY`, and `PLAID_JOB_SECRET`. The names already match
    `apphosting.yaml`.
-2. Set `PLAID_ENV` to `sandbox`, `development`, or `production`. Replace the
-   Sandbox secret whenever the environment changes.
+2. Set `PLAID_ENV` to `sandbox` or `production`. Plaid Trial plans use the
+   Production environment with a limited number of real connections. Replace
+   the Sandbox secret whenever the environment changes.
 3. In the Plaid Dashboard, allow the Transactions product, configure
    `https://ledgerly.business/api/plaid/webhook`, and add
    `https://ledgerly.business/accounts` as the OAuth redirect URI.
@@ -180,10 +194,50 @@ Before deploying Plaid:
 6. Keep `PLAID_REALTIME_BALANCE_ENABLED=false` until Balance product access and
    pricing are approved. Cached balances continue to update during normal sync.
 
+Plaid connections are tagged with the environment in which they were created.
+Sandbox tokens are never sent to Production (or vice versa); users disconnect and
+relink after an environment change. The Accounts page also resumes OAuth redirects
+using the original Link token kept temporarily in browser session storage.
+
+Completed webhook jobs expire after 30 days, permanently failed jobs after 90 days,
+and balance snapshots after `PLAID_BALANCE_SNAPSHOT_RETENTION_DAYS` (400 by default).
+The TTL policies live in `firestore.indexes.json` and do not activate until the
+Firestore configuration is deployed.
+
 The default history request is 730 days. Institutions may return less history.
 Ledgerly estimates an opening balance from the first imported activity and the
 institution current balance; linked existing accounts keep their user-entered
 opening balance. Review that estimate during the first reconciliation.
+
+## Production readiness
+
+Before allowing public signups:
+
+1. Obtain Plaid Trial or Production access, use the matching Production secret,
+   set `PLAID_ENV=production`, and create a new rollout. Existing Sandbox Items
+   must be disconnected and relinked.
+2. Create a score-based reCAPTCHA Enterprise website key for the production
+   domain. Register it under **Firebase Console → App Check**, then add its public
+   site key as `NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY` in App Hosting. Roll out
+   with `FIREBASE_APP_CHECK_ENFORCED=false`, verify valid App Check traffic, and
+   only then change it to `true` and roll out again.
+3. In Firebase Authentication, verify the Google and Email/Password providers,
+   authorized domains, support email, sender name, verification-email template,
+   password-reset template, and action URL. Password signups must verify their
+   email before they can sign in.
+4. Deploy `firestore.rules` and `firestore.indexes.json`. The latter activates
+   automatic cleanup for job, balance-snapshot, and rate-limit documents.
+5. Create Cloud Monitoring alerts for App Hosting 5xx responses, instance or
+   latency spikes, failed Plaid job logs, and billing budgets. Enable Firestore
+   point-in-time recovery or scheduled exports before a public launch.
+6. Have qualified counsel review the Privacy Policy and Terms for the business,
+   jurisdiction, advertising choices, and financial-data use. AdSense remains
+   disabled unless `NEXT_PUBLIC_ADSENSE_ENABLED=true`; do not enable it until the
+   required consent and publisher configuration are complete.
+7. Test sign-up verification, password reset, Google sign-in, Plaid OAuth on a
+   mobile device, initial import and categorization, webhook sync, reconnect,
+   disconnect, exports, and full account deletion with pilot users before widening
+   access.
 
 ## Exported workspace
 

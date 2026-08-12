@@ -15,6 +15,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { cn } from '@/lib/utils';
 import { FeatureGate } from '@/components/feature-gate';
 import { useAuth } from '@/hooks/use-auth';
+import { authenticatedFetch } from '@/lib/authenticated-fetch';
 import Image from 'next/image';
 
 function ReceiptScannerPageContent() {
@@ -119,12 +120,10 @@ function ReceiptScannerPageContent() {
 
         try {
             if (!user) throw new Error('You must be signed in.');
-            const idToken = await user.getIdToken();
-            const response = await fetch('/api/ai/receipt', {
+            const response = await authenticatedFetch(user, '/api/ai/receipt', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    Authorization: `Bearer ${idToken}`,
                 },
                 body: JSON.stringify({ receiptImage: preview }),
             });

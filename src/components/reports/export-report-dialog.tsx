@@ -14,86 +14,75 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Download, Image as ImageIcon } from "lucide-react";
+import { Download, FileText, Table2 } from "lucide-react";
 import type { Transaction } from "@/types";
 import { format } from "date-fns";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { useAccounts } from "@/hooks/use-accounts";
+import {
+  generateReportPdf,
+  type ReportPdfData,
+  type ReportPdfMode,
+} from "@/lib/report-pdf";
 
 interface ExportReportDialogProps {
   transactions: Transaction[];
   dateRange?: { from?: Date, to?: Date };
   chartId?: string;
   chartTitle?: string;
+  pdfReport?: Omit<ReportPdfData, "transactions" | "accountName">;
 }
 
-export function ExportReportDialog({ transactions, dateRange, chartId, chartTitle = 'report' }: ExportReportDialogProps) {
+export function ExportReportDialog({ transactions, dateRange, chartId, chartTitle = 'report', pdfReport }: ExportReportDialogProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [exportFormat, setExportFormat] = useState<'csv' | 'png'>('csv');
+  const [exportFormat, setExportFormat] = useState<'csv' | 'pdf'>('pdf');
+  const [pdfMode, setPdfMode] = useState<ReportPdfMode>('summary');
   const [isLoading, setIsLoading] = useState(false);
 
   const { toast } = useToast();
   const { getAccountName } = useAccounts();
 
-  const handlePngExport = useCallback(async () => {
-    if (!chartId) {
-      toast({
-        variant: 'destructive',
-        title: 'Export Error',
-        description: 'No chart is associated with this export button.',
-      });
-      return;
-    }
-    const chartElement = document.getElementById(chartId);
-    if (!chartElement) {
-      toast({
-        variant: 'destructive',
-        title: 'Export Error',
-        description: 'Could not find the chart element to export.',
-      });
-      return;
-    }
-
+  const handlePdfExport = useCallback(async () => {
     setIsLoading(true);
-
     try {
-      const { default: html2canvas } = await import('html2canvas');
-      // Temporarily add a class to ensure text is rendered correctly
-      chartElement.classList.add('render-for-export');
-      
-      const canvas = await html2canvas(chartElement, {
-        allowTaint: true,
-        useCORS: true,
-        backgroundColor: null, // Use transparent background, respects theme
-        scale: 2, // Increase resolution
-      });
-
-      chartElement.classList.remove('render-for-export');
-
-      const link = document.createElement('a');
-      link.download = `${chartTitle.replace(/\s+/g, '-').toLowerCase()}-${format(new Date(), 'yyyy-MM-dd')}.png`;
-      link.href = canvas.toDataURL('image/png');
-      link.click();
-      
+      const fallbackReport: Omit<ReportPdfData, "transactions" | "accountName"> = {
+        title: chartTitle,
+        dateRange: dateRange?.from && dateRange?.to
+          ? `${format(dateRange.from, "PPP")} - ${format(dateRange.to, "PPP")}`
+          : "Selected reporting period",
+        generatedAt: format(new Date(), "PPP p"),
+        metadata: [],
+        metrics: [],
+        insights: [],
+        tables: [],
+        chartElementIds: chartId ? [chartId] : [],
+      };
+      await generateReportPdf(
+        {
+          ...(pdfReport ?? fallbackReport),
+          transactions,
+          accountName: getAccountName,
+        },
+        pdfMode,
+      );
       toast({
-        title: 'Export Successful',
-        description: 'The chart has been downloaded as a PNG image.',
+        title: "PDF exported",
+        description: `${pdfMode === "summary" ? "Summary" : "Detailed"} report downloaded successfully.`,
       });
       setIsOpen(false);
     } catch (error) {
-      console.error('PNG Export error:', error);
+      console.error("PDF export error:", error);
       toast({
-        variant: 'destructive',
-        title: 'Export Failed',
-        description: 'An error occurred while exporting the chart as a PNG.',
+        variant: "destructive",
+        title: "PDF export failed",
+        description: "The report could not be generated. Please try again.",
       });
     } finally {
-      chartElement.classList.remove('render-for-export');
       setIsLoading(false);
     }
-  }, [chartId, chartTitle, toast]);
+  }, [chartId, chartTitle, dateRange, getAccountName, pdfMode, pdfReport, transactions, toast]);
 
 
   const handleCsvExport = useCallback(async () => {
@@ -155,8 +144,8 @@ export function ExportReportDialog({ transactions, dateRange, chartId, chartTitl
   }, [getAccountName, transactions, toast]);
 
   const handleExport = async () => {
-    if (exportFormat === 'png') {
-        await handlePngExport();
+    if (exportFormat === 'pdf') {
+        await handlePdfExport();
     } else {
         await handleCsvExport();
     }
@@ -189,7 +178,7 @@ export function ExportReportDialog({ transactions, dateRange, chartId, chartTitl
                 <Label id="export-format-label">Export Format</Label>
                  <RadioGroup
                    value={exportFormat}
-                   onValueChange={(value) => setExportFormat(value as 'csv' | 'png')}
+                   onValueChange={(value) => setExportFormat(value as 'csv' | 'pdf')}
                    className="grid grid-cols-1 gap-3 min-[430px]:grid-cols-2 sm:gap-4"
                    aria-labelledby="export-format-label"
                  >
@@ -199,17 +188,37 @@ export function ExportReportDialog({ transactions, dateRange, chartId, chartTitl
                         <span className="font-semibold">CSV File</span>
                         <span className="text-xs text-muted-foreground text-center">Best for spreadsheets (Excel, Google Sheets)</span>
                     </Label>
-                    <Label htmlFor="export-png" className={cn("flex min-h-36 cursor-pointer flex-col items-center justify-center gap-2 rounded-md border p-4 text-center hover:bg-accent hover:text-accent-foreground", exportFormat === 'png' && 'ring-2 ring-primary', !chartId && 'cursor-not-allowed opacity-50')}>
-                        <ImageIcon className="h-8 w-8" />
-                        <RadioGroupItem value="png" id="export-png" className="sr-only" disabled={!chartId}/>
-                        <span className="font-semibold">PNG Image</span>
-                        <span className="text-xs text-muted-foreground text-center">Best for presentations or sharing visuals</span>
+                    <Label htmlFor="export-pdf" className={cn("flex min-h-36 cursor-pointer flex-col items-center justify-center gap-2 rounded-md border p-4 text-center hover:bg-accent hover:text-accent-foreground", exportFormat === 'pdf' && 'ring-2 ring-primary')}>
+                        <FileText className="h-8 w-8" />
+                        <RadioGroupItem value="pdf" id="export-pdf" className="sr-only" />
+                        <span className="font-semibold">PDF Document</span>
+                        <span className="text-xs text-muted-foreground text-center">Print-ready pages with selectable text and tables</span>
                     </Label>
                 </RadioGroup>
+                {exportFormat === "pdf" ? (
+                  <div className="space-y-2">
+                    <Label id="pdf-detail-label">PDF detail</Label>
+                    <RadioGroup
+                      value={pdfMode}
+                      onValueChange={(value) => setPdfMode(value as ReportPdfMode)}
+                      className="grid gap-3 sm:grid-cols-2"
+                      aria-labelledby="pdf-detail-label"
+                    >
+                      <Label htmlFor="pdf-summary" className={cn("flex cursor-pointer items-start gap-3 rounded-md border p-4", pdfMode === "summary" && "ring-2 ring-primary")}>
+                        <FileText className="mt-0.5 h-5 w-5 shrink-0" />
+                        <span><RadioGroupItem value="summary" id="pdf-summary" className="sr-only" /><span className="block font-semibold">Summary</span><span className="mt-1 block text-xs text-muted-foreground">Key metrics, insights, and high-level tables</span></span>
+                      </Label>
+                      <Label htmlFor="pdf-detailed" className={cn("flex cursor-pointer items-start gap-3 rounded-md border p-4", pdfMode === "detailed" && "ring-2 ring-primary")}>
+                        <Table2 className="mt-0.5 h-5 w-5 shrink-0" />
+                        <span><RadioGroupItem value="detailed" id="pdf-detailed" className="sr-only" /><span className="block font-semibold">Detailed</span><span className="mt-1 block text-xs text-muted-foreground">All tables, charts, and filtered transactions</span></span>
+                      </Label>
+                    </RadioGroup>
+                  </div>
+                ) : null}
             </div>
             <DialogFooter>
                  <DialogClose asChild><Button variant="outline" disabled={isLoading}>Cancel</Button></DialogClose>
-                 <Button onClick={handleExport} disabled={isLoading || (exportFormat === 'png' && !chartId)} aria-busy={isLoading}>
+                 <Button onClick={handleExport} disabled={isLoading} aria-busy={isLoading}>
                     {isLoading ? "Exporting..." : "Export"}
                  </Button>
             </DialogFooter>

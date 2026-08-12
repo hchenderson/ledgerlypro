@@ -2,13 +2,23 @@
 "use client";
 
 import { useState, useEffect, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
-import { updateProfile } from 'firebase/auth';
+import {
+    EmailAuthProvider,
+    GoogleAuthProvider,
+    reauthenticateWithCredential,
+    reauthenticateWithPopup,
+    signOut as firebaseSignOut,
+    updateProfile,
+} from 'firebase/auth';
+import { auth } from '@/lib/firebase';
+import { authenticatedFetch } from '@/lib/authenticated-fetch';
 import { useCategories } from '@/hooks/use-categories';
 import { useSettingsData } from '@/hooks/use-settings-data';
 import { useAccounts } from '@/hooks/use-accounts';
@@ -34,6 +44,7 @@ import {
 import { PlaidConnectionsCard } from '@/components/plaid/plaid-connections-card';
 
 export default function SettingsPage() {
+    const router = useRouter();
     const { toast } = useToast();
     const { user, showInstructions, setShowInstructions, budgetingMode, setBudgetingMode, envelopeSettings, setEnvelopeSettings, forecastSettings, setForecastSettings } = useAuth();
     const { categories } = useCategories();
@@ -62,6 +73,9 @@ export default function SettingsPage() {
     const [email, setEmail] = useState('');
     const [minimumOperatingBalance, setMinimumOperatingBalance] = useState('0');
     const [dateRange, setDateRange] = useState<DateRange | undefined>();
+    const [deleteConfirmation, setDeleteConfirmation] = useState('');
+    const [deletePassword, setDeletePassword] = useState('');
+    const [deletingAccount, setDeletingAccount] = useState(false);
     const isMobile = useIsMobile();
 
     useEffect(() => {
@@ -153,6 +167,46 @@ export default function SettingsPage() {
         });
         setDateRange(undefined);
     }
+
+    const usesPassword = Boolean(
+        user?.providerData.some((provider) => provider.providerId === 'password'),
+    );
+
+    const handleDeleteAccount = async () => {
+        if (!user || deleteConfirmation !== 'DELETE') return;
+        setDeletingAccount(true);
+        try {
+            if (usesPassword) {
+                if (!user.email || !deletePassword) {
+                    throw new Error('Enter your password to continue.');
+                }
+                await reauthenticateWithCredential(
+                    user,
+                    EmailAuthProvider.credential(user.email, deletePassword),
+                );
+            } else {
+                await reauthenticateWithPopup(user, new GoogleAuthProvider());
+            }
+            await user.getIdToken(true);
+            const response = await authenticatedFetch(user, '/api/account/delete', {
+                method: 'POST',
+            });
+            const payload = await response.json().catch(() => ({})) as { error?: string };
+            if (!response.ok) {
+                throw new Error(payload.error || 'Account deletion failed.');
+            }
+            await firebaseSignOut(auth).catch(() => undefined);
+            router.replace('/signin');
+        } catch (error) {
+            toast({
+                variant: 'destructive',
+                title: 'Account was not deleted',
+                description: error instanceof Error ? error.message : 'Please try again.',
+            });
+        } finally {
+            setDeletingAccount(false);
+        }
+    };
     
     const categoryOptions = useMemo(() => {
         const mainCategories = categories.filter(c => c.type === 'expense');
@@ -450,7 +504,7 @@ export default function SettingsPage() {
                     <div className="flex flex-col items-stretch gap-4 rounded-lg border border-destructive/50 p-4 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                             <p className="font-medium">Clear All Data</p>
-                            <p className="text-sm text-muted-foreground">Permanently delete transactions, categories, budgets, goals, recurring schedules, envelopes, and reconciliations.</p>
+                            <p className="text-sm text-muted-foreground">Permanently delete transactions, categories, categorization rules, reports, budgets, goals, recurring schedules, envelopes, and reconciliations.</p>
                         </div>
                          <AlertDialog>
                           <AlertDialogTrigger asChild>
@@ -460,7 +514,7 @@ export default function SettingsPage() {
                             <AlertDialogHeader>
                               <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                               <AlertDialogDescription>
-                                This action cannot be undone. It permanently deletes all financial activity and planning data. Your account list and sign-in remain available.
+                                This action cannot be undone. It permanently deletes financial activity and planning data. Your account list, bank connections, and sign-in remain available; disconnect banks first if you do not want transactions to import again.
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
@@ -470,6 +524,74 @@ export default function SettingsPage() {
                               </AlertDialogAction>
                             </AlertDialogFooter>
                           </AlertDialogContent>
+                        </AlertDialog>
+                    </div>
+                    <div className="flex flex-col gap-4 rounded-lg border-2 border-destructive p-4">
+                        <div>
+                            <p className="font-semibold text-destructive">Delete Ledgerly Account</p>
+                            <p className="text-sm text-muted-foreground">
+                                Permanently disconnect banks and delete your sign-in, profile, transactions, account data, rules, reports, and planning data.
+                            </p>
+                        </div>
+                        <AlertDialog onOpenChange={(open) => {
+                            if (!open) {
+                                setDeleteConfirmation('');
+                                setDeletePassword('');
+                            }
+                        }}>
+                            <AlertDialogTrigger asChild>
+                                <Button className="w-full sm:w-fit" variant="destructive">Delete Account</Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>Delete your entire Ledgerly account?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                        This cannot be undone. Type DELETE and verify your identity to permanently remove the account.
+                                    </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <div className="space-y-4 py-2">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="delete-confirmation">Type DELETE</Label>
+                                        <Input
+                                            id="delete-confirmation"
+                                            autoComplete="off"
+                                            value={deleteConfirmation}
+                                            onChange={(event) => setDeleteConfirmation(event.target.value)}
+                                        />
+                                    </div>
+                                    {usesPassword ? (
+                                        <div className="space-y-2">
+                                            <Label htmlFor="delete-password">Password</Label>
+                                            <Input
+                                                id="delete-password"
+                                                type="password"
+                                                autoComplete="current-password"
+                                                value={deletePassword}
+                                                onChange={(event) => setDeletePassword(event.target.value)}
+                                            />
+                                        </div>
+                                    ) : (
+                                        <p className="text-sm text-muted-foreground">Google will ask you to sign in again when you continue.</p>
+                                    )}
+                                </div>
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel disabled={deletingAccount}>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction
+                                        onClick={(event) => {
+                                            event.preventDefault();
+                                            void handleDeleteAccount();
+                                        }}
+                                        disabled={
+                                            deletingAccount ||
+                                            deleteConfirmation !== 'DELETE' ||
+                                            (usesPassword && !deletePassword)
+                                        }
+                                        className="bg-red-600 hover:bg-red-700"
+                                    >
+                                        {deletingAccount ? 'Deleting…' : 'Permanently delete account'}
+                                    </AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
                         </AlertDialog>
                     </div>
                  </CardContent>

@@ -18,16 +18,17 @@ import { InstructionsGuide } from "@/components/dashboard/instructions-guide";
 import { computeDashboardAnalytics } from "@/lib/dashboard-analytics";
 import { buildProcessedGoals } from "@/lib/goal-progress";
 import { GoalProgress } from "@/components/dashboard/goal-progress";
-import { format, subMonths } from "date-fns";
+import { endOfYear, format, subMonths } from "date-fns";
 import dynamic from "next/dynamic";
 import {
   useAllTransactions,
-  usePriorYearsNet,
+  useTransactionsBeforeYear,
   useTransactionData,
 } from "@/hooks/use-transactions";
 import { EnvelopeSnapshot } from "@/components/dashboard/envelope-snapshot";
 import { useEnvelopes } from "@/hooks/use-envelopes";
 import { PlaidHealthStrip } from "@/components/plaid/plaid-health-strip";
+import { transactionBalanceDelta } from "@/lib/accounts";
 
 const OverviewChart = dynamic(
   () => import("@/components/dashboard/overview-chart").then((module) => module.OverviewChart),
@@ -113,12 +114,11 @@ export default function DashboardPage() {
     showInstructions,
     loading: authLoading,
     activeYear,
-    firstYear,
   } = useAuth();
   const {
-    net: priorYearsNet,
-    loading: priorYearsSummaryLoading,
-  } = usePriorYearsNet(activeYear, firstYear);
+    transactions: priorTransactions,
+    loading: priorTransactionsLoading,
+  } = useTransactionsBeforeYear(activeYear);
   const hasLinkedGoals = rawGoals.some((goal) => goal.linkedCategoryId);
   const {
     transactions: goalTransactions,
@@ -128,20 +128,29 @@ export default function DashboardPage() {
   const openingBalanceForYear = useMemo(() => {
     if (userDataLoading || authLoading) return 0;
 
-    return openingBalanceForSelection + priorYearsNet;
+    return priorTransactions.reduce(
+      (balance, transaction) =>
+        balance + transactionBalanceDelta(transaction),
+      openingBalanceForSelection,
+    );
   }, [
     authLoading,
     openingBalanceForSelection,
-    priorYearsNet,
+    priorTransactions,
     userDataLoading,
   ]);
 
   const analytics = useMemo(() => {
-    const referenceDate = new Date(activeYear, new Date().getMonth(), 1);
+    const now = new Date();
+    const referenceDate =
+      activeYear === now.getFullYear()
+        ? now
+        : endOfYear(new Date(activeYear, 0, 1));
     return computeDashboardAnalytics(
       transactions,
       openingBalanceForYear,
-      referenceDate
+      referenceDate,
+      referenceDate,
     );
   }, [transactions, activeYear, openingBalanceForYear]);
 
@@ -189,7 +198,7 @@ export default function DashboardPage() {
   const isLoading =
     userDataLoading ||
     authLoading ||
-    priorYearsSummaryLoading ||
+    priorTransactionsLoading ||
     (hasLinkedGoals && goalTransactionsLoading);
 
   if (isLoading && transactions.length === 0) {
@@ -203,8 +212,12 @@ export default function DashboardPage() {
   }
 
   
-  const currentMonthName = new Date().toLocaleString('default', { month: 'long' });
-  const previousMonthName = subMonths(new Date(), 1).toLocaleString('default', { month: 'long' });
+  const dashboardReferenceDate =
+    activeYear === new Date().getFullYear()
+      ? new Date()
+      : endOfYear(new Date(activeYear, 0, 1));
+  const currentMonthName = dashboardReferenceDate.toLocaleString('default', { month: 'long' });
+  const previousMonthName = subMonths(dashboardReferenceDate, 1).toLocaleString('default', { month: 'long' });
 
   return (
     <div className="min-w-0 space-y-5 sm:space-y-6">
@@ -217,10 +230,10 @@ export default function DashboardPage() {
         <>
            <div className="grid gap-3 sm:gap-4 md:grid-cols-2">
             <StatCard
-              title="Current Balance"
+              title={activeYear === new Date().getFullYear() ? "Current Balance" : "Ending Balance"}
               value={analytics.currentBalance}
               icon="Wallet"
-              trendValue="Your real-time balance"
+              trendValue={`Recorded balance through ${format(dashboardReferenceDate, "MMM d, yyyy")}`}
             />
             {lastUpdatedDate ? (
               <StatCard

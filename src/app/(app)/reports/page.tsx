@@ -50,6 +50,7 @@ import Link from 'next/link';
 
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
+import { authenticatedFetch } from '@/lib/authenticated-fetch';
 import { Button } from '@/components/ui/button';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -98,6 +99,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useAccounts } from '@/hooks/use-accounts';
 import { EnvelopeReportView } from '@/components/reports/envelope-report';
 import { isFinancialTransaction } from '@/lib/accounts';
+import { CustomReportWorkspace } from '@/components/reports/custom-report-workspace';
 
 const OverviewChart = dynamic(
   () =>
@@ -168,7 +170,7 @@ const quarterlyPeriodSortValue = (period: string) => {
 const formatStoredReportDate = (value: string) =>
   format(parseISO(value.slice(0, 10)), 'MMM d, yyyy');
 
-function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
+function LegacyReportView({ period }: { period: 'monthly' | 'yearly' }) {
   const { categories } = useCategories();
   const { activeYear } = useAuth();
   const isMobile = useIsMobile();
@@ -701,6 +703,13 @@ function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
   );
 }
 
+function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
+  if (process.env.NEXT_PUBLIC_LEGACY_REPORTS === 'true') {
+    return <LegacyReportView period={period} />;
+  }
+  return <CustomReportWorkspace period={period} />;
+}
+
 function AdvancedReportView() {
   const { user } = useAuth();
   const {
@@ -775,12 +784,10 @@ function AdvancedReportView() {
     }
     
     try {
-      const idToken = await user.getIdToken();
-      const response = await fetch('/api/reports/quarterly', {
+      const response = await authenticatedFetch(user, '/api/reports/quarterly', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${idToken}`,
         },
         body: JSON.stringify({
           reportYear: getYear(referenceDate),
@@ -819,12 +826,10 @@ function AdvancedReportView() {
 
   const handleDeleteReport = async (reportId: string) => {
     if (!user) return;
-    const idToken = await user.getIdToken();
-    const response = await fetch('/api/reports/quarterly', {
+    const response = await authenticatedFetch(user, '/api/reports/quarterly', {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${idToken}`,
       },
       body: JSON.stringify({ reportId }),
     });

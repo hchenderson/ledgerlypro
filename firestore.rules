@@ -26,5 +26,11 @@ service cloud.firestore {
     match /plaidWebhookInbox/{document=**} {
       allow read, write: if false;
     }
+    match /plaidOperations/{document=**} {
+      allow read, write: if false;
+    }
+    match /rateLimitBuckets/{document=**} {
+      allow read, write: if false;
+    }
   }
 }

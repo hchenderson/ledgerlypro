@@ -21,6 +21,7 @@ import {
 } from "recharts";
 import type { PieLabelRenderProps } from "recharts";
 import { useAuth } from '@/hooks/use-auth';
+import { authenticatedFetch } from '@/lib/authenticated-fetch';
 import { useIsMobile } from "@/hooks/use-mobile";
 import { startOfYear } from "date-fns";
 import { transactionBalanceDelta } from "@/lib/accounts";
@@ -213,13 +214,10 @@ export const EOYReport: React.FC<EOYReportProps> = ({
       if (!user) throw new Error('You must be signed in.');
       setIsGenerating(true);
       setAiSummary(null);
-      const idToken = await user.getIdToken();
-
-      const res = await fetch("/api/eoy-summary", {
+      const res = await authenticatedFetch(user, "/api/eoy-summary", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${idToken}`,
         },
         body: JSON.stringify({
           year: data.year,

@@ -19,6 +19,7 @@ import {
   ArrowLeft,
   ArrowRightLeft,
   ArrowUpRight,
+  CalendarSearch,
   CheckCircle2,
   FileCheck2,
   Search,
@@ -624,6 +625,7 @@ export default function AccountDetailPage() {
   } = useAccountReconciliations(accountId);
   const [reconciliationOpen, setReconciliationOpen] =
     useState(false);
+  const [balanceLookupDate, setBalanceLookupDate] = useState("");
   const account = accounts.find(
     (candidate) => candidate.id === accountId,
   );
@@ -636,6 +638,10 @@ export default function AccountDetailPage() {
       activeYear === now.getFullYear() ? now : fullEnd;
     return { start, end };
   }, [activeYear]);
+
+  useEffect(() => {
+    setBalanceLookupDate(format(period.end, "yyyy-MM-dd"));
+  }, [period]);
 
   const accountLedger = useMemo(
     () => (account ? buildAccountLedger(account, transactions) : []),
@@ -731,6 +737,13 @@ export default function AccountDetailPage() {
     transactions,
     period.end,
   );
+  const balanceOnLookupDate = balanceLookupDate
+    ? calculateAccountBalanceAsOf(
+        account,
+        transactions,
+        balanceLookupDate,
+      )
+    : currentBalance;
   const latestReconciliation = reconciliations[0];
   const pageError = transactionsError ?? reconciliationsError;
 
@@ -848,6 +861,55 @@ export default function AccountDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CalendarSearch className="h-5 w-5 text-primary" />
+            Balance on a date
+          </CardTitle>
+          <CardDescription>
+            Look up what Ledgerly recorded for this account at the end
+            of any day.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-[minmax(0,16rem)_1fr] sm:items-end">
+          <div className="space-y-2">
+            <Label htmlFor="balance-lookup-date">Date</Label>
+            <Input
+              id="balance-lookup-date"
+              type="date"
+              value={balanceLookupDate}
+              onChange={(event) =>
+                setBalanceLookupDate(event.target.value)
+              }
+            />
+          </div>
+          <div className="rounded-xl border bg-muted/35 px-4 py-3">
+            <p className="text-xs text-muted-foreground">
+              {account.classification === "liability"
+                ? "Amount owed"
+                : "Recorded balance"}
+              {balanceLookupDate
+                ? ` at the end of ${format(
+                    new Date(`${balanceLookupDate}T12:00:00`),
+                    "MMM d, yyyy",
+                  )}`
+                : ""}
+            </p>
+            <p className="mt-1 font-headline text-2xl font-semibold tabular-nums">
+              {currency.format(
+                displayLedgerBalance(account, balanceOnLookupDate),
+              )}
+            </p>
+          </div>
+          <p className="text-xs leading-5 text-muted-foreground sm:col-span-2">
+            This uses the account opening balance plus finalized income,
+            expenses, and transfers recorded through that day. Pending or
+            removed entries are not counted.
+          </p>
+        </CardContent>
+      </Card>
 
       <Card className="min-w-0 overflow-hidden">
         <CardHeader>

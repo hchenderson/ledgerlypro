@@ -113,6 +113,21 @@ describe("computeYearComparison", () => {
     ]).toEqual([6, 1, 11, 31]);
   });
 
+  it("builds exact custom-day ranges for both comparison years", () => {
+    const ranges = buildComparisonDateRanges({
+      preset: "custom-dates",
+      primaryYear: 2026,
+      comparisonYear: 2025,
+      primaryStartDate: new Date(2026, 1, 12),
+      primaryEndDate: new Date(2026, 3, 27),
+    });
+
+    expect(ranges.primary.from).toEqual(new Date(2026, 1, 12));
+    expect(ranges.primary.to).toEqual(new Date(2026, 3, 27));
+    expect(ranges.comparison.from).toEqual(new Date(2025, 1, 12));
+    expect(ranges.comparison.to).toEqual(new Date(2025, 3, 27));
+  });
+
   it("matches the shared report summary for the same date range", () => {
     const result = computeYearComparison(
       transactions,
@@ -178,6 +193,51 @@ describe("computeYearComparison", () => {
     expect(result.expenseCategories[0].category).toBe("Housing");
   });
 
+  it("removes excluded main categories from every comparison metric", () => {
+    const categories: Category[] = [
+      {
+        id: "housing",
+        name: "Housing",
+        type: "expense",
+        subCategories: [{ id: "rent", name: "Rent", subCategories: [] }],
+      },
+      {
+        id: "salary",
+        name: "Salary",
+        type: "income",
+        subCategories: [],
+      },
+    ];
+    const result = computeYearComparison(
+      [
+        {
+          ...transaction("salary", "2025-01-05", 2_000, "income", "Salary"),
+          categoryId: "salary",
+        },
+        {
+          ...transaction("rent", "2025-01-06", 900, "expense", "Rent"),
+          categoryId: "rent",
+        },
+        transaction("food", "2025-01-07", 200, "expense", "Food"),
+      ],
+      2025,
+      2024,
+      fullYearRanges,
+      categories,
+      ["expense:housing"],
+    );
+
+    expect(result.primary.income).toBe(2_000);
+    expect(result.primary.expenses).toBe(200);
+    expect(result.primary.net).toBe(1_800);
+    expect(result.primary.transactionCount).toBe(2);
+    expect(result.monthly[0].primaryExpenses).toBe(200);
+    expect(result.expenseCategories.map((item) => item.category)).toEqual([
+      "Uncategorized",
+    ]);
+    expect(result.primary.largestExpense?.id).toBe("food");
+  });
+
   it.each([
     ["full", 0, 11],
     ["ytd", 0, 11],
@@ -187,6 +247,7 @@ describe("computeYearComparison", () => {
     ["q2", 0, 11],
     ["q3", 0, 11],
     ["q4", 0, 11],
+    ["custom-dates", 0, 11],
     ["custom", 2, 7],
   ] as const)(
     "keeps Compare and Reports totals identical for the %s preset",

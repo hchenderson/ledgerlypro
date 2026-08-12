@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
 import { AuthenticationError, requireUid } from '@/lib/requireUid';
-import { checkRateLimit } from '@/lib/rate-limit';
+import { checkDistributedRateLimit } from '@/lib/distributed-rate-limit';
 import { logServerEvent, requestLogContext } from '@/lib/server-logger';
 
 const EoySummarySchema = z.object({
@@ -21,7 +21,7 @@ export async function POST(req: Request) {
   const context = requestLogContext(req, 'eoy-summary.generate');
   try {
     const uid = await requireUid(req);
-    const rateLimit = checkRateLimit({ key: `eoy-summary:${uid}`, limit: 30, windowMs: 60_000 });
+    const rateLimit = await checkDistributedRateLimit({ key: `eoy-summary:${uid}`, limit: 30, windowMs: 60_000 });
     if (!rateLimit.allowed) {
       return NextResponse.json(
         { error: 'Too many summary requests. Please wait and try again.' },

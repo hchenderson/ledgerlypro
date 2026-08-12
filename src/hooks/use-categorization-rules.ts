@@ -4,6 +4,7 @@ import { useCallback } from "react";
 import { deleteDoc, doc, setDoc } from "firebase/firestore";
 
 import { useAuth } from "@/hooks/use-auth";
+import { authenticatedFetch } from "@/lib/authenticated-fetch";
 import { useFirestoreUserCollection } from "@/hooks/use-firestore-user-collection";
 import { db } from "@/lib/firebase";
 import type { CategorizationRule } from "@/types";
@@ -64,10 +65,8 @@ export function useCategorizationRules() {
 
   const applyRules = useCallback(async () => {
     if (!user) throw new Error("Sign in to apply rules.");
-    const token = await user.getIdToken();
-    const response = await fetch("/api/categorization/apply", {
+    const response = await authenticatedFetch(user, "/api/categorization/apply", {
       method: "POST",
-      headers: { authorization: `Bearer ${token}` },
     });
     const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
     if (!response.ok) throw new Error(typeof payload.error === "string" ? payload.error : "Rules could not be applied.");

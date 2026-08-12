@@ -140,6 +140,7 @@ export interface PlaidItem {
   plaidItemId: string;
   institutionId?: string | null;
   institutionName?: string | null;
+  environment?: "sandbox" | "production";
   status: PlaidItemStatus;
   syncCursor?: string | null;
   lastSuccessfulSync?: string;

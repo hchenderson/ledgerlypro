@@ -5,7 +5,7 @@ import {
   ScanReceiptInputSchema,
 } from "@/ai/flows/scan-receipt-flow";
 import { AuthenticationError, requireUid } from "@/lib/requireUid";
-import { checkRateLimit } from "@/lib/rate-limit";
+import { checkDistributedRateLimit } from "@/lib/distributed-rate-limit";
 import { logServerEvent, requestLogContext } from "@/lib/server-logger";
 
 const MAX_REQUEST_BYTES = 12_500_000;
@@ -22,7 +22,7 @@ export async function POST(req: Request) {
       });
     }
 
-    const rateLimit = checkRateLimit({
+    const rateLimit = await checkDistributedRateLimit({
       key: `receipt:${uid}`,
       limit: 10,
       windowMs: 60_000,

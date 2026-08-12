@@ -11,25 +11,17 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "./ui/button";
-import { Calendar } from "lucide-react";
+import { Calendar, ChevronDown } from "lucide-react";
 import { useComparison } from "@/hooks/use-comparison";
-import { useMemo } from "react";
+import { useAvailableTransactionYears } from "@/hooks/use-available-transaction-years";
 
 export function YearSwitcher() {
-  const { activeYear, setActiveYear, firstYear } = useAuth();
+  const { activeYear, setActiveYear } = useAuth();
   const { setComparisonYear } = useComparison();
+  const { years, loading } = useAvailableTransactionYears();
 
   const currentSystemYear = new Date().getFullYear();
   
-  const years = useMemo(() => {
-    const oldestYear = Math.min(firstYear, currentSystemYear);
-    return Array.from(
-      { length: currentSystemYear - oldestYear + 1 },
-      (_, index) => currentSystemYear - index,
-    );
-  }, [currentSystemYear, firstYear]);
-
-
   const handleYearChange = (year: number) => {
     setActiveYear(year);
     setComparisonYear(undefined); // Clear comparison when active year changes
@@ -40,7 +32,7 @@ export function YearSwitcher() {
       <DropdownMenuTrigger asChild>
         <Button
           variant="outline"
-          className="h-11 w-[92px] justify-start px-3 md:h-10 md:w-[180px] md:px-4"
+          className="h-11 w-[112px] justify-start px-3 md:h-10 md:w-[180px] md:px-4"
           aria-label={`Select reporting year. Currently ${activeYear}`}
         >
           <Calendar className="mr-1.5 h-4 w-4 md:mr-2" />
@@ -48,12 +40,15 @@ export function YearSwitcher() {
           {activeYear === currentSystemYear && (
             <span className="ml-auto hidden text-xs text-muted-foreground md:inline">Current</span>
           )}
+          <ChevronDown className="ml-auto h-3.5 w-3.5 shrink-0 text-muted-foreground md:hidden" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent className="w-56" align="start">
         <DropdownMenuLabel>Select a Year</DropdownMenuLabel>
         <DropdownMenuSeparator />
-        {years.map((year) => (
+        {loading ? (
+          <DropdownMenuItem disabled>Loading years…</DropdownMenuItem>
+        ) : years.map((year) => (
           <DropdownMenuItem
             key={year}
             onSelect={() => handleYearChange(year)}

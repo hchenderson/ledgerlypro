@@ -129,6 +129,10 @@ export function SettingsDataProvider({
         "envelopes",
         "envelopeEvents",
         "accountReconciliations",
+        "categorizationRules",
+        "categorizationAudit",
+        "reports",
+        "reportViews",
       ].map((collectionName) => clearCollection(collectionName)),
     );
     if (!user) return;

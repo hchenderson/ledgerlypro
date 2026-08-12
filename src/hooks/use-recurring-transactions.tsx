@@ -14,6 +14,7 @@ import { deleteDoc, deleteField, doc, setDoc } from "firebase/firestore";
 import { format } from "date-fns";
 
 import { useAuth } from "@/hooks/use-auth";
+import { authenticatedFetch } from "@/lib/authenticated-fetch";
 import { useFirestoreUserCollection } from "@/hooks/use-firestore-user-collection";
 import type { RecurringTransaction } from "@/types";
 
@@ -112,10 +113,8 @@ export function RecurringTransactionsProvider({
       let totalUpserted = 0;
       let hasMore = false;
       for (let batchNumber = 0; batchNumber < 3; batchNumber += 1) {
-        const idToken = await user.getIdToken();
-        const response = await fetch("/api/recurring/process", {
+        const response = await authenticatedFetch(user, "/api/recurring/process", {
           method: "POST",
-          headers: { Authorization: `Bearer ${idToken}` },
         });
         const result = (await response.json()) as {
           hasMore?: boolean;

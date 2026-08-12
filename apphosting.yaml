@@ -14,6 +14,10 @@ cors:
 # Plaid credentials and encryption/job secrets must be created in Firebase
 # Secret Manager before this configuration is rolled out.
 env:
+  - variable: NEXT_PUBLIC_ADSENSE_ENABLED
+    value: "false"
+  - variable: FIREBASE_APP_CHECK_ENFORCED
+    value: "false"
   - variable: PLAID_CLIENT_ID
     secret: PLAID_CLIENT_ID
   - variable: PLAID_SECRET
@@ -30,6 +34,8 @@ env:
     value: "730"
   - variable: PLAID_REALTIME_BALANCE_ENABLED
     value: "false"
+  - variable: PLAID_BALANCE_SNAPSHOT_RETENTION_DAYS
+    value: "400"
   - variable: PLAID_WEBHOOK_URL
     value: https://ledgerly.business/api/plaid/webhook
   - variable: PLAID_REDIRECT_URI

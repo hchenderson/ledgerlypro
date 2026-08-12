@@ -579,7 +579,7 @@ export default function AccountsPage() {
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
-          <PlaidLinkButton variant="outline" />
+          <PlaidLinkButton variant="outline" resumeOAuth />
           <Button
             variant="outline"
             onClick={() => setTransferOpen(true)}

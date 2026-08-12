@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebaseAdmin";
 import { withoutUndefined } from "@/lib/firestore-values";
-import { plaidRequest } from "@/lib/plaid-client";
+import { plaidConfigurationStatus, plaidRequest } from "@/lib/plaid-client";
 import { encryptPlaidAccessToken } from "@/lib/plaid-crypto";
 import { plaidRouteError, requiredString } from "@/lib/plaid-route";
 import { requireUid } from "@/lib/requireUid";
@@ -38,6 +38,7 @@ export async function POST(request: Request) {
       access_token: exchange.access_token,
     });
     const now = new Date().toISOString();
+    const environment = plaidConfigurationStatus().environment;
     const institutionId =
       (typeof institution.institution_id === "string"
         ? institution.institution_id
@@ -63,6 +64,7 @@ export async function POST(request: Request) {
       plaidItemId: exchange.item_id,
       institutionId,
       institutionName,
+      environment,
       status: "connecting",
       availableAccounts,
       mappedAccountCount: 0,
@@ -79,6 +81,7 @@ export async function POST(request: Request) {
         .doc(exchange.item_id),
       {
         encryptedAccessToken: encryptPlaidAccessToken(exchange.access_token),
+        environment,
         createdAt: now,
         updatedAt: now,
       },
@@ -86,6 +89,7 @@ export async function POST(request: Request) {
     );
     batch.set(adminDb.collection("plaidItemOwners").doc(exchange.item_id), {
       uid,
+      environment,
       createdAt: now,
       updatedAt: now,
     });

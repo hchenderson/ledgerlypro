@@ -2,11 +2,37 @@ import "server-only";
 
 const PLAID_BASE_URLS = {
   sandbox: "https://sandbox.plaid.com",
-  development: "https://development.plaid.com",
   production: "https://production.plaid.com",
 } as const;
 
 export type PlaidEnvironment = keyof typeof PLAID_BASE_URLS;
+
+export class PlaidEnvironmentMismatchError extends Error {
+  readonly connectionEnvironment: PlaidEnvironment | null;
+  readonly currentEnvironment: PlaidEnvironment;
+
+  constructor(
+    connectionEnvironment: PlaidEnvironment | null,
+    currentEnvironment: PlaidEnvironment,
+  ) {
+    super(
+      connectionEnvironment
+        ? `This bank connection belongs to Plaid ${connectionEnvironment}, but Ledgerly is using ${currentEnvironment}. Disconnect the old connection and link the institution again.`
+        : `This legacy bank connection cannot be verified for Plaid ${currentEnvironment}. Disconnect it and link the institution again.`,
+    );
+    this.name = "PlaidEnvironmentMismatchError";
+    this.connectionEnvironment = connectionEnvironment;
+    this.currentEnvironment = currentEnvironment;
+  }
+}
+
+export function plaidEnvironmentFromAccessToken(
+  accessToken: string,
+): PlaidEnvironment | null {
+  if (accessToken.startsWith("access-sandbox-")) return "sandbox";
+  if (accessToken.startsWith("access-production-")) return "production";
+  return null;
+}
 
 export class PlaidApiError extends Error {
   readonly errorCode?: string;

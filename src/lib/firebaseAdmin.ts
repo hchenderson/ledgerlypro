@@ -4,10 +4,12 @@ import "server-only";
 import { cert, getApps, initializeApp, App, type ServiceAccount } from "firebase-admin/app";
 import { getAuth, Auth } from "firebase-admin/auth";
 import { getFirestore, Firestore } from "firebase-admin/firestore";
+import { getAppCheck, AppCheck } from "firebase-admin/app-check";
 
 let adminApp: App | null = null;
 let adminAuth: Auth | null = null;
 let adminDb: Firestore | null = null;
+let adminAppCheck: AppCheck | null = null;
 let adminCredentialIssue: string | null = null;
 
 function parseServiceAccount(raw: string | undefined): ServiceAccount | null {
@@ -75,9 +77,10 @@ try {
   if (adminApp) {
     adminAuth = getAuth(adminApp);
     adminDb = getFirestore(adminApp);
+    adminAppCheck = getAppCheck(adminApp);
   }
 } catch (error) {
   console.error("Firebase Admin SDK initialization failed:", error);
 }
 
-export { adminApp, adminDb, adminAuth, adminCredentialIssue };
+export { adminApp, adminDb, adminAuth, adminAppCheck, adminCredentialIssue };

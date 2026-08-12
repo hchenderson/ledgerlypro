@@ -10,7 +10,11 @@ import { buildFinancialAggregateDocuments } from "@/lib/financial-aggregates";
 import { envelopeEventForTransaction } from "@/lib/envelopes";
 import {
   PlaidApiError,
+  PlaidEnvironmentMismatchError,
+  plaidConfigurationStatus,
+  plaidEnvironmentFromAccessToken,
   plaidRequest,
+  type PlaidEnvironment,
 } from "@/lib/plaid-client";
 import { decryptPlaidAccessToken } from "@/lib/plaid-crypto";
 import { withoutUndefined } from "@/lib/firestore-values";
@@ -48,6 +52,7 @@ interface PlaidAccountsResponse {
 
 interface PlaidItemSecret {
   encryptedAccessToken: string;
+  environment?: PlaidEnvironment;
 }
 
 const MAX_SYNC_RESTARTS = 3;
@@ -67,11 +72,32 @@ function privateItemRef(uid: string, plaidItemId: string) {
     .doc(plaidItemId);
 }
 
-export async function getPlaidAccessToken(uid: string, plaidItemId: string) {
+export async function getPlaidAccessTokenRecord(
+  uid: string,
+  plaidItemId: string,
+) {
   const snapshot = await privateItemRef(uid, plaidItemId).get();
   if (!snapshot.exists) throw new Error("Plaid connection secret was not found.");
   const secret = snapshot.data() as PlaidItemSecret;
-  return decryptPlaidAccessToken(secret.encryptedAccessToken);
+  const accessToken = decryptPlaidAccessToken(secret.encryptedAccessToken);
+  const environment =
+    secret.environment ?? plaidEnvironmentFromAccessToken(accessToken);
+  return { accessToken, environment };
+}
+
+export async function getPlaidAccessToken(uid: string, plaidItemId: string) {
+  const record = await getPlaidAccessTokenRecord(uid, plaidItemId);
+  const currentEnvironment = plaidConfigurationStatus().environment;
+  if (
+    !record.environment ||
+    record.environment !== currentEnvironment
+  ) {
+    throw new PlaidEnvironmentMismatchError(
+      record.environment,
+      currentEnvironment,
+    );
+  }
+  return record.accessToken;
 }
 
 export async function fetchPlaidSyncUpdates(
@@ -299,6 +325,10 @@ export async function refreshPlaidBalances({
     ]),
   );
   const recordedAt = new Date().toISOString();
+  const retentionDays = Math.max(
+    30,
+    Number(process.env.PLAID_BALANCE_SNAPSHOT_RETENTION_DAYS) || 400,
+  );
   const batch = adminDb.batch();
   let updated = 0;
   for (const account of response.accounts) {
@@ -330,6 +360,9 @@ export async function refreshPlaidBalances({
       creditLimit: account.balances.limit ?? null,
       isRealtime: realtime,
       recordedAt,
+      expiresAt: Timestamp.fromMillis(
+        Date.now() + retentionDays * 24 * 60 * 60 * 1000,
+      ),
     });
   }
   batch.set(

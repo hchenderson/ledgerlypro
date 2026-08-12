@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { useAuth } from "@/hooks/use-auth";
 import { useFirestoreUserCollection } from "@/hooks/use-firestore-user-collection";
+import { authenticatedFetch } from "@/lib/authenticated-fetch";
 import type { AccountRole, PlaidItem } from "@/types";
 
 export interface PlaidAccountMapping {
@@ -15,7 +16,7 @@ export interface PlaidAccountMapping {
 
 interface PlaidConfig {
   configured: boolean;
-  environment: "sandbox" | "development" | "production";
+  environment: "sandbox" | "production";
   realTimeBalanceEnabled: boolean;
 }
 
@@ -55,12 +56,10 @@ export function usePlaid() {
   const post = useCallback(
     async (path: string, body: Record<string, unknown> = {}) => {
       if (!user) throw new Error("Sign in before connecting an institution.");
-      const token = await user.getIdToken();
-      const response = await fetch(path, {
+      const response = await authenticatedFetch(user, path, {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(body),
       });
@@ -70,6 +69,7 @@ export function usePlaid() {
   );
 
   return {
+    userUid: user?.uid ?? null,
     items: items.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
     loading,
     error,

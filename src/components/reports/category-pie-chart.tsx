@@ -68,7 +68,7 @@ export function CategoryPieChart({ data }: CategoryPieChartProps) {
   if (data.length === 0) {
     return (
         <div className="flex h-[260px] items-center justify-center text-muted-foreground sm:h-[350px]">
-            No expense data to display for the selected filters.
+            No category data to display for the selected filters.
         </div>
     )
   }

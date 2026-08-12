@@ -4,7 +4,11 @@
 import Script from "next/script";
 
 export function AdSenseScript({ showAds }: { showAds: boolean }) {
-  if (!showAds || !process.env.NEXT_PUBLIC_ADSENSE_PUBLISHER_ID) {
+  if (
+    !showAds ||
+    process.env.NEXT_PUBLIC_ADSENSE_ENABLED !== "true" ||
+    !process.env.NEXT_PUBLIC_ADSENSE_PUBLISHER_ID
+  ) {
     return null;
   }
 

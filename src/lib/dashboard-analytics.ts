@@ -21,13 +21,25 @@ export interface DashboardAnalytics {
 export function computeDashboardAnalytics(
   transactions: Transaction[],
   startingBalanceForYear: number,
-  referenceDate: Date
+  referenceDate: Date,
+  asOfDate?: Date,
 ): DashboardAnalytics {
   const previousMonthDate = subMonths(referenceDate, 1);
   const referenceMonth = getMonth(referenceDate);
   const referenceYear = getYear(referenceDate);
   const previousMonth = getMonth(previousMonthDate);
   const previousMonthYear = getYear(previousMonthDate);
+  const asOfTime = asOfDate
+    ? new Date(
+        asOfDate.getFullYear(),
+        asOfDate.getMonth(),
+        asOfDate.getDate(),
+        23,
+        59,
+        59,
+        999,
+      ).getTime()
+    : Number.POSITIVE_INFINITY;
 
   let totalIncome = 0;
   let totalExpenses = 0;
@@ -46,6 +58,7 @@ export function computeDashboardAnalytics(
     if (!isTransactionFinalized(transaction)) continue;
     const transactionDate = parseISO(transaction.date);
     if (Number.isNaN(transactionDate.getTime())) continue;
+    if (transactionDate.getTime() > asOfTime) continue;
     const amount = transactionAmount(transaction);
 
     if (transaction.type === "transfer") {

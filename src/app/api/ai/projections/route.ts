@@ -5,14 +5,14 @@ import {
   GetCashFlowProjectionsInputSchema,
 } from "@/ai/flows/cash-flow-projections";
 import { AuthenticationError, requireUid } from "@/lib/requireUid";
-import { checkRateLimit } from "@/lib/rate-limit";
+import { checkDistributedRateLimit } from "@/lib/distributed-rate-limit";
 import { logServerEvent, requestLogContext } from "@/lib/server-logger";
 
 export async function POST(req: Request) {
   const context = requestLogContext(req, 'ai.projection');
   try {
     const uid = await requireUid(req);
-    const rateLimit = checkRateLimit({
+    const rateLimit = await checkDistributedRateLimit({
       key: `projection:${uid}`,
       limit: 10,
       windowMs: 60_000,

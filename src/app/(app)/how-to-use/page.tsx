@@ -174,10 +174,13 @@ const pageGuides = [
     title: "Reports and Compare — understand results",
     icon: FileBarChart,
     body: [
-      "Reports calculate income, expenses, and net cash flow for the exact selected date range.",
-      "Compare uses matching periods, such as year to date against the same dates last year. Confirm both date labels before comparing totals.",
+      "Monthly and Yearly Reports use one shared filter for every card, chart, category table, insight, transaction row, PDF, and CSV export.",
+      "Use Filters and comparison to choose exact dates, accounts, income or expenses, included or excluded categories, posted or pending entries, transfers, and a comparison period.",
+      "Use Customize sections and cards to show, hide, and reorder the report. Save a named view when you want the same configuration on another device.",
+      "Choose PDF Summary for a concise, print-ready report. Choose PDF Detailed to include the visible charts, supporting tables, and every filtered transaction. CSV remains available for spreadsheet work.",
+      "Report comparison cards and category movement use the same calculation engine as Compare. Open the selected report dates in Compare when you need a deeper side-by-side investigation.",
       "Envelope reports are intentionally separate from cash-flow reports. Funding and releasing an envelope are transfers, not income or expenses.",
-      "Use quarterly and advanced reports when you need a formal period summary; use category breakdowns when you need the cause of a change.",
+      "Use Advanced reports when you need a frozen quarterly record. Use the live Monthly and Yearly workspaces for customizable analysis.",
       "Account filters change which account activity is included. Select all accounts for the complete household picture.",
     ],
   },
@@ -619,7 +622,8 @@ export default function HowToUsePage() {
               <AccordionItem value="wrong-report">
                 <AccordionTrigger className="text-left">Why do two report totals look different?</AccordionTrigger>
                 <AccordionContent className="space-y-2 text-muted-foreground">
-                  <p>Compare the exact start and end dates, selected accounts, year, and filters. Year to date is not the same as a completed first half or full year.</p>
+                  <p>Compare the exact start and end dates, selected accounts, category inclusions or exclusions, pending-entry setting, and cash-flow types. Year to date is not the same as a completed first half or full year.</p>
+                  <p>When a comparison is enabled in Reports, its summary and category-movement sections use the same filtered transaction set. The filter badges above the report document what is included.</p>
                   <p>Also review unmatched internal transfers. A withdrawal and deposit recorded as expense and income will inflate both totals until linked as a transfer.</p>
                 </AccordionContent>
               </AccordionItem>

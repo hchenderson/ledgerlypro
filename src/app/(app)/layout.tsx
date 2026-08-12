@@ -119,7 +119,10 @@ function MainAppShell({ children }: { children: React.ReactNode }) {
         window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
     }, []);
 
-    const showAds = user?.uid !== process.env.NEXT_PUBLIC_ADSENSE_EXCLUDE_UID;
+    const showAds =
+        process.env.NEXT_PUBLIC_ADSENSE_ENABLED === 'true' &&
+        Boolean(process.env.NEXT_PUBLIC_ADSENSE_PUBLISHER_ID) &&
+        user?.uid !== process.env.NEXT_PUBLIC_ADSENSE_EXCLUDE_UID;
 
     useEffect(() => {
         document.body.classList.add("ledgerly-app-shell");
@@ -350,7 +353,10 @@ function AuthenticatedAppLayout({ children }: { children: React.ReactNode }) {
     return <AppLayoutSkeleton />;
   }
   
-  const showAds = user?.uid !== process.env.NEXT_PUBLIC_ADSENSE_EXCLUDE_UID;
+  const showAds =
+    process.env.NEXT_PUBLIC_ADSENSE_ENABLED === 'true' &&
+    Boolean(process.env.NEXT_PUBLIC_ADSENSE_PUBLISHER_ID) &&
+    user?.uid !== process.env.NEXT_PUBLIC_ADSENSE_EXCLUDE_UID;
 
   return (
       <AccountsProvider>

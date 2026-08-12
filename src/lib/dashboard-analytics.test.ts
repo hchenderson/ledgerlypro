@@ -116,4 +116,19 @@ describe("computeDashboardAnalytics", () => {
     expect(result.totalExpenses).toBe(125);
     expect(result.currentBalance).toBe(375);
   });
+
+  it("excludes entries after an explicit balance cutoff date", () => {
+    const result = computeDashboardAnalytics(
+      [
+        transaction("posted", "2026-08-12T09:00:00.000", 500, "income"),
+        transaction("future", "2026-08-13T09:00:00.000", 300, "income"),
+      ],
+      100,
+      new Date(2026, 7, 12),
+      new Date(2026, 7, 12),
+    );
+
+    expect(result.currentBalance).toBe(600);
+    expect(result.totalIncome).toBe(500);
+  });
 });

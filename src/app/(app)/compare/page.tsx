@@ -22,6 +22,11 @@ import {
   ComparisonTrendChart,
   type ComparisonMetric,
 } from "@/components/comparison/comparison-trend-chart";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -37,6 +42,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -46,6 +52,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { SearchableMultiSelect } from "@/components/ui/searchable-multi-select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/hooks/use-auth";
 import { useComparison } from "@/hooks/use-comparison";
@@ -229,7 +236,7 @@ function CompareSkeleton() {
 }
 
 export default function ComparePage() {
-  const { activeYear, firstYear } = useAuth();
+  const { activeYear, firstYear, setActiveYear } = useAuth();
   const {
     categories,
     loading: collectionsLoading,
@@ -238,11 +245,31 @@ export default function ComparePage() {
   const [rangePreset, setRangePreset] = useState<ComparisonRangePreset>("ytd");
   const [startMonth, setStartMonth] = useState(0);
   const [endMonth, setEndMonth] = useState(11);
+  const [customStartDate, setCustomStartDate] = useState(
+    `${activeYear}-01-01`,
+  );
+  const [customEndDate, setCustomEndDate] = useState(
+    `${activeYear}-12-31`,
+  );
   const [metric, setMetric] = useState<ComparisonMetric>("net");
   const [categoryLimit, setCategoryLimit] = useState(5);
   const [cumulative, setCumulative] = useState(false);
+  const [excludedCategoryKeys, setExcludedCategoryKeys] = useState<string[]>([]);
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(true);
+
+  useEffect(() => {
+    const withYear = (value: string, fallback: string) => {
+      const suffix = /^\d{4}-(\d{2}-\d{2})$/.exec(value)?.[1];
+      return suffix ? `${activeYear}-${suffix}` : fallback;
+    };
+    setCustomStartDate((current) =>
+      withYear(current, `${activeYear}-01-01`),
+    );
+    setCustomEndDate((current) =>
+      withYear(current, `${activeYear}-12-31`),
+    );
+  }, [activeYear]);
 
   const availableYears = useMemo(() => {
     const years = new Set<number>();
@@ -275,6 +302,9 @@ export default function ComparePage() {
           metric?: ComparisonMetric;
           categoryLimit?: number;
           cumulative?: boolean;
+          excludedCategoryKeys?: string[];
+          customStartDate?: string;
+          customEndDate?: string;
         };
         if (preferences.rangePreset) setRangePreset(preferences.rangePreset);
         if (Number.isInteger(preferences.startMonth)) setStartMonth(preferences.startMonth!);
@@ -282,21 +312,80 @@ export default function ComparePage() {
         if (preferences.metric) setMetric(preferences.metric);
         if ([5, 8, 12].includes(preferences.categoryLimit ?? 0)) setCategoryLimit(preferences.categoryLimit!);
         if (typeof preferences.cumulative === "boolean") setCumulative(preferences.cumulative);
+        if (Array.isArray(preferences.excludedCategoryKeys)) {
+          setExcludedCategoryKeys(
+            preferences.excludedCategoryKeys.filter(
+              (value): value is string => typeof value === "string",
+            ),
+          );
+        }
+        if (preferences.customStartDate) setCustomStartDate(preferences.customStartDate);
+        if (preferences.customEndDate) setCustomEndDate(preferences.customEndDate);
+      }
+      const handoff = window.localStorage.getItem(
+        "ledgerly-report-compare-handoff",
+      );
+      if (handoff) {
+        const next = JSON.parse(handoff) as {
+          activeYear?: number;
+          rangePreset?: ComparisonRangePreset;
+          startMonth?: number;
+          endMonth?: number;
+          excludedCategoryKeys?: string[];
+          customStartDate?: string;
+          customEndDate?: string;
+        };
+        if (Number.isInteger(next.activeYear)) {
+          setActiveYear(next.activeYear!);
+        }
+        if (next.rangePreset) setRangePreset(next.rangePreset);
+        if (Number.isInteger(next.startMonth)) setStartMonth(next.startMonth!);
+        if (Number.isInteger(next.endMonth)) setEndMonth(next.endMonth!);
+        if (Array.isArray(next.excludedCategoryKeys)) {
+          setExcludedCategoryKeys(
+            next.excludedCategoryKeys.filter(
+              (value): value is string => typeof value === "string",
+            ),
+          );
+        }
+        if (next.customStartDate) setCustomStartDate(next.customStartDate);
+        if (next.customEndDate) setCustomEndDate(next.customEndDate);
+        window.localStorage.removeItem(
+          "ledgerly-report-compare-handoff",
+        );
       }
     } catch {
       // Ignore stale or malformed browser preferences and use safe defaults.
     } finally {
       setPreferencesLoaded(true);
     }
-  }, []);
+  }, [setActiveYear]);
 
   useEffect(() => {
     if (!preferencesLoaded) return;
     window.localStorage.setItem(
       "ledgerly-comparison-preferences",
-      JSON.stringify({ rangePreset, startMonth, endMonth, metric, categoryLimit, cumulative })
+      JSON.stringify({ rangePreset, startMonth, endMonth, metric, categoryLimit, cumulative, excludedCategoryKeys, customStartDate, customEndDate })
     );
-  }, [categoryLimit, cumulative, endMonth, metric, preferencesLoaded, rangePreset, startMonth]);
+  }, [categoryLimit, cumulative, customEndDate, customStartDate, endMonth, excludedCategoryKeys, metric, preferencesLoaded, rangePreset, startMonth]);
+
+  const categoryExclusionOptions = useMemo(
+    () => [
+      ...categories
+        .filter(
+          (category) =>
+            category.type === "income" || category.type === "expense",
+        )
+        .map((category) => ({
+          value: `${category.type}:${category.id}`,
+          label: `${category.type === "income" ? "Income" : "Expense"} · ${category.name}`,
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+      { value: "expense:uncategorized", label: "Expense · Uncategorized" },
+      { value: "income:uncategorized", label: "Income · Uncategorized" },
+    ],
+    [categories],
+  );
 
   const ranges = useMemo(
     () =>
@@ -306,8 +395,10 @@ export default function ComparePage() {
         comparisonYear: selectedComparisonYear,
         startMonth,
         endMonth,
+        primaryStartDate: new Date(`${customStartDate}T12:00:00`),
+        primaryEndDate: new Date(`${customEndDate}T12:00:00`),
       }),
-    [activeYear, endMonth, rangePreset, selectedComparisonYear, startMonth]
+    [activeYear, customEndDate, customStartDate, endMonth, rangePreset, selectedComparisonYear, startMonth]
   );
 
   const analytics = useMemo(
@@ -317,9 +408,10 @@ export default function ComparePage() {
         activeYear,
         selectedComparisonYear,
         ranges,
-        categories
+        categories,
+        excludedCategoryKeys,
       ),
-    [activeYear, allTransactions, categories, ranges, selectedComparisonYear]
+    [activeYear, allTransactions, categories, excludedCategoryKeys, ranges, selectedComparisonYear]
   );
 
   const largestExpenseMover = useMemo(
@@ -338,6 +430,9 @@ export default function ComparePage() {
     setMetric("net");
     setCategoryLimit(5);
     setCumulative(false);
+    setCustomStartDate(`${activeYear}-01-01`);
+    setCustomEndDate(`${activeYear}-12-31`);
+    setExcludedCategoryKeys([]);
     setComparisonYear(undefined);
   };
 
@@ -417,6 +512,7 @@ export default function ComparePage() {
                 <SelectItem value="q2">Quarter 2</SelectItem>
                 <SelectItem value="q3">Quarter 3</SelectItem>
                 <SelectItem value="q4">Quarter 4</SelectItem>
+                <SelectItem value="custom-dates">Custom dates</SelectItem>
                 <SelectItem value="custom">Custom months</SelectItem>
               </SelectContent>
             </Select>
@@ -467,6 +563,43 @@ export default function ComparePage() {
               </div>
             </div>
           )}
+          {rangePreset === "custom-dates" && (
+            <div className="grid gap-4 sm:col-span-2 sm:grid-cols-2 xl:col-span-5 xl:max-w-xl">
+              <div className="space-y-2">
+                <Label htmlFor="compare-start-date">Starting date</Label>
+                <Input
+                  id="compare-start-date"
+                  type="date"
+                  value={customStartDate}
+                  onChange={(event) => setCustomStartDate(event.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="compare-end-date">Ending date</Label>
+                <Input
+                  id="compare-end-date"
+                  type="date"
+                  value={customEndDate}
+                  onChange={(event) => setCustomEndDate(event.target.value)}
+                />
+              </div>
+            </div>
+          )}
+          <div className="space-y-2 sm:col-span-2 xl:col-span-5">
+            <Label>Exclude categories</Label>
+            <SearchableMultiSelect
+              options={categoryExclusionOptions}
+              selected={excludedCategoryKeys}
+              onChange={setExcludedCategoryKeys}
+              placeholder="Include all categories"
+              searchPlaceholder="Search categories…"
+              maxDisplayItems={4}
+            />
+            <p className="text-xs text-muted-foreground">
+              Selected categories are removed from totals, charts, activity,
+              and insights for both years.
+            </p>
+          </div>
         </CardContent>
         </CollapsibleContent>
       </Card>
@@ -482,6 +615,16 @@ export default function ComparePage() {
           <span className="mt-1 block break-words text-muted-foreground sm:ml-2 sm:mt-0 sm:inline">{comparisonRangeLabel}</span>
         </div>
       </div>
+
+      {excludedCategoryKeys.length > 0 ? (
+        <Alert className="border-primary/20 bg-primary/5">
+          <ListFilter className="h-4 w-4" />
+          <AlertTitle>Category exclusions are active</AlertTitle>
+          <AlertDescription>
+            {excludedCategoryKeys.length} categor{excludedCategoryKeys.length === 1 ? "y is" : "ies are"} excluded from every comparison value shown below.
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       {!hasAnyData && (
         <Card className="border-dashed bg-secondary/25">

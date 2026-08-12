@@ -1,6 +1,7 @@
 import { endOfMonth, getDaysInMonth, getMonth } from "date-fns";
 
 import { findMainCategoryForTransaction } from "@/lib/category-tree";
+import { financialCategoryKey } from "@/lib/financial-category";
 import {
   filterTransactionsByDateRange,
   parseTransactionDate,
@@ -20,6 +21,7 @@ export type ComparisonRangePreset =
   | "q2"
   | "q3"
   | "q4"
+  | "custom-dates"
   | "custom";
 
 export interface ComparisonDateRanges {
@@ -135,6 +137,8 @@ export function buildComparisonDateRanges({
   now = new Date(),
   startMonth = 0,
   endMonth = 11,
+  primaryStartDate,
+  primaryEndDate,
 }: {
   preset: ComparisonRangePreset;
   primaryYear: number;
@@ -142,6 +146,8 @@ export function buildComparisonDateRanges({
   now?: Date;
   startMonth?: number;
   endMonth?: number;
+  primaryStartDate?: Date;
+  primaryEndDate?: Date;
 }): ComparisonDateRanges {
   if (preset === "ytd") {
     return {
@@ -152,6 +158,24 @@ export function buildComparisonDateRanges({
       comparison: {
         from: new Date(comparisonYear, 0, 1),
         to: matchingDate(comparisonYear, now),
+      },
+    };
+  }
+
+  if (preset === "custom-dates" && primaryStartDate && primaryEndDate) {
+    const earlier =
+      primaryStartDate.getTime() <= primaryEndDate.getTime()
+        ? primaryStartDate
+        : primaryEndDate;
+    const later = earlier === primaryStartDate ? primaryEndDate : primaryStartDate;
+    return {
+      primary: {
+        from: matchingDate(primaryYear, earlier),
+        to: matchingDate(primaryYear, later),
+      },
+      comparison: {
+        from: matchingDate(comparisonYear, earlier),
+        to: matchingDate(comparisonYear, later),
       },
     };
   }
@@ -198,6 +222,13 @@ const transactionDateParts = (transaction: Transaction) => {
   if (!date) return null;
   return { month: getMonth(date) };
 };
+
+export function comparisonCategoryKey(
+  transaction: Transaction,
+  categories: Category[],
+): string | null {
+  return financialCategoryKey(transaction, categories);
+}
 
 const computeSnapshot = (
   transactions: Transaction[],
@@ -297,20 +328,26 @@ export function computeYearComparison(
   primaryYear: number,
   comparisonYear: number,
   ranges: ComparisonDateRanges,
-  categories: Category[] = []
+  categories: Category[] = [],
+  excludedCategoryKeys: string[] = [],
 ): YearComparisonAnalytics {
   const startMonth = getMonth(ranges.primary.from);
   const endMonth = getMonth(ranges.primary.to);
   const monthCount = endMonth - startMonth + 1;
 
+  const excludedCategories = new Set(excludedCategoryKeys);
+  const includeTransaction = (transaction: Transaction) => {
+    const categoryKey = comparisonCategoryKey(transaction, categories);
+    return !categoryKey || !excludedCategories.has(categoryKey);
+  };
   const primaryTransactions = filterTransactionsByDateRange(
     transactions,
     ranges.primary
-  );
+  ).filter(includeTransaction);
   const comparisonTransactions = filterTransactionsByDateRange(
     transactions,
     ranges.comparison
-  );
+  ).filter(includeTransaction);
 
   const primary = computeSnapshot(primaryTransactions, primaryYear, monthCount);
   const comparison = computeSnapshot(
