@@ -14,6 +14,10 @@ import {
 } from '@/lib/category-tree';
 import { transactionAmount } from '@/lib/financial-summary';
 import { isFinancialTransaction } from '@/lib/accounts';
+import {
+  expandTransactionsForReporting,
+  sourceTransactionId,
+} from '@/lib/transaction-allocations';
 
 export type FinancialAssistantContext = {
   year: number;
@@ -72,7 +76,7 @@ export function buildFinancialAssistantContext({
   question: string;
   year?: number;
 }): FinancialAssistantContext {
-  const yearlyTransactions = transactions.filter((transaction) => {
+  const yearlyTransactions = expandTransactionsForReporting(transactions).filter((transaction) => {
     if (!isFinancialTransaction(transaction)) return false;
     const date = new Date(transaction.date);
     return (
@@ -131,7 +135,7 @@ export function buildFinancialAssistantContext({
     .slice(0, 25);
 
   const terms = questionTerms(question);
-  const matchingTransactions = transactions
+  const matchingTransactions = yearlyTransactions
     .filter((transaction) => {
       if (!isFinancialTransaction(transaction)) return false;
       if (transaction.type === "transfer") return false;
@@ -154,7 +158,7 @@ export function buildFinancialAssistantContext({
       income,
       expenses,
       net: income - expenses,
-      transactionCount: yearlyTransactions.length,
+      transactionCount: new Set(yearlyTransactions.map(sourceTransactionId)).size,
     },
     topExpenseCategories: Object.entries(categoryTotals)
       .map(([category, amount]) => ({ category, amount }))

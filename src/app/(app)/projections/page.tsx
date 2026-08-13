@@ -14,6 +14,7 @@ import { FeatureGate } from "@/components/feature-gate";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
+import { expandTransactionsForReporting } from "@/lib/transaction-allocations";
 
 function ProjectionsPageContent() {
   const [loading, setLoading] = useState(false);
@@ -28,7 +29,7 @@ function ProjectionsPageContent() {
   const { user } = useAuth();
   const financialTransactions = useMemo(
     () =>
-      allTransactions
+      expandTransactionsForReporting(allTransactions)
         .filter(
           (transaction) =>
             transaction.type === "income" ||

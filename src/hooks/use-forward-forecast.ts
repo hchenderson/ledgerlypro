@@ -15,6 +15,7 @@ import { buildMerchantProfile } from "@/forecast/merchant-profile";
 import { projectMerchantBaseline } from "@/forecast/merchant-project";
 import type { Category, SubCategory, Transaction } from "@/types";
 import { useAccounts } from "@/hooks/use-accounts";
+import { expandTransactionsForReporting } from "@/lib/transaction-allocations";
 
 
 // Assumes your Transaction shape includes: id, date, amount, type, category, description
@@ -33,7 +34,7 @@ export function useForwardForecast(horizonDays = 90) {
     const start = startOfDay(new Date());
     const end = addDays(start, horizonDays);
 
-    const actuals: ForecastTx[] = allTransactions
+    const actuals: ForecastTx[] = expandTransactionsForReporting(allTransactions)
       .filter(
         (
           transaction,

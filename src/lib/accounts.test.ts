@@ -81,6 +81,30 @@ describe("multi-account balances", () => {
     });
   });
 
+  it("counts a split deposit once in the bank balance", () => {
+    const deposit = {
+      id: "combined-deposit",
+      date: "2026-02-01T12:00:00.000Z",
+      description: "Combined giving",
+      amount: 2_000,
+      type: "income" as const,
+      category: "Split transaction",
+      accountId: checking.id,
+      allocations: [
+        { id: "general", amount: 1_550, category: "General Giving", categoryId: "general" },
+        { id: "mission", amount: 450, category: "Mission Support", categoryId: "mission" },
+      ],
+    };
+
+    expect(calculateAccountBalance(checking, [deposit])).toBe(3_000);
+    expect(summarizeTransactions([deposit])).toEqual({
+      income: 2_000,
+      expenses: 0,
+      net: 2_000,
+      transactionCount: 1,
+    });
+  });
+
   it("calculates statement-date balances and running ledger values", () => {
     const transactions = [
       {

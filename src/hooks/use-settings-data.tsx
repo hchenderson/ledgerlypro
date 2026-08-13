@@ -133,6 +133,8 @@ export function SettingsDataProvider({
         "categorizationAudit",
         "reports",
         "reportViews",
+        "splitTemplates",
+        "designatedFunds",
       ].map((collectionName) => clearCollection(collectionName)),
     );
     if (!user) return;

@@ -6,7 +6,7 @@ import { z } from "zod"
 import { useForm, useWatch } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { format, isValid, parse } from "date-fns"
-import { Calendar as CalendarIcon, PlusCircle } from "lucide-react"
+import { Calendar as CalendarIcon, PlusCircle, Split, Trash2 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -41,7 +41,7 @@ import {
 } from "@/components/ui/select"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { useToast } from "@/hooks/use-toast"
-import type { Transaction, Category, SubCategory } from "@/types"
+import type { Transaction, Category, SubCategory, TransactionAllocation } from "@/types"
 import {
   Dialog,
   DialogContent,
@@ -56,6 +56,11 @@ import { useCategories } from "@/hooks/use-categories"
 import { useAccounts } from "@/hooks/use-accounts"
 import { useAuth } from "@/hooks/use-auth"
 import { useEnvelopes } from "@/hooks/use-envelopes"
+import { useSplitTemplates } from "@/hooks/use-split-templates"
+import {
+  allocationDifference,
+  allocationsAreComplete,
+} from "@/lib/transaction-allocations"
 
 const formSchema = z.object({
   type: z.enum(["income", "expense"], {
@@ -70,9 +75,7 @@ const formSchema = z.object({
   amount: z.coerce.number().positive({
     message: "Amount must be a positive number.",
   }),
-  categoryId: z.string({
-    required_error: "Please select a category.",
-  }),
+  categoryId: z.string().optional(),
   accountId: z.string().min(1, {
     message: "Please select an account.",
   }),
@@ -81,14 +84,29 @@ const formSchema = z.object({
 })
 
 type FormValues = z.infer<typeof formSchema>
-export type SubmittedTransactionValues = Omit<FormValues, 'category'> & { category: string };
+export type SubmittedTransactionValues = Omit<FormValues, 'category'> & {
+  category: string;
+  allocations?: TransactionAllocation[];
+  allocationStatus?: "complete" | "incomplete";
+};
+
+type AllocationDraft = {
+  id: string;
+  categoryId: string;
+  amount: string;
+};
+
+const createAllocationId = () =>
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `allocation-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 interface NewTransactionSheetProps {
     isOpen?: boolean;
     onOpenChange?: (isOpen: boolean) => void;
     transaction?: Partial<Omit<Transaction, 'id'>> & { id: string } | null;
-    onTransactionCreated?: (values: SubmittedTransactionValues) => void;
-    onTransactionUpdated?: (id: string, values: SubmittedTransactionValues) => void;
+    onTransactionCreated?: (values: SubmittedTransactionValues) => void | Promise<void>;
+    onTransactionUpdated?: (id: string, values: SubmittedTransactionValues) => void | Promise<void>;
     children?: React.ReactNode;
     categories: Category[];
 }
@@ -207,6 +225,7 @@ export function NewTransactionSheet({
   } = useAccounts()
   const { budgetingMode } = useAuth()
   const { activeEnvelopes, suggestEnvelope } = useEnvelopes()
+  const { templates, addTemplate, deleteTemplate } = useSplitTemplates()
   const selectedActiveAccountId =
     selectedAccountIds.length === 1 &&
     activeAccounts.some(
@@ -220,10 +239,14 @@ export function NewTransactionSheet({
   })
 
   const isEditing = !!transaction?.id;
+  const [isSplit, setIsSplit] = useState(false);
+  const [allocations, setAllocations] = useState<AllocationDraft[]>([]);
+  const [splitError, setSplitError] = useState<string | null>(null);
+  const [templateName, setTemplateName] = useState("");
 
   // State for the text input for the date
   const [dateInput, setDateInput] = useState("");
-  
+
   useEffect(() => {
     if (isOpen) {
       if (transaction) {
@@ -245,6 +268,15 @@ export function NewTransactionSheet({
           envelopeId: transaction.envelopeId ?? "none",
         });
         setDateInput(format(transactionDate, "MM/dd/yyyy"));
+        const existingAllocations = transaction.allocations ?? [];
+        setIsSplit(existingAllocations.length > 0);
+        setAllocations(
+          existingAllocations.map((allocation) => ({
+            id: allocation.id,
+            categoryId: allocation.categoryId ?? "",
+            amount: allocation.amount.toFixed(2),
+          })),
+        );
       } else {
         const today = new Date();
         form.reset({
@@ -260,7 +292,11 @@ export function NewTransactionSheet({
           date: today,
         });
         setDateInput(format(today, "MM/dd/yyyy"));
+        setIsSplit(false);
+        setAllocations([]);
       }
+      setSplitError(null);
+      setTemplateName("");
     }
   }, [
     form,
@@ -271,44 +307,76 @@ export function NewTransactionSheet({
   ]);
 
   const transactionType = useWatch({ control: form.control, name: 'type' });
+  const transactionAmountValue = useWatch({ control: form.control, name: "amount" });
+
+  const findCategoryName = (id: string, cats: (Category | SubCategory)[]): string | undefined => {
+    for (const cat of cats) {
+      if (cat.id === id) return cat.name;
+      if (cat.subCategories) {
+        const found = findCategoryName(id, cat.subCategories);
+        if (found) return found;
+      }
+    }
+    return undefined;
+  };
+
+  const resolvedAllocations = (): TransactionAllocation[] =>
+    allocations.map((allocation) => ({
+      id: allocation.id,
+      categoryId: allocation.categoryId || undefined,
+      category: allocation.categoryId
+        ? findCategoryName(allocation.categoryId, categories) ?? "Uncategorized"
+        : "Unallocated",
+      amount: Number(allocation.amount) || 0,
+    }));
 
   async function onSubmit(values: FormValues) {
-    // Find the category name from the ID for display purposes
-    const findCategoryName = (id: string, cats: Category[]): string | undefined => {
-      for (const cat of cats) {
-        if (cat.id === id) return cat.name;
-        if (cat.subCategories) {
-          const found = findCategoryName(id, cat.subCategories as any);
-          if (found) return found;
-        }
-      }
-      return undefined;
-    };
-    
-    const categoryName = findCategoryName(values.categoryId, categories);
+    if (!isSplit && !values.categoryId) {
+      form.setError("categoryId", { message: "Please select a category." });
+      return;
+    }
+    const nextAllocations = isSplit ? resolvedAllocations() : undefined;
+    if (isSplit && !allocationsAreComplete(values.amount, nextAllocations)) {
+      const difference = allocationDifference(values.amount, nextAllocations);
+      setSplitError(
+        difference > 0
+          ? `${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(difference)} still needs a category.`
+          : `The split is ${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Math.abs(difference))} over the transaction total.`,
+      );
+      return;
+    }
+    const categoryName = values.categoryId
+      ? findCategoryName(values.categoryId, categories)
+      : undefined;
 
     const submissionValues = {
       ...values,
-      category: categoryName || 'Uncategorized',
+      category: isSplit ? "Split transaction" : categoryName || 'Uncategorized',
+      categoryId: isSplit ? "" : values.categoryId,
+      allocations: nextAllocations ?? [],
+      allocationStatus: "complete" as const,
+      // A split is categorized allocation-by-allocation. Keeping a parent
+      // envelope here would move the full bank amount in addition to its
+      // allocations and would double-count the envelope activity.
       envelopeId:
-        values.envelopeId &&
-        values.envelopeId !== "none"
+        !isSplit && values.envelopeId && values.envelopeId !== "none"
           ? values.envelopeId
           : null,
     };
 
-    if (transaction && transaction.id) {
-        if(onTransactionUpdated) {
-            onTransactionUpdated(transaction.id, submissionValues);
+    try {
+      if (transaction && transaction.id) {
+        if (onTransactionUpdated) {
+          await onTransactionUpdated(transaction.id, submissionValues);
         }
-    } else {
-        if (onTransactionCreated) {
-            onTransactionCreated(submissionValues);
-        }
+      } else if (onTransactionCreated) {
+        await onTransactionCreated(submissionValues);
+      }
+      if (onOpenChange) onOpenChange(false)
+      form.reset()
+    } catch (error) {
+      setSplitError(error instanceof Error ? error.message : "The transaction could not be saved.");
     }
-
-    if(onOpenChange) onOpenChange(false)
-    form.reset()
   }
 
   const handleCategoryAdded = (newCategoryName: string, newCategoryId: string) => {
@@ -352,11 +420,79 @@ export function NewTransactionSheet({
     return getCategoryOptions(filtered);
   }, [categories, transactionType]);
 
+  const splitDifference = allocationDifference(
+    Number(transactionAmountValue) || 0,
+    resolvedAllocations(),
+  );
+
+  const toggleSplit = () => {
+    setSplitError(null);
+    setIsSplit((current) => {
+      if (!current && allocations.length === 0) {
+        setAllocations([
+          {
+            id: createAllocationId(),
+            categoryId: form.getValues("categoryId") ?? "",
+            amount: Number(form.getValues("amount") || 0).toFixed(2),
+          },
+          { id: createAllocationId(), categoryId: "", amount: "0.00" },
+        ]);
+      }
+      return !current;
+    });
+  };
+
+  const saveTemplate = async () => {
+    const name = templateName.trim();
+    const amount = Number(transactionAmountValue) || 0;
+    const lines = resolvedAllocations();
+    if (!name || !allocationsAreComplete(amount, lines)) {
+      setSplitError("Enter a template name and finish the split before saving it.");
+      return;
+    }
+    const template = {
+      name,
+      type: transactionType ?? "expense",
+      lines: lines.map((line) => ({
+        category: line.category,
+        categoryId: line.categoryId,
+        percentage: amount > 0 ? line.amount / amount : 0,
+      })),
+    };
+    try {
+      await addTemplate(template);
+      setTemplateName("");
+      toast({ title: "Split template saved", description: `${name} can be reused on future ${template.type} transactions and devices.` });
+    } catch (error) {
+      setSplitError(error instanceof Error ? error.message : "The template could not be saved.");
+    }
+  };
+
+  const applyTemplate = (templateId: string) => {
+    const template = templates.find((candidate) => candidate.id === templateId);
+    const amountInCents = Math.round((Number(transactionAmountValue) || 0) * 100);
+    if (!template || template.type !== transactionType || amountInCents <= 0) return;
+    let usedCents = 0;
+    setAllocations(template.lines.map((line, index) => {
+      const lineCents = index === template.lines.length - 1
+        ? amountInCents - usedCents
+        : Math.round(amountInCents * line.percentage);
+      usedCents += lineCents;
+      return {
+        id: createAllocationId(),
+        categoryId: line.categoryId ?? "",
+        amount: (lineCents / 100).toFixed(2),
+      };
+    }));
+    setIsSplit(true);
+    setSplitError(null);
+  };
+
 
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
       {children ? <SheetTrigger asChild>{children}</SheetTrigger> : null}
-      <SheetContent>
+      <SheetContent className="overflow-y-auto sm:max-w-xl">
         <SheetHeader>
           <SheetTitle>{sheetTitle}</SheetTitle>
           <SheetDescription>{sheetDescription}</SheetDescription>
@@ -402,6 +538,7 @@ export function NewTransactionSheet({
               )}
             />
             {(transactionType === "expense" || transactionType === "income") &&
+            !isSplit &&
             budgetingMode !== "tracking" &&
             activeEnvelopes.length > 0 ? (
               <FormField
@@ -468,6 +605,8 @@ export function NewTransactionSheet({
                       onValueChange={(value) => {
                         field.onChange(value);
                         form.resetField('categoryId');
+                        setIsSplit(false);
+                        setAllocations([]);
                       }}
                       defaultValue={field.value}
                       className="flex items-center space-x-4"
@@ -517,6 +656,65 @@ export function NewTransactionSheet({
                 </FormItem>
               )}
             />
+            <div className="rounded-lg border bg-muted/20 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="flex items-center gap-2 font-medium"><Split className="h-4 w-4" /> Split transaction</p>
+                  <p className="text-xs text-muted-foreground">Keep one bank transaction while assigning its amount to multiple categories.</p>
+                </div>
+                <Button type="button" variant={isSplit ? "default" : "outline"} size="sm" onClick={toggleSplit}>
+                  {isSplit ? "Split on" : "Add split"}
+                </Button>
+              </div>
+            </div>
+            {isSplit ? (
+              <div className="space-y-3 rounded-lg border p-3">
+                {templates.some((template) => template.type === transactionType) ? (
+                  <div className="space-y-1.5">
+                    <Label>Apply saved split</Label>
+                    <Select onValueChange={applyTemplate}>
+                      <SelectTrigger><SelectValue placeholder="Choose a template" /></SelectTrigger>
+                      <SelectContent>{templates.filter((template) => template.type === transactionType).map((template) => <SelectItem key={template.id} value={template.id}>{template.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                ) : null}
+                {allocations.map((allocation, index) => (
+                  <div key={allocation.id} className="grid grid-cols-1 items-end gap-2 sm:grid-cols-[1fr_8rem_auto]">
+                    <div className="space-y-1.5">
+                      <Label>Category {index + 1}</Label>
+                      <Select value={allocation.categoryId} onValueChange={(value) => setAllocations((current) => current.map((item) => item.id === allocation.id ? { ...item, categoryId: value } : item))}>
+                        <SelectTrigger><SelectValue placeholder="Choose category" /></SelectTrigger>
+                        <SelectContent>{availableCategories.map((option) => <SelectItem key={option.value} value={option.value} style={{ paddingLeft: `${option.indent * 1.5 + 1}rem` }}>{option.label}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Amount</Label>
+                      <Input type="number" min="0.01" step="0.01" value={allocation.amount} onChange={(event) => setAllocations((current) => current.map((item) => item.id === allocation.id ? { ...item, amount: event.target.value } : item))} />
+                    </div>
+                    <Button type="button" variant="ghost" size="icon" disabled={allocations.length <= 2} onClick={() => setAllocations((current) => current.filter((item) => item.id !== allocation.id))} aria-label={`Remove allocation ${index + 1}`}><Trash2 className="h-4 w-4" /></Button>
+                  </div>
+                ))}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={() => setAllocations((current) => [...current, { id: createAllocationId(), categoryId: "", amount: "0.00" }])}><PlusCircle className="mr-2 h-4 w-4" /> Add category</Button>
+                  <p className={cn("text-sm font-medium tabular-nums", Math.abs(splitDifference) < 0.005 ? "text-emerald-700" : "text-destructive")}>
+                    {Math.abs(splitDifference) < 0.005 ? "Fully allocated" : splitDifference > 0 ? `${splitDifference.toLocaleString("en-US", { style: "currency", currency: "USD" })} remaining` : `${Math.abs(splitDifference).toLocaleString("en-US", { style: "currency", currency: "USD" })} over`}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Input value={templateName} onChange={(event) => setTemplateName(event.target.value)} placeholder="Template name, e.g. Sunday deposit" />
+                  <Button type="button" variant="secondary" onClick={() => void saveTemplate()}>Save template</Button>
+                </div>
+                {templates.filter((template) => template.type === transactionType).length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {templates.filter((template) => template.type === transactionType).map((template) => (
+                      <Button key={template.id} type="button" variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground" onClick={() => void deleteTemplate(template.id)} title={`Delete ${template.name}`}>
+                        {template.name}<Trash2 className="ml-2 h-3 w-3" />
+                      </Button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : (
             <FormField
               control={form.control}
               name="categoryId"
@@ -548,6 +746,7 @@ export function NewTransactionSheet({
                 </FormItem>
               )}
             />
+            )}
             <FormField
               control={form.control}
               name="date"
@@ -595,6 +794,7 @@ export function NewTransactionSheet({
                 </FormItem>
               )}
             />
+            {splitError ? <p className="text-sm font-medium text-destructive">{splitError}</p> : null}
             <SheetFooter className="pt-4">
                 <SheetClose asChild>
                     <Button type="button" variant="outline">Cancel</Button>

@@ -35,6 +35,7 @@ import {
 } from "@/lib/category-tree";
 import { db } from "@/lib/firebase";
 import { transactionAmount } from "@/lib/financial-summary";
+import { expandTransactionsForReporting } from "@/lib/transaction-allocations";
 import type { Budget, Category, Transaction } from "@/types";
 
 export interface BudgetDetails extends Budget {
@@ -88,6 +89,7 @@ export function calculateBudgetDetails(
   firstYear: number,
 ): BudgetDetails[] {
   const reportYear = getYear(forDate);
+  const reportingTransactions = expandTransactionsForReporting(transactions);
 
   const findFirstTransactionYearForBudget = (
     allTransactions: Transaction[],
@@ -125,7 +127,7 @@ export function calculateBudgetDetails(
         : { ids: [], names: [] };
       effectiveYear =
         findFirstTransactionYearForBudget(
-          transactions,
+          reportingTransactions,
           subtree.ids,
           subtree.names,
         ) ?? firstYear;
@@ -140,7 +142,7 @@ export function calculateBudgetDetails(
     currentDate: Date,
     year: number,
   ) =>
-    transactions
+    reportingTransactions
       .filter((transaction) => {
         const transactionDate = new Date(transaction.date);
         if (getYear(transactionDate) !== year) return false;

@@ -11,6 +11,7 @@ import {
 } from "./financial-summary";
 import type { Budget, Category, Goal, Transaction } from "@/types";
 import { isFinancialTransaction } from "./accounts";
+import { expandTransactionsForReporting } from "./transaction-allocations";
 
 export interface QuarterlyReportMetrics {
   totalIncome: number;
@@ -77,6 +78,7 @@ export function calculateQuarterlyReportMetrics({
   goals: Goal[];
   reportYear: number;
 }): QuarterlyReportMetrics {
+  const reportingTransactions = expandTransactionsForReporting(transactions);
   const {
     income: totalIncome,
     expenses: totalExpenses,
@@ -98,7 +100,7 @@ export function calculateQuarterlyReportMetrics({
       const categoryNames = new Set(
         categorySubtreeNames(category).map(normalizeCategoryLabel)
       );
-      const actual = transactions
+      const actual = reportingTransactions
         .filter((transaction) => {
           if (
             !isFinancialTransaction(transaction) ||
@@ -147,8 +149,8 @@ export function calculateQuarterlyReportMetrics({
     totalIncome,
     totalExpenses,
     transactionCount,
-    incomeSummary: summarizeByCategory(transactions, "income", categories),
-    expenseSummary: summarizeByCategory(transactions, "expense", categories),
+    incomeSummary: summarizeByCategory(reportingTransactions, "income", categories),
+    expenseSummary: summarizeByCategory(reportingTransactions, "expense", categories),
     netIncome,
     budgetComparison,
     budgetComparisonTotals,

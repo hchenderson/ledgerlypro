@@ -9,6 +9,7 @@ import { Button } from '../ui/button';
 import { Star } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { transactionAmount } from '@/lib/financial-summary';
+import { expandTransactionsForReporting } from '@/lib/transaction-allocations';
 
 interface FavoriteCategoriesProps {
     categories: Category[];
@@ -28,7 +29,7 @@ export function FavoriteCategories({ categories, transactions }: FavoriteCategor
         return favoriteCategories.map(cat => {
             const allCategoryNames = [cat.name, ...(cat.subCategories?.map(sc => sc.name) || [])];
             
-            const total = transactions
+            const total = expandTransactionsForReporting(transactions)
                 .filter(t => 
                     allCategoryNames.includes(t.category) &&
                     new Date(t.date).getMonth() === currentMonth &&

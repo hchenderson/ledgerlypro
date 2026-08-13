@@ -25,6 +25,10 @@ import { Input } from "./ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { useAccounts } from "@/hooks/use-accounts";
+import {
+  expandTransactionsForReporting,
+  sourceTransactionId,
+} from "@/lib/transaction-allocations";
 
 interface ExportTransactionsDialogProps {
   transactions: Transaction[];
@@ -117,7 +121,11 @@ export function ExportTransactionsDialog({
       const inDateRange = dateRange?.from && dateRange?.to ? 
         (transactionDate >= dateRange.from && transactionDate <= dateRange.to) : true;
       
-      const inCategory = finalCategoryFilter.length > 0 ? finalCategoryFilter.includes(t.category) : true;
+      const inCategory = finalCategoryFilter.length > 0
+        ? expandTransactionsForReporting([t]).some((entry) =>
+            finalCategoryFilter.includes(entry.category),
+          )
+        : true;
       
       const min = minAmount ? parseFloat(minAmount) : -Infinity;
       const max = maxAmount ? parseFloat(maxAmount) : Infinity;
@@ -138,7 +146,9 @@ export function ExportTransactionsDialog({
         return;
       }
 
-      const exportData = filteredTransactions.map(transaction => ({
+      const exportData = expandTransactionsForReporting(filteredTransactions).map(transaction => ({
+        "Source Transaction ID": sourceTransactionId(transaction),
+        "Allocation ID": transaction.allocationId ?? "",
         Date: transaction.date ? format(new Date(transaction.date), "yyyy-MM-dd") : '',
         Description: transaction.description || '',
         Account: getAccountName(transaction.accountId),

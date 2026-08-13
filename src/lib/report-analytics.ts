@@ -43,6 +43,10 @@ import {
   type FinancialDateRange,
 } from "@/lib/financial-summary";
 import type { Account, Budget, Category, Transaction } from "@/types";
+import {
+  expandTransactionsForReporting,
+  sourceTransactionId,
+} from "@/lib/transaction-allocations";
 
 export type ReportComparisonMode =
   | "none"
@@ -240,7 +244,7 @@ export function filterReportTransactions(
   const included = new Set(filters.includedCategoryKeys);
   const excluded = new Set(filters.excludedCategoryKeys);
 
-  return transactions.filter((transaction) => {
+  return expandTransactionsForReporting(transactions).filter((transaction) => {
     const date = parseTransactionDate(transaction.date);
     if (!date || !dateWithinRange(date, range)) return false;
     if (!isIncludedPostingStatus(transaction, filters.includePending)) {
@@ -318,7 +322,9 @@ function summarizeReportTransactions(
       }
     }
   }
-  const transactionCount = financialTransactions.length;
+  const transactionCount = new Set(
+    financialTransactions.map(sourceTransactionId),
+  ).size;
   const net = income - expenses;
   const monthCount = Math.max(
     1,

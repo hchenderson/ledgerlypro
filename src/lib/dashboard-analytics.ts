@@ -5,6 +5,7 @@ import { transferBalanceDelta } from "@/lib/accounts";
 import { transactionAmount } from "@/lib/financial-summary";
 import { isTransactionFinalized } from "@/lib/categorization";
 import { isFinancialTransaction } from "@/lib/accounts";
+import { expandTransactionsForReporting } from "@/lib/transaction-allocations";
 
 export interface DashboardAnalytics {
   totalIncome: number;
@@ -54,7 +55,7 @@ export function computeDashboardAnalytics(
     { date: Date; name: string; income: number; expense: number }
   >();
 
-  for (const transaction of transactions) {
+  for (const transaction of expandTransactionsForReporting(transactions)) {
     if (!isTransactionFinalized(transaction)) continue;
     const transactionDate = parseISO(transaction.date);
     if (Number.isNaN(transactionDate.getTime())) continue;

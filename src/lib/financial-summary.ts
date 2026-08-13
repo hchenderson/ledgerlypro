@@ -3,6 +3,10 @@ import { endOfDay, parseISO, startOfDay } from "date-fns";
 import type { Transaction } from "@/types";
 import { isFinancialTransaction } from "@/lib/accounts";
 import { isTransactionFinalized } from "@/lib/categorization";
+import {
+  expandTransactionsForReporting,
+  sourceTransactionId,
+} from "@/lib/transaction-allocations";
 
 export interface FinancialDateRange {
   from: Date;
@@ -48,24 +52,23 @@ export function summarizeTransactions(
 ): FinancialSummary {
   let income = 0;
   let expenses = 0;
-  let transactionCount = 0;
+  const sourceTransactions = new Set<string>();
 
-  for (const transaction of transactions) {
+  for (const transaction of expandTransactionsForReporting(transactions)) {
     if (!isFinancialTransaction(transaction)) continue;
     const amount = transactionAmount(transaction);
     if (transaction.type === "income") {
       income += amount;
-      transactionCount += 1;
     } else if (transaction.type === "expense") {
       expenses += amount;
-      transactionCount += 1;
     }
+    sourceTransactions.add(sourceTransactionId(transaction));
   }
 
   return {
     income,
     expenses,
     net: income - expenses,
-    transactionCount,
+    transactionCount: sourceTransactions.size,
   };
 }

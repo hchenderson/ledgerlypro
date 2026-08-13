@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { Check, CheckCircle2, ChevronsUpDown, ListChecks, Loader2, Plus, Sparkles, Trash2 } from "lucide-react";
+import dynamic from "next/dynamic";
+import { Check, CheckCircle2, ChevronsUpDown, Edit3, ListChecks, Loader2, Plus, Sparkles, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,7 +23,12 @@ import { useAllTransactions, useTransactionData } from "@/hooks/use-transactions
 import { useEnvelopes } from "@/hooks/use-envelopes";
 import { isTransactionReviewable } from "@/lib/categorization";
 import { cn } from "@/lib/utils";
-import type { Category, SubCategory } from "@/types";
+import type { Category, SubCategory, Transaction } from "@/types";
+
+const NewTransactionSheet = dynamic(
+  () => import("@/components/new-transaction-sheet").then((module) => module.NewTransactionSheet),
+  { ssr: false },
+);
 
 const currency = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 
@@ -119,6 +125,7 @@ export default function NeedsCategorizationPage() {
   const [categoryId, setCategoryId] = useState("");
   const [saving, setSaving] = useState(false);
   const [savingTransactionId, setSavingTransactionId] = useState<string | null>(null);
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [ruleName, setRuleName] = useState("");
   const [merchantText, setMerchantText] = useState("");
   const [ruleType, setRuleType] = useState<"expense" | "income">("expense");
@@ -322,6 +329,9 @@ export default function NeedsCategorizationPage() {
                     disabled={categoriesLoading || Boolean(categoriesError) || savingTransactionId === transaction.id || transaction.type === "transfer"}
                     placeholder={savingTransactionId === transaction.id ? "Saving…" : categoriesLoading ? "Loading categories…" : "Choose category"}
                   />
+                  {transaction.type !== "transfer" ? (
+                    <Button type="button" variant="ghost" size="sm" className="mt-1 w-full" onClick={() => setEditingTransaction(transaction)}><Edit3 className="mr-2 h-4 w-4" /> Split or edit details</Button>
+                  ) : null}
                 </div>
                 <p className={`col-span-2 text-right font-semibold tabular-nums sm:col-span-1 sm:pt-2 ${transaction.type === "expense" ? "text-destructive" : "text-emerald-700"}`}>{transaction.type === "expense" ? "−" : "+"}{currency.format(transaction.amount)}</p>
               </div>
@@ -329,6 +339,27 @@ export default function NeedsCategorizationPage() {
           </div>
         </CardContent>
       </Card>
+      {editingTransaction ? (
+        <NewTransactionSheet
+          isOpen={Boolean(editingTransaction)}
+          onOpenChange={(open) => { if (!open) setEditingTransaction(null); }}
+          transaction={editingTransaction}
+          categories={categories}
+          onTransactionUpdated={async (id, values) => {
+            const now = new Date().toISOString();
+            await updateTransaction(id, {
+              ...values,
+              date: values.date.toISOString(),
+              classificationLocked: true,
+              categorizationStatus: "manually-categorized",
+              categorizationSource: "manual",
+              categorizedAt: now,
+              reviewedAt: now,
+            });
+            toast({ title: "Transaction updated", description: "The bank transaction and its category allocations were saved." });
+          }}
+        />
+      ) : null}
 
       <Card>
         <CardHeader>

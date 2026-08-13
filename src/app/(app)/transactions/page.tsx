@@ -29,6 +29,10 @@ import dynamic from "next/dynamic";
 import { useAccounts } from "@/hooks/use-accounts";
 import { useEnvelopes } from "@/hooks/use-envelopes";
 import { isTransactionReviewable } from "@/lib/categorization";
+import {
+  allocationsAreComplete,
+  expandTransactionAllocations,
+} from "@/lib/transaction-allocations";
 
 const NewTransactionSheet = dynamic(
   () =>
@@ -108,7 +112,11 @@ export default function TransactionsPage() {
     }
     
     if (categoryFilter !== 'all') {
-      transactions = transactions.filter(t => t.category === categoryFilter);
+      transactions = transactions.filter((transaction) =>
+        expandTransactionAllocations(transaction).some(
+          (entry) => entry.category === categoryFilter,
+        ),
+      );
     }
 
     if (dateRange?.from) {
@@ -395,7 +403,9 @@ export default function TransactionsPage() {
                       <h3 className="truncate font-semibold">{transaction.description}</h3>
                       <div className="mt-2 flex flex-wrap items-center gap-2">
                         <Badge variant="outline" className="max-w-full truncate">
-                          {transaction.category}
+                          {transaction.allocations?.length
+                            ? `Split · ${transaction.allocations.length} categories`
+                            : transaction.category}
                         </Badge>
                         <Badge variant="secondary" className="max-w-full truncate">
                           {getAccountName(transaction.accountId)}
@@ -418,6 +428,9 @@ export default function TransactionsPage() {
                         ) : null}
                         {transaction.postingStatus === "removed" ? (
                           <Badge variant="outline">Removed by bank</Badge>
+                        ) : null}
+                        {transaction.allocations?.length && !allocationsAreComplete(transaction.amount, transaction.allocations) ? (
+                          <Badge variant="destructive">Incomplete split</Badge>
                         ) : null}
                         {isTransactionReviewable(transaction) ? (
                           <Badge variant="destructive">Needs category</Badge>
@@ -541,7 +554,9 @@ export default function TransactionsPage() {
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline">
-                        {transaction.category}
+                        {transaction.allocations?.length
+                          ? `Split · ${transaction.allocations.length} categories`
+                          : transaction.category}
                       </Badge>
                       {transaction.envelopeId ? (
                         <Badge variant="outline" className="ml-2 hidden border-primary/30 text-primary xl:inline-flex">
@@ -560,6 +575,9 @@ export default function TransactionsPage() {
                       ) : null}
                       {transaction.postingStatus === "removed" ? (
                         <Badge variant="outline" className="ml-2">Removed</Badge>
+                      ) : null}
+                      {transaction.allocations?.length && !allocationsAreComplete(transaction.amount, transaction.allocations) ? (
+                        <Badge variant="destructive" className="ml-2">Incomplete split</Badge>
                       ) : null}
                       {isTransactionReviewable(transaction) ? (
                         <Badge variant="destructive" className="ml-2 hidden xl:inline-flex">Needs category</Badge>

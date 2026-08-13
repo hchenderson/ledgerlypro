@@ -144,6 +144,20 @@ dates, account/category/status filters, comparison settings, visible metrics, an
 section order. Compare accepts an exact-date handoff from Reports and uses the shared
 category-key resolver in `src/lib/financial-category.ts`.
 
+Combined bank deposits and payments can carry `allocations` on the original
+transaction. The account ledger and reconciliation always use that source transaction
+once; category, budget, dashboard, Compare, quarterly, EOY, assistant-context, CSV,
+and PDF calculations expand it into allocation lines through
+`src/lib/transaction-allocations.ts`. Allocation amounts must reconcile to the source
+amount in cents. Reusable percentage-based split templates live in
+`users/{uid}/splitTemplates`.
+
+Designated-fund definitions live in `users/{uid}/designatedFunds`. Each definition
+pairs one or more received categories with one or more sent/spent categories and an
+opening balance as of a confirmed date. The Designated tab on Reports shows church
+operations with those categories removed and separately reconciles each fund as
+opening balance + received - sent = ending amount held.
+
 For an account-backed envelope, releasing funds to the Main account does not reduce
 the envelope's available amount. It increases `reservedInOperating` until an expense
 assigned to that envelope posts or unused funds are returned. Funding suggestions,

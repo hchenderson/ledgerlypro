@@ -10,6 +10,7 @@ import { useMemo, useState } from "react";
 import { Segmented } from "./forecast-controls";
 import { TrajectoryCard } from "./trajectory-card";
 import type { ForecastTx } from "@/forecast/expandRecurringBetween";
+import { expandTransactionsForReporting } from "@/lib/transaction-allocations";
 
 export function ForwardAnalyticsPanel() {
   const {
@@ -22,7 +23,7 @@ export function ForwardAnalyticsPanel() {
 
   const actuals: ForecastTx[] = useMemo(
     () =>
-      allTransactions
+      expandTransactionsForReporting(allTransactions)
         .filter(
           (transaction) =>
             transaction.type === "income" ||

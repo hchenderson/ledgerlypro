@@ -5,7 +5,7 @@ import {
 } from "@/lib/financial-summary";
 import { transferBalanceDelta } from "@/lib/accounts";
 
-export const FINANCIAL_AGGREGATE_VERSION = 2;
+export const FINANCIAL_AGGREGATE_VERSION = 3;
 
 export type FinancialAggregatePeriod = "year" | "month";
 
@@ -52,6 +52,7 @@ function fingerprintTransactions(transactions: Transaction[]): string {
       transaction.providerRemovedAt ?? "",
       transactionAmount(transaction).toFixed(2),
       transaction.categoryId ?? transaction.category,
+      JSON.stringify(transaction.allocations ?? []),
     ].join("|");
 
     for (let index = 0; index < value.length; index += 1) {

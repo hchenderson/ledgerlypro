@@ -100,6 +100,7 @@ import { useAccounts } from '@/hooks/use-accounts';
 import { EnvelopeReportView } from '@/components/reports/envelope-report';
 import { isFinancialTransaction } from '@/lib/accounts';
 import { CustomReportWorkspace } from '@/components/reports/custom-report-workspace';
+import { DesignatedFundsReport } from '@/components/reports/designated-funds-report';
 
 const OverviewChart = dynamic(
   () =>
@@ -1395,10 +1396,11 @@ export default function ReportsPage() {
                         A summary of your financial activity.
                     </p>
                 </div>
-                <TabsList className={cn("grid w-full sm:w-auto", showEnvelopeReports ? "grid-cols-4" : "grid-cols-3")}>
+                <TabsList className={cn("grid h-auto w-full", showEnvelopeReports ? "grid-cols-2 sm:w-auto sm:grid-cols-5" : "grid-cols-2 sm:w-auto sm:grid-cols-4")}>
                     <TabsTrigger value="monthly" className="min-w-0">Monthly</TabsTrigger>
                     <TabsTrigger value="yearly" className="min-w-0">Yearly</TabsTrigger>
                     <TabsTrigger value="advanced" className="min-w-0">Advanced</TabsTrigger>
+                    <TabsTrigger value="funds" className="min-w-0">Designated</TabsTrigger>
                     {showEnvelopeReports ? <TabsTrigger value="envelopes" className="min-w-0">Envelopes</TabsTrigger> : null}
                 </TabsList>
             </div>
@@ -1415,6 +1417,11 @@ export default function ReportsPage() {
             {activeTab === 'advanced' && (
               <TabsContent value="advanced" className="pt-6">
                   <AdvancedReportView />
+              </TabsContent>
+            )}
+            {activeTab === 'funds' && (
+              <TabsContent value="funds" className="pt-6">
+                  <DesignatedFundsReport />
               </TabsContent>
             )}
             {showEnvelopeReports && activeTab === 'envelopes' && (

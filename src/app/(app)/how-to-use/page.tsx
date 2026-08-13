@@ -152,6 +152,8 @@ const pageGuides = [
     body: [
       "Income adds money; expenses remove money; transfers move money between two of your accounts.",
       "The category answers why money was received or spent. The account answers where it was received or spent.",
+      "When one bank deposit contains several kinds of giving, edit it and turn on Split transaction. Assign every dollar to a category; Ledgerly will not save the split until its lines equal the bank amount.",
+      "Save a completed split as a template when deposits commonly use the same percentage breakdown. Templates follow your account across devices and can be adjusted before saving each transaction.",
       "When using envelopes, assign an expense to the envelope that should pay for it. Refunds can restore the same envelope.",
       "Review matched withdrawal/deposit pairs and choose the correct transfer purpose. Never mark unrelated entries as one transfer.",
       "Use account and date filters to investigate a balance without changing the underlying data.",
@@ -181,6 +183,7 @@ const pageGuides = [
       "Report comparison cards and category movement use the same calculation engine as Compare. Open the selected report dates in Compare when you need a deeper side-by-side investigation.",
       "Envelope reports are intentionally separate from cash-flow reports. Funding and releasing an envelope are transfers, not income or expenses.",
       "Use Advanced reports when you need a frozen quarterly record. Use the live Monthly and Yearly workspaces for customizable analysis.",
+      "Use the Designated tab for missionary, building, benevolence, or similar funds. Pair received and sent categories once, confirm the opening amount held, and Ledgerly will show church operations separately from designated activity.",
       "Account filters change which account activity is included. Select all accounts for the complete household picture.",
     ],
   },

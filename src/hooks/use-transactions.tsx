@@ -50,6 +50,7 @@ import {
   envelopeEventForTransaction,
   envelopeEventsForTransfer,
 } from "@/lib/envelopes";
+import { allocationsAreComplete } from "@/lib/transaction-allocations";
 
 interface TransactionQueryResult {
   transactions: Transaction[];
@@ -858,6 +859,12 @@ export function TransactionDataProvider({
   const addTransaction = useCallback(
     async (transaction: Omit<Transaction, "id">) => {
       if (!user) throw new Error("User not authenticated");
+      if (
+        transaction.allocations?.length &&
+        !allocationsAreComplete(transaction.amount, transaction.allocations)
+      ) {
+        throw new Error("Split allocations must equal the transaction amount.");
+      }
       const accountId = transaction.accountId ?? primaryAccountId;
       if (!accountId) {
         throw new Error(
@@ -1193,6 +1200,14 @@ export function TransactionDataProvider({
       const previous = previousSnapshot.exists()
         ? (previousSnapshot.data() as Transaction)
         : null;
+      const nextAmount = values.amount ?? previous?.amount ?? 0;
+      const nextAllocations = values.allocations ?? previous?.allocations;
+      if (
+        nextAllocations?.length &&
+        !allocationsAreComplete(nextAmount, nextAllocations)
+      ) {
+        throw new Error("Split allocations must equal the transaction amount.");
+      }
       if (previous?.type === "transfer" && previous.transferId) {
         const linkedTransferSnapshot = await getDocs(
           query(

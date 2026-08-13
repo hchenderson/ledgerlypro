@@ -31,6 +31,14 @@ export type CategorizationSource =
   | "plaid"
   | "uncategorized";
 
+export type TransactionAllocation = {
+  id: string;
+  amount: number;
+  category: string;
+  categoryId?: string;
+  envelopeId?: string | null;
+};
+
 export type Transaction = {
   id: string;
   date: string;
@@ -70,6 +78,36 @@ export type Transaction = {
   categorizedAt?: string;
   reviewedAt?: string;
   possibleTransfer?: boolean;
+  allocations?: TransactionAllocation[];
+  allocationStatus?: "complete" | "incomplete";
+  allocationParentId?: string;
+  allocationId?: string;
+};
+
+export type SplitTemplate = {
+  id: string;
+  name: string;
+  type: "income" | "expense";
+  lines: Array<{
+    category: string;
+    categoryId?: string;
+    envelopeId?: string | null;
+    percentage: number;
+  }>;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type DesignatedFund = {
+  id: string;
+  name: string;
+  incomeCategoryIds: string[];
+  expenseCategoryIds: string[];
+  openingBalance: number;
+  openingBalanceDate: string;
+  isArchived?: boolean;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type AccountType =

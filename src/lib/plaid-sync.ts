@@ -164,6 +164,8 @@ function preserveUserClassification(
     category: existing.category,
     categoryId: existing.categoryId,
     envelopeId: existing.envelopeId,
+    allocations: existing.allocations,
+    allocationStatus: existing.allocationStatus,
     transferId: existing.transferId,
     transferDirection: existing.transferDirection,
     transferPurpose: existing.transferPurpose,

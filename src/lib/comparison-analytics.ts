@@ -11,6 +11,7 @@ import {
 } from "@/lib/financial-summary";
 import type { Category, Transaction } from "@/types";
 import { isFinancialTransaction } from "@/lib/accounts";
+import { expandTransactionsForReporting } from "@/lib/transaction-allocations";
 
 export type ComparisonRangePreset =
   | "ytd"
@@ -341,11 +342,11 @@ export function computeYearComparison(
     return !categoryKey || !excludedCategories.has(categoryKey);
   };
   const primaryTransactions = filterTransactionsByDateRange(
-    transactions,
+    expandTransactionsForReporting(transactions),
     ranges.primary
   ).filter(includeTransaction);
   const comparisonTransactions = filterTransactionsByDateRange(
-    transactions,
+    expandTransactionsForReporting(transactions),
     ranges.comparison
   ).filter(includeTransaction);
 

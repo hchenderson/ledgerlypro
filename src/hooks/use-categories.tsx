@@ -90,6 +90,35 @@ async function updateTransactionCategoryLabels(
   }
 }
 
+async function updateAllocationCategoryLabels(
+  userId: string,
+  categoryId: string,
+  label: string,
+) {
+  const transactionsRef = userCollectionRef(userId, "transactions");
+  const snapshot = await getDocs(query(transactionsRef));
+  const affected = snapshot.docs.filter((transactionDocument) => {
+    const transaction = transactionDocument.data() as Transaction;
+    return transaction.allocations?.some(
+      (allocation) => allocation.categoryId === categoryId,
+    );
+  });
+  for (const documentChunk of chunkArray(affected, 450)) {
+    const batch = writeBatch(db);
+    documentChunk.forEach((transactionDocument) => {
+      const transaction = transactionDocument.data() as Transaction;
+      batch.update(transactionDocument.ref, {
+        allocations: (transaction.allocations ?? []).map((allocation) =>
+          allocation.categoryId === categoryId
+            ? { ...allocation, category: label }
+            : allocation,
+        ),
+      });
+    });
+    await batch.commit();
+  }
+}
+
 export function CategoriesProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const {
@@ -228,6 +257,7 @@ export function CategoriesProvider({ children }: { children: ReactNode }) {
         transactionSnapshot.docs,
         updatedLabel,
       );
+      await updateAllocationCategoryLabels(user.uid, id, updatedLabel);
     },
     [categories, collectionRef, user],
   );
@@ -364,6 +394,11 @@ export function CategoriesProvider({ children }: { children: ReactNode }) {
         ) ?? newName;
       await updateTransactionCategoryLabels(
         transactionSnapshot.docs,
+        updatedLabel,
+      );
+      await updateAllocationCategoryLabels(
+        user.uid,
+        subCategoryId,
         updatedLabel,
       );
     },

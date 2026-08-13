@@ -12,6 +12,7 @@ import { transferBalanceDelta } from "@/lib/accounts";
 import { transactionAmount } from "@/lib/financial-summary";
 import { isTransactionFinalized } from "@/lib/categorization";
 import { isFinancialTransaction } from "@/lib/accounts";
+import { expandTransactionsForReporting } from "@/lib/transaction-allocations";
 
 export interface EOYMonthlyPoint {
   monthIndex: number;
@@ -81,7 +82,7 @@ export function computeEOYReport(
   const start = startOfYear(new Date(year, 0, 1));
   const end = endOfYear(new Date(year, 11, 31));
 
-  const yearTx = allTransactions.filter((tx) => {
+  const yearTx = expandTransactionsForReporting(allTransactions).filter((tx) => {
     if (!isTransactionFinalized(tx)) return false;
     const d = parseISO(tx.date);
     return d >= start && d <= end;
