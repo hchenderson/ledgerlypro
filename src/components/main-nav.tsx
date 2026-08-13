@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -53,9 +53,17 @@ const guideNavItem: NavItem = { title: "How to Use", href: "/how-to-use", icon: 
 export function MainNav() {
   const pathname = usePathname();
   const { setOpenMobile } = useSidebar();
+  const previousPathname = useRef(pathname);
 
   useEffect(() => {
-    setOpenMobile(false);
+    // The mobile sidebar is rendered inside a Sheet, so MainNav mounts when
+    // the drawer opens. Closing on that initial mount makes the drawer appear
+    // to retract immediately. Only close it when an already-mounted menu sees
+    // an actual route change; link clicks below still close it immediately.
+    if (previousPathname.current !== pathname) {
+      previousPathname.current = pathname;
+      setOpenMobile(false);
+    }
   }, [pathname, setOpenMobile]);
 
   const renderNavItem = (item: NavItem) => (
