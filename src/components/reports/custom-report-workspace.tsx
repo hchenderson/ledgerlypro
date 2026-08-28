@@ -1107,7 +1107,7 @@ export function CustomReportWorkspace({
 
   const renderBudgets = () => (
     <Card key="budgets">
-      <CardHeader><CardTitle className="flex items-center gap-2"><PiggyBank className="h-5 w-5" /> Budget vs. actual</CardTitle><CardDescription>Budgets are prorated to the exact selected dates.</CardDescription></CardHeader>
+      <CardHeader><CardTitle className="flex items-center gap-2"><PiggyBank className="h-5 w-5" /> Budget vs. actual</CardTitle><CardDescription>Budgets are prorated to the exact selected dates. Each expense is counted once in its most specific matching budget, so Actual reconciles with the filtered Expenses card.</CardDescription></CardHeader>
       <CardContent>
         {budgetSummary.rows.length > 0 ? <>
           <div className="mb-5 grid gap-3 sm:grid-cols-4">
@@ -1115,7 +1115,7 @@ export function CustomReportWorkspace({
             <div className="rounded-xl border p-4"><p className="text-xs text-muted-foreground">Used</p><p className="mt-1 text-lg font-semibold">{budgetSummary.percentUsed.toFixed(1)}%</p></div>
           </div>
           <div className="space-y-4">
-            {budgetSummary.rows.map((row) => <div key={row.budgetId}><div className="mb-1 flex items-center justify-between gap-3 text-sm"><span className="font-medium">{row.categoryName}</span><span className="text-right tabular-nums">{currency.format(row.actual)} / {currency.format(row.budget)}<span className="block text-xs text-muted-foreground">Projected {currency.format(row.projected)}</span></span></div><Progress value={Math.min(100, row.percentUsed)} className={cn("h-2", row.percentUsed > 100 && "[&>div]:bg-destructive")} /></div>)}
+            {budgetSummary.rows.map((row) => <div key={row.budgetId}><div className="mb-1 flex items-center justify-between gap-3 text-sm"><span className="font-medium">{row.categoryName}</span><span className="text-right tabular-nums">{currency.format(row.actual)} / {row.isUnbudgeted ? "No budget" : currency.format(row.budget)}<span className="block text-xs text-muted-foreground">Projected {currency.format(row.projected)}</span></span></div><Progress value={Math.min(100, row.percentUsed)} className={cn("h-2", (row.isUnbudgeted || row.percentUsed > 100) && "[&>div]:bg-destructive")} /></div>)}
           </div>
         </> : <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">No budgets apply to this date range.</p>}
       </CardContent>

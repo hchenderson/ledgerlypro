@@ -276,8 +276,10 @@ describe("report analytics", () => {
     );
 
     expect(result.budget).toBe(300);
-    expect(result.actual).toBe(250);
-    expect(result.remaining).toBe(50);
+    expect(result.actual).toBe(1_250);
+    expect(result.remaining).toBe(-950);
+    expect(result.rows.find((row) => row.budgetId === "food-budget")?.actual).toBe(250);
+    expect(result.rows.find((row) => row.isUnbudgeted)?.actual).toBe(1_000);
   });
 
   it("removes excluded categories from budget cards and rows", () => {
@@ -322,6 +324,68 @@ describe("report analytics", () => {
     expect(result.budget).toBe(310);
     expect(result.actual).toBe(250);
     expect(result.remaining).toBe(60);
+  });
+
+  it("counts nested budget expenses once and reconciles unbudgeted spending", () => {
+    const nestedBudgets: Budget[] = [
+      {
+        id: "housing-budget",
+        categoryId: "housing",
+        amount: 1_550,
+        period: "monthly",
+        year: 2026,
+      },
+      {
+        id: "rent-budget",
+        categoryId: "rent",
+        amount: 1_000,
+        period: "monthly",
+        year: 2026,
+      },
+    ];
+    const nestedTransactions = [
+      transaction("rent", "2026-01-03", 1_000, "expense", "Rent", {
+        categoryId: "rent",
+      }),
+      transaction("housing", "2026-01-04", 200, "expense", "Housing", {
+        categoryId: "housing",
+      }),
+      transaction("food", "2026-01-05", 250, "expense", "Food", {
+        categoryId: "food",
+      }),
+    ];
+    const report = computeReportAnalytics(
+      nestedTransactions,
+      range,
+      filters,
+      categories,
+      [account],
+      "month",
+      account.id,
+    );
+    const result = computeReportBudgets(
+      nestedBudgets,
+      categories,
+      report.transactions,
+      range,
+      filters,
+    );
+
+    expect(result.actual).toBe(report.summary.expenses);
+    expect(result.actual).toBe(1_450);
+    expect(result.rows.find((row) => row.budgetId === "rent-budget")?.actual).toBe(1_000);
+    expect(result.rows.find((row) => row.budgetId === "housing-budget")?.actual).toBe(200);
+    expect(
+      result.rows.find((row) => row.isUnbudgeted),
+    ).toMatchObject({
+      categoryName: "Unbudgeted expenses",
+      budget: 0,
+      actual: 250,
+      remaining: -250,
+    });
+    expect(result.rows.reduce((sum, row) => sum + row.actual, 0)).toBe(
+      report.summary.expenses,
+    );
   });
 
   it("matches Compare exactly for the same posted date range and filters", () => {

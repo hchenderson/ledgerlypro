@@ -196,6 +196,7 @@ export interface ReportBudgetRow {
   remaining: number;
   percentUsed: number;
   projected: number;
+  isUnbudgeted?: boolean;
 }
 
 export interface ReportBudgetSummary {
@@ -642,7 +643,7 @@ export function computeReportBudgets(
   const includedCategoryKeys = new Set(filters?.includedCategoryKeys ?? []);
   const excludedCategoryKeys = new Set(filters?.excludedCategoryKeys ?? []);
   const expensesIncluded = filters?.transactionTypes.includes("expense") ?? true;
-  const rows = budgets
+  const applicableBudgets = budgets
     .map((budget) => {
       if (!expensesIncluded) return null;
       const budgetAmount = proratedBudgetAmount(budget, range);
@@ -665,18 +666,50 @@ export function computeReportBudgets(
       const subtree = categoryResult
         ? getCategorySubtreeIdsAndNames(categoryResult.category)
         : { ids: [budget.categoryId], names: [] };
-      const actual = expenseTransactions
-        .filter((transaction) =>
-          transaction.categoryId
-            ? subtree.ids.includes(transaction.categoryId)
-            : subtree.names
-                .map((name) => normalizeCategoryName(name).toLocaleLowerCase())
-                .includes(normalizeCategoryName(transaction.category).toLocaleLowerCase()),
-        )
-        .reduce((sum, transaction) => sum + transactionAmount(transaction), 0);
       const categoryName = categoryResult
         ? categoryResult.path.map((category) => category.name).join(" > ")
         : "Unknown category";
+      return {
+        budget,
+        categoryName,
+        budgetAmount,
+        categoryDepth: categoryResult?.path.length ?? 0,
+        subtreeIds: new Set(subtree.ids),
+        subtreeNames: new Set(
+          subtree.names.map((name) =>
+            normalizeCategoryName(name).toLocaleLowerCase(),
+          ),
+        ),
+      };
+    })
+    .filter((budget): budget is NonNullable<typeof budget> => budget !== null);
+
+  const actualByBudgetId = new Map<string, number>();
+  let unbudgetedActual = 0;
+  for (const transaction of expenseTransactions) {
+    const matchingBudget = applicableBudgets
+      .filter((budget) =>
+        transaction.categoryId
+          ? budget.subtreeIds.has(transaction.categoryId)
+          : budget.subtreeNames.has(
+              normalizeCategoryName(transaction.category).toLocaleLowerCase(),
+            ),
+      )
+      .sort((a, b) => b.categoryDepth - a.categoryDepth)[0];
+    const amount = transactionAmount(transaction);
+    if (!matchingBudget) {
+      unbudgetedActual += amount;
+      continue;
+    }
+    actualByBudgetId.set(
+      matchingBudget.budget.id,
+      (actualByBudgetId.get(matchingBudget.budget.id) ?? 0) + amount,
+    );
+  }
+
+  const rows: ReportBudgetRow[] = applicableBudgets
+    .map(({ budget, budgetAmount, categoryName }) => {
+      const actual = actualByBudgetId.get(budget.id) ?? 0;
       return {
         budgetId: budget.id,
         categoryName,
@@ -684,13 +717,33 @@ export function computeReportBudgets(
         actual,
         remaining: budgetAmount - actual,
         percentUsed: budgetAmount > 0 ? (actual / budgetAmount) * 100 : 0,
-        projected: elapsedDays < totalDays ? (actual / elapsedDays) * totalDays : actual,
-      } satisfies ReportBudgetRow;
-    })
-    .filter((row): row is ReportBudgetRow => row !== null)
-    .sort((a, b) => b.percentUsed - a.percentUsed);
+        projected:
+          elapsedDays < totalDays
+            ? (actual / elapsedDays) * totalDays
+            : actual,
+      };
+    });
+  if (unbudgetedActual > 0) {
+    rows.push({
+      budgetId: "report-unbudgeted-expenses",
+      categoryName: "Unbudgeted expenses",
+      budget: 0,
+      actual: unbudgetedActual,
+      remaining: -unbudgetedActual,
+      percentUsed: 100,
+      projected:
+        elapsedDays < totalDays
+          ? (unbudgetedActual / elapsedDays) * totalDays
+          : unbudgetedActual,
+      isUnbudgeted: true,
+    });
+  }
+  rows.sort((a, b) => b.percentUsed - a.percentUsed);
   const budget = rows.reduce((sum, row) => sum + row.budget, 0);
-  const actual = rows.reduce((sum, row) => sum + row.actual, 0);
+  const actual = expenseTransactions.reduce(
+    (sum, transaction) => sum + transactionAmount(transaction),
+    0,
+  );
   return {
     budget,
     actual,
