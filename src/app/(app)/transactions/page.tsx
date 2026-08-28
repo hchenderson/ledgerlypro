@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
-import { MoreHorizontal, Upload, Calendar as CalendarIcon, X, Loader2, Edit, Trash2, ArrowRightLeft, ListChecks } from "lucide-react";
+import { MoreHorizontal, Upload, Calendar as CalendarIcon, X, Loader2, Edit, Trash2, ArrowRightLeft, ListChecks, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
@@ -33,6 +33,10 @@ import {
   allocationsAreComplete,
   expandTransactionAllocations,
 } from "@/lib/transaction-allocations";
+import {
+  canEditTransaction,
+  historicalTransactionYear,
+} from "@/lib/transaction-edit-policy";
 
 const NewTransactionSheet = dynamic(
   () =>
@@ -173,10 +177,10 @@ export default function TransactionsPage() {
   }, []);
 
   const handleEdit = useCallback((transaction: Transaction) => {
-    if (isReadOnly || transaction.type === "transfer") return;
+    if (!canEditTransaction(transaction)) return;
     setSelectedTransaction(transaction);
     setIsSheetOpen(true);
-  }, [isReadOnly]);
+  }, []);
   
   const handleSheetClose = useCallback((open: boolean) => {
     if (!open) {
@@ -258,6 +262,23 @@ export default function TransactionsPage() {
 
   return (
     <div className="space-y-6">
+      {isReadOnly ? (
+        <div
+          role="note"
+          className="flex items-start gap-3 rounded-xl border border-primary/20 bg-primary/5 p-4 text-sm"
+        >
+          <History className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+          <div>
+            <p className="font-medium">Correcting historical transactions</p>
+            <p className="mt-1 text-muted-foreground">
+              You can edit {activeYear} income and expenses. Ledgerly will ask
+              for confirmation before recalculating historical results. Adding,
+              importing, deleting, and transfers remain unavailable in a past
+              year.
+            </p>
+          </div>
+        </div>
+      ) : null}
       <Card>
         <CardHeader className="pb-4">
           <CardTitle>Filters</CardTitle>
@@ -462,12 +483,14 @@ export default function TransactionsPage() {
                       variant="outline"
                       className="h-11"
                       onClick={() => handleEdit(transaction)}
-                      disabled={isReadOnly || transaction.type === "transfer"}
+                      disabled={!canEditTransaction(transaction)}
                       aria-label={`Edit ${transaction.description}`}
                       title={
                         transaction.type === "transfer"
                           ? "Linked transfers are edited together and cannot be edited here."
-                          : undefined
+                          : isReadOnly
+                            ? `Edit this ${activeYear} transaction. You will confirm before its historical reports change.`
+                            : undefined
                       }
                     >
                       <Edit className="h-4 w-4" />
@@ -544,8 +567,7 @@ export default function TransactionsPage() {
                     key={transaction.id} 
                     onClick={() => handleEdit(transaction)}
                     className={cn(
-                      !isReadOnly &&
-                        transaction.type !== "transfer" &&
+                      canEditTransaction(transaction) &&
                         "cursor-pointer",
                     )}
                   >
@@ -598,7 +620,7 @@ export default function TransactionsPage() {
                     <TableCell>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button aria-haspopup="true" size="icon" variant="ghost" disabled={isReadOnly} onClick={(e) => e.stopPropagation()}>
+                            <Button aria-haspopup="true" size="icon" variant="ghost" onClick={(e) => e.stopPropagation()}>
                               <MoreHorizontal className="h-4 w-4" />
                               <span className="sr-only">Toggle menu</span>
                             </Button>
@@ -616,6 +638,7 @@ export default function TransactionsPage() {
                                   <DropdownMenuItem 
                                     className="text-red-600 focus:text-red-600"
                                     onSelect={(e) => e.preventDefault()}
+                                    disabled={isReadOnly}
                                   >
                                     <Trash2 className="mr-2 h-4 w-4" /> Delete
                                   </DropdownMenuItem>
@@ -678,6 +701,11 @@ export default function TransactionsPage() {
           onTransactionCreated={handleTransactionCreated}
           onTransactionUpdated={handleTransactionUpdated}
           categories={categories}
+          historicalEditYear={
+            selectedTransaction
+              ? historicalTransactionYear(selectedTransaction, systemYear)
+              : undefined
+          }
         />
       ) : null}
     </div>

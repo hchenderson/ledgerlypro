@@ -500,6 +500,7 @@ export function computeReportBalances(
   accounts: Account[],
   range: FinancialDateRange,
   selectedAccountIds: string[],
+  reportTransactions?: Transaction[],
 ): ReportBalanceSummary {
   const selected =
     selectedAccountIds.length > 0
@@ -510,17 +511,30 @@ export function computeReportBalances(
       sum + calculateAccountBalanceBefore(account, allTransactions, startOfDay(range.from)),
     0,
   );
-  const endingBalance = selected.reduce(
-    (sum, account) => sum + calculateAccountBalanceAsOf(account, allTransactions, range.to),
-    0,
-  );
+  const scopedTransactions = reportTransactions ?? allTransactions;
+  const includedAccountIds = new Set(selected.map((account) => account.id));
+  const defaultAccountId = accounts.find((account) => account.isDefault)?.id;
+  const scopedDeltasByAccount = new Map<string, number>();
+  for (const transaction of scopedTransactions) {
+    const date = parseTransactionDate(transaction.date);
+    if (!date || !dateWithinRange(date, range)) continue;
+    const accountId = transaction.accountId ?? defaultAccountId;
+    if (!accountId || !includedAccountIds.has(accountId)) continue;
+    scopedDeltasByAccount.set(
+      accountId,
+      (scopedDeltasByAccount.get(accountId) ?? 0) +
+        transactionBalanceDelta(transaction),
+    );
+  }
   const accountsSummary = selected.map((account) => {
     const start = calculateAccountBalanceBefore(
       account,
       allTransactions,
       startOfDay(range.from),
     );
-    const end = calculateAccountBalanceAsOf(account, allTransactions, range.to);
+    const end = reportTransactions
+      ? start + (scopedDeltasByAccount.get(account.id) ?? 0)
+      : calculateAccountBalanceAsOf(account, allTransactions, range.to);
     return {
       accountId: account.id,
       accountName: account.name,
@@ -529,10 +543,12 @@ export function computeReportBalances(
       change: end - start,
     };
   });
-  const includedAccountIds = new Set(selected.map((account) => account.id));
-  const defaultAccountId = accounts.find((account) => account.isDefault)?.id;
+  const endingBalance = accountsSummary.reduce(
+    (sum, accountSummary) => sum + accountSummary.endingBalance,
+    0,
+  );
   const deltasByDay = new Map<string, number>();
-  for (const transaction of allTransactions) {
+  for (const transaction of scopedTransactions) {
     const date = parseTransactionDate(transaction.date);
     if (!date || !dateWithinRange(date, range)) continue;
     const accountId = transaction.accountId ?? defaultAccountId;
@@ -613,20 +629,39 @@ export function computeReportBudgets(
   categories: Category[],
   reportTransactions: Transaction[],
   range: FinancialDateRange,
+  filters?: Pick<
+    ReportFilterConfiguration,
+    "includedCategoryKeys" | "excludedCategoryKeys" | "transactionTypes"
+  >,
 ): ReportBudgetSummary {
   const expenseTransactions = reportTransactions.filter(
     (transaction) => transaction.type === "expense",
   );
   const elapsedDays = Math.max(1, differenceInCalendarDays(min([new Date(), range.to]), range.from) + 1);
   const totalDays = Math.max(1, differenceInCalendarDays(range.to, range.from) + 1);
+  const includedCategoryKeys = new Set(filters?.includedCategoryKeys ?? []);
+  const excludedCategoryKeys = new Set(filters?.excludedCategoryKeys ?? []);
+  const expensesIncluded = filters?.transactionTypes.includes("expense") ?? true;
   const rows = budgets
     .map((budget) => {
+      if (!expensesIncluded) return null;
       const budgetAmount = proratedBudgetAmount(budget, range);
       if (budgetAmount <= 0) return null;
       const categoryResult = findCategoryWithPathById(
         budget.categoryId,
         categories,
       );
+      const rootCategory = categoryResult?.path[0];
+      const categoryKey = rootCategory
+        ? `expense:${rootCategory.id}`
+        : `expense:${budget.categoryId}`;
+      if (excludedCategoryKeys.has(categoryKey)) return null;
+      if (
+        includedCategoryKeys.size > 0 &&
+        !includedCategoryKeys.has(categoryKey)
+      ) {
+        return null;
+      }
       const subtree = categoryResult
         ? getCategorySubtreeIdsAndNames(categoryResult.category)
         : { ids: [budget.categoryId], names: [] };

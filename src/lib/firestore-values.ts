@@ -1,6 +1,8 @@
 export function withoutUndefined<T>(value: T): T {
   if (Array.isArray(value)) {
-    return value.map((item) => withoutUndefined(item)) as T;
+    return value
+      .filter((item) => item !== undefined)
+      .map((item) => withoutUndefined(item)) as T;
   }
   if (
     value &&

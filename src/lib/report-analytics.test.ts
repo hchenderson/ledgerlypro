@@ -205,6 +205,29 @@ describe("report analytics", () => {
     expect(balances.endingBalance).toBe(2_550);
   });
 
+  it("applies category filters to report-scoped balance cards", () => {
+    const report = computeReportAnalytics(
+      transactions,
+      range,
+      { ...filters, excludedCategoryKeys: ["expense:housing"] },
+      categories,
+      [account],
+      "month",
+      account.id,
+    );
+    const balances = computeReportBalances(
+      transactions,
+      [account],
+      range,
+      [],
+      report.transactions,
+    );
+
+    expect(balances.startingBalance).toBe(1_000);
+    expect(balances.change).toBe(2_550);
+    expect(balances.endingBalance).toBe(3_550);
+  });
+
   it("counts a paired internal transfer once in total money moved", () => {
     const result = computeReportAnalytics(
       [
@@ -255,6 +278,50 @@ describe("report analytics", () => {
     expect(result.budget).toBe(300);
     expect(result.actual).toBe(250);
     expect(result.remaining).toBe(50);
+  });
+
+  it("removes excluded categories from budget cards and rows", () => {
+    const budgets: Budget[] = [
+      {
+        id: "food-budget",
+        categoryId: "food",
+        amount: 310,
+        period: "monthly",
+        year: 2026,
+      },
+      {
+        id: "housing-budget",
+        categoryId: "housing",
+        amount: 1_550,
+        period: "monthly",
+        year: 2026,
+      },
+    ];
+    const reportFilters = {
+      ...filters,
+      excludedCategoryKeys: ["expense:housing"],
+    };
+    const report = computeReportAnalytics(
+      transactions,
+      range,
+      reportFilters,
+      categories,
+      [account],
+      "month",
+      account.id,
+    );
+    const result = computeReportBudgets(
+      budgets,
+      categories,
+      report.transactions,
+      range,
+      reportFilters,
+    );
+
+    expect(result.rows.map((row) => row.categoryName)).toEqual(["Food"]);
+    expect(result.budget).toBe(310);
+    expect(result.actual).toBe(250);
+    expect(result.remaining).toBe(60);
   });
 
   it("matches Compare exactly for the same posted date range and filters", () => {

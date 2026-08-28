@@ -322,6 +322,7 @@ function metricCard(
   comparison: ReportAnalytics | null,
   endingBalance: number,
   budgetRemaining: number,
+  categoryFiltersActive: boolean,
 ) {
   const summary = current.summary;
   const prior = comparison?.summary;
@@ -334,7 +335,7 @@ function metricCard(
   if (metric === "average-monthly-net") return <SummaryCard key={metric} title="Average monthly net" value={currency.format(summary.averageMonthlyNet)} comparison={prior ? { current: summary.averageMonthlyNet, previous: prior.averageMonthlyNet } : undefined} />;
   if (metric === "largest-expense") return <SummaryCard key={metric} title="Largest expense" value={summary.largestExpense ? `${summary.largestExpense.description} · ${currency.format(Math.abs(summary.largestExpense.amount))}` : "None"} />;
   if (metric === "largest-income") return <SummaryCard key={metric} title="Largest income" value={summary.largestIncome ? `${summary.largestIncome.description} · ${currency.format(Math.abs(summary.largestIncome.amount))}` : "None"} />;
-  if (metric === "ending-balance") return <SummaryCard key={metric} title="Ending account balance" value={currency.format(endingBalance)} />;
+  if (metric === "ending-balance") return <SummaryCard key={metric} title={categoryFiltersActive ? "Filtered ending balance" : "Ending account balance"} value={currency.format(endingBalance)} />;
   return <SummaryCard key={metric} title="Budget remaining" value={currency.format(budgetRemaining)} />;
 }
 
@@ -523,8 +524,21 @@ export function CustomReportWorkspace({
     ],
   );
   const balances = useMemo(
-    () => computeReportBalances(allTransactions, accounts, primaryRange, accountIds),
-    [accountIds, accounts, allTransactions, primaryRange],
+    () =>
+      computeReportBalances(
+        allTransactions,
+        accounts,
+        primaryRange,
+        accountIds,
+        currentAnalytics.transactions,
+      ),
+    [
+      accountIds,
+      accounts,
+      allTransactions,
+      currentAnalytics.transactions,
+      primaryRange,
+    ],
   );
   const budgetSummary = useMemo(
     () =>
@@ -533,8 +547,9 @@ export function CustomReportWorkspace({
         categories,
         currentAnalytics.transactions,
         primaryRange,
+        filters,
       ),
-    [budgets, categories, currentAnalytics.transactions, primaryRange],
+    [budgets, categories, currentAnalytics.transactions, filters, primaryRange],
   );
   const expenseMovement = useMemo(
     () =>
@@ -601,6 +616,8 @@ export function CustomReportWorkspace({
     label: account.name,
   }));
   const reportDomId = `custom-${period}-report`;
+  const categoryFiltersActive =
+    includedCategoryKeys.length > 0 || excludedCategoryKeys.length > 0;
   const loading =
     transactionsLoading ||
     categoriesLoading ||
@@ -789,7 +806,10 @@ export function CustomReportWorkspace({
           },
         ],
         metrics: visibleMetrics.map((metric) => ({
-          label: METRIC_LABELS[metric],
+          label:
+            metric === "ending-balance" && categoryFiltersActive
+              ? "Filtered ending balance"
+              : METRIC_LABELS[metric],
           value: metricPdfValue(
             metric,
             currentAnalytics,
@@ -818,6 +838,7 @@ export function CustomReportWorkspace({
       balances.endingBalance,
       budgetSummary.remaining,
       budgetSummary.rows,
+      categoryFiltersActive,
       comparisonAnalytics,
       comparisonRange,
       currentAnalytics,
@@ -904,7 +925,12 @@ export function CustomReportWorkspace({
       setViewName("");
       toast({ title: existingId ? "Report view updated" : "Report view saved", description: `“${name}” is available on any device.` });
     } catch (error) {
-      toast({ variant: "destructive", title: "Could not save report view", description: error instanceof Error ? error.message : "Please try again." });
+      console.error("Could not save report view", error);
+      toast({
+        variant: "destructive",
+        title: "Could not save report view",
+        description: "Your view was not saved. Please try again.",
+      });
     } finally {
       setSavingView(false);
     }
@@ -1000,6 +1026,7 @@ export function CustomReportWorkspace({
             comparisonAnalytics,
             balances.endingBalance,
             budgetSummary.remaining,
+            categoryFiltersActive,
           ),
         )}
       </div>
@@ -1097,7 +1124,7 @@ export function CustomReportWorkspace({
 
   const renderBalances = () => (
     <Card key="balances" id={`${reportDomId}-balance-chart`} data-pdf-title="Account balance chart">
-      <CardHeader><CardTitle className="flex items-center gap-2"><Scale className="h-5 w-5" /> Account balances</CardTitle><CardDescription>Opening balances plus finalized income, expenses, and transfers through each day.</CardDescription></CardHeader>
+      <CardHeader><CardTitle className="flex items-center gap-2"><Scale className="h-5 w-5" /> {categoryFiltersActive ? "Filtered account balances" : "Account balances"}</CardTitle><CardDescription>{categoryFiltersActive ? "Opening balances plus only the income, expenses, and transfers allowed by the current filters." : "Opening balances plus finalized income, expenses, and transfers through each day."}</CardDescription></CardHeader>
       <CardContent className="space-y-6">
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
           {[['Starting', balances.startingBalance], ['Ending', balances.endingBalance], ['Lowest', balances.lowestBalance], ['Highest', balances.highestBalance], ['Daily average', balances.averageDailyBalance]].map(([label, value]) => <div key={String(label)} className="rounded-xl border p-4"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-lg font-semibold tabular-nums">{currency.format(Number(value))}</p></div>)}

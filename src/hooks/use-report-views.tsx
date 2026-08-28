@@ -4,6 +4,7 @@ import { useCallback } from "react";
 import { deleteDoc, doc, setDoc } from "firebase/firestore";
 
 import { useFirestoreUserCollection } from "@/hooks/use-firestore-user-collection";
+import { withoutUndefined } from "@/lib/firestore-values";
 import type {
   ReportComparisonMode,
   ReportGranularity,
@@ -59,13 +60,13 @@ export function useReportViews() {
       const now = new Date().toISOString();
       await setDoc(
         documentRef,
-        {
+        withoutUndefined({
           id: documentRef.id,
           name: name.trim(),
           configuration,
           updatedAt: now,
           ...(existingId ? {} : { createdAt: now }),
-        },
+        }),
         { merge: true },
       );
       return documentRef.id;

@@ -195,7 +195,7 @@ const pageGuides = [
       "Goals can be tracked manually, linked to category activity, or linked to an envelope balance.",
       "Recurring items create expected transactions on their schedule. Review their account, category, amount, and optional envelope whenever a bill changes.",
       "Projections estimate what may happen from your recorded history and settings; they are planning aids, not guarantees.",
-      "Use the current year to edit planning data. Past years are intentionally read-only to protect historical reports.",
+      "Past-year planning data remains protected. Historical income and expense transactions can be corrected from Transactions; Ledgerly asks for confirmation and recalculates every affected report.",
     ],
   },
   {
@@ -541,7 +541,7 @@ export default function HowToUsePage() {
                 </div>
                 <div className="flex gap-3">
                   <LockKeyhole className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-                  <p className="text-sm">Use the year switcher to inspect prior years. Historical years are read-only so their reports remain stable.</p>
+                  <p className="text-sm">Use the year switcher to inspect prior years. You can correct historical income and expense transactions with a confirmation; adding, importing, deleting, transfers, and planning changes remain protected.</p>
                 </div>
               </CardContent>
             </Card>
@@ -651,9 +651,9 @@ export default function HowToUsePage() {
                 </AccordionContent>
               </AccordionItem>
               <AccordionItem value="read-only">
-                <AccordionTrigger className="text-left">Why can’t I edit a past year?</AccordionTrigger>
+                <AccordionTrigger className="text-left">What can I change in a past year?</AccordionTrigger>
                 <AccordionContent className="text-muted-foreground">
-                  Past years are read-only to protect completed reports and comparisons. Switch to the current year for new activity. Correct historical source data only through the supported current workflow rather than recreating totals manually.
+                  Past-year income and expense transactions can be corrected from the Transactions page. Ledgerly confirms the change before recalculating balances, reports, comparisons, budgets, goals, projections, and designated funds. New transactions, imports, deletions, transfers, and historical planning changes remain unavailable to reduce accidental changes to closed years.
                 </AccordionContent>
               </AccordionItem>
               <AccordionItem value="signin-ai">

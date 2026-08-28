@@ -61,6 +61,16 @@ import {
   allocationDifference,
   allocationsAreComplete,
 } from "@/lib/transaction-allocations"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 const formSchema = z.object({
   type: z.enum(["income", "expense"], {
@@ -109,6 +119,7 @@ interface NewTransactionSheetProps {
     onTransactionUpdated?: (id: string, values: SubmittedTransactionValues) => void | Promise<void>;
     children?: React.ReactNode;
     categories: Category[];
+    historicalEditYear?: number;
 }
 
 const AddCategoryDialog = ({ 
@@ -215,6 +226,7 @@ export function NewTransactionSheet({
     onTransactionUpdated,
     children,
     categories,
+    historicalEditYear,
 }: NewTransactionSheetProps) {
   const { toast } = useToast()
   const {
@@ -243,6 +255,10 @@ export function NewTransactionSheet({
   const [allocations, setAllocations] = useState<AllocationDraft[]>([]);
   const [splitError, setSplitError] = useState<string | null>(null);
   const [templateName, setTemplateName] = useState("");
+  const [pendingHistoricalUpdate, setPendingHistoricalUpdate] =
+    useState<SubmittedTransactionValues | null>(null);
+  const [isSavingHistoricalUpdate, setIsSavingHistoricalUpdate] =
+    useState(false);
 
   // State for the text input for the date
   const [dateInput, setDateInput] = useState("");
@@ -330,6 +346,24 @@ export function NewTransactionSheet({
       amount: Number(allocation.amount) || 0,
     }));
 
+  const saveSubmission = async (
+    submissionValues: SubmittedTransactionValues,
+  ) => {
+    try {
+      if (transaction && transaction.id) {
+        if (onTransactionUpdated) {
+          await onTransactionUpdated(transaction.id, submissionValues);
+        }
+      } else if (onTransactionCreated) {
+        await onTransactionCreated(submissionValues);
+      }
+      if (onOpenChange) onOpenChange(false)
+      form.reset()
+    } catch (error) {
+      setSplitError(error instanceof Error ? error.message : "The transaction could not be saved.");
+    }
+  };
+
   async function onSubmit(values: FormValues) {
     if (!isSplit && !values.categoryId) {
       form.setError("categoryId", { message: "Please select a category." });
@@ -364,20 +398,22 @@ export function NewTransactionSheet({
           : null,
     };
 
-    try {
-      if (transaction && transaction.id) {
-        if (onTransactionUpdated) {
-          await onTransactionUpdated(transaction.id, submissionValues);
-        }
-      } else if (onTransactionCreated) {
-        await onTransactionCreated(submissionValues);
-      }
-      if (onOpenChange) onOpenChange(false)
-      form.reset()
-    } catch (error) {
-      setSplitError(error instanceof Error ? error.message : "The transaction could not be saved.");
+    if (transaction?.id && historicalEditYear !== undefined) {
+      setPendingHistoricalUpdate(submissionValues);
+      return;
     }
+
+    await saveSubmission(submissionValues);
   }
+
+  const confirmHistoricalUpdate = async () => {
+    if (!pendingHistoricalUpdate) return;
+    const submission = pendingHistoricalUpdate;
+    setPendingHistoricalUpdate(null);
+    setIsSavingHistoricalUpdate(true);
+    await saveSubmission(submission);
+    setIsSavingHistoricalUpdate(false);
+  };
 
   const handleCategoryAdded = (newCategoryName: string, newCategoryId: string) => {
     form.setValue('categoryId', newCategoryId, { shouldValidate: true });
@@ -490,6 +526,7 @@ export function NewTransactionSheet({
 
 
   return (
+    <>
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
       {children ? <SheetTrigger asChild>{children}</SheetTrigger> : null}
       <SheetContent className="overflow-y-auto sm:max-w-xl">
@@ -805,5 +842,39 @@ export function NewTransactionSheet({
         </Form>
       </SheetContent>
     </Sheet>
+    <AlertDialog
+      open={pendingHistoricalUpdate !== null}
+      onOpenChange={(open) => {
+        if (!open && !isSavingHistoricalUpdate) {
+          setPendingHistoricalUpdate(null);
+        }
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            Update this {historicalEditYear} transaction?
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            This correction will recalculate {historicalEditYear} account
+            balances, reports, comparisons, budgets, goals, projections, and
+            designated-fund results. The original bank transaction is updated;
+            Ledgerly will not create a duplicate.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={isSavingHistoricalUpdate}>
+            Go back
+          </AlertDialogCancel>
+          <AlertDialogAction
+            disabled={isSavingHistoricalUpdate}
+            onClick={() => void confirmHistoricalUpdate()}
+          >
+            Save historical correction
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   )
 }
