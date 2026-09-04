@@ -7,6 +7,11 @@ import { auth } from '@/lib/firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { BudgetingMode, EnvelopeSettings, ForecastSettings } from '@/types';
+import {
+  DEFAULT_DASHBOARD_PREFERENCES,
+  normalizeDashboardPreferences,
+  type DashboardPreferences,
+} from '@/lib/dashboard-preferences';
 
 interface AuthContextType {
   user: User | null;
@@ -24,6 +29,8 @@ interface AuthContextType {
   setEnvelopeSettings: (settings: Partial<EnvelopeSettings>) => Promise<void>;
   forecastSettings: ForecastSettings;
   setForecastSettings: (settings: Partial<ForecastSettings>) => void;
+  dashboardPreferences: DashboardPreferences;
+  setDashboardPreferences: (settings: Partial<DashboardPreferences>) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({ 
@@ -42,6 +49,8 @@ const AuthContext = createContext<AuthContextType>({
   setEnvelopeSettings: async () => {},
   forecastSettings: {},
   setForecastSettings: () => {},
+  dashboardPreferences: DEFAULT_DASHBOARD_PREFERENCES,
+  setDashboardPreferences: async () => {},
 });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -59,6 +68,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       fundingSuggestions: true,
     });
   const [forecastSettings, setForecastSettingsState] = useState<ForecastSettings>({});
+  const [dashboardPreferences, setDashboardPreferencesState] =
+    useState<DashboardPreferences>(DEFAULT_DASHBOARD_PREFERENCES);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -78,6 +89,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             fundingSuggestions: true,
           } as EnvelopeSettings,
           forecastSettings: {},
+          dashboardPreferences: DEFAULT_DASHBOARD_PREFERENCES,
         };
 
         if (userDoc.exists()) {
@@ -100,6 +112,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             settingsData.envelopeSettings?.fundingSuggestions ?? true,
         });
         setForecastSettingsState(settingsData.forecastSettings || {});
+        setDashboardPreferencesState(
+          normalizeDashboardPreferences(settingsData.dashboardPreferences),
+        );
 
       } else {
         // No user, reset to defaults
@@ -113,6 +128,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           fundingSuggestions: true,
         });
         setForecastSettingsState({});
+        setDashboardPreferencesState(DEFAULT_DASHBOARD_PREFERENCES);
       }
       setLoading(false);
     });
@@ -160,6 +176,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await setDoc(userDocRef, { envelopeSettings: nextSettings }, { merge: true });
     }
   }, [envelopeSettings, user]);
+
+  const setDashboardPreferences = useCallback(async (
+    settings: Partial<DashboardPreferences>,
+  ) => {
+    const nextPreferences = normalizeDashboardPreferences({
+      ...dashboardPreferences,
+      ...settings,
+    });
+    setDashboardPreferencesState(nextPreferences);
+    if (user) {
+      const userDocRef = doc(db, 'users', user.uid, 'settings', 'main');
+      await setDoc(
+        userDocRef,
+        { dashboardPreferences: nextPreferences },
+        { merge: true },
+      );
+    }
+  }, [dashboardPreferences, user]);
   
    const setForecastSettings = useCallback(async (settings: Partial<ForecastSettings>) => {
     if (user) {
@@ -184,7 +218,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [user, forecastSettings]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, onboardingComplete, setOnboardingComplete, showInstructions, setShowInstructions, activeYear, setActiveYear, firstYear, budgetingMode, setBudgetingMode, envelopeSettings, setEnvelopeSettings, forecastSettings, setForecastSettings }}>
+    <AuthContext.Provider value={{ user, loading, onboardingComplete, setOnboardingComplete, showInstructions, setShowInstructions, activeYear, setActiveYear, firstYear, budgetingMode, setBudgetingMode, envelopeSettings, setEnvelopeSettings, forecastSettings, setForecastSettings, dashboardPreferences, setDashboardPreferences }}>
       {children}
     </AuthContext.Provider>
   );

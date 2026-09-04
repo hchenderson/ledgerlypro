@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { computeDashboardAnalytics } from "./dashboard-analytics";
-import type { Transaction } from "@/types";
+import type { Category, Transaction } from "@/types";
 
 const transaction = (
   id: string,
@@ -130,5 +130,46 @@ describe("computeDashboardAnalytics", () => {
 
     expect(result.currentBalance).toBe(600);
     expect(result.totalIncome).toBe(500);
+  });
+
+  it("filters cash-flow cards by category without changing the real balance", () => {
+    const categories: Category[] = [
+      { id: "salary", name: "Salary", type: "income" },
+      { id: "gifts", name: "Gifts", type: "income" },
+      { id: "food", name: "Food", type: "expense" },
+    ];
+    const salary = {
+      ...transaction("salary", "2026-01-02T12:00:00.000Z", 500, "income"),
+      category: "Salary",
+      categoryId: "salary",
+    };
+    const gift = {
+      ...transaction("gift", "2026-01-03T12:00:00.000Z", 200, "income"),
+      category: "Gifts",
+      categoryId: "gifts",
+    };
+    const food = {
+      ...transaction("food", "2026-01-04T12:00:00.000Z", 100, "expense"),
+      category: "Food",
+      categoryId: "food",
+    };
+
+    const result = computeDashboardAnalytics(
+      [salary, gift, food],
+      1_000,
+      new Date(2026, 0, 31),
+      new Date(2026, 0, 31),
+      categories,
+      {
+        includedCategoryKeys: [],
+        excludedCategoryKeys: ["income:gifts"],
+      },
+    );
+
+    expect(result.totalIncome).toBe(500);
+    expect(result.totalExpenses).toBe(100);
+    expect(result.currentMonthIncome).toBe(500);
+    expect(result.savingsRate).toBe(80);
+    expect(result.currentBalance).toBe(1_600);
   });
 });

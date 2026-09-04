@@ -42,11 +42,17 @@ import {
     normalizeOpeningBalance,
 } from '@/lib/accounts';
 import { PlaidConnectionsCard } from '@/components/plaid/plaid-connections-card';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+    DASHBOARD_CARD_OPTIONS,
+    DEFAULT_DASHBOARD_PREFERENCES,
+    type DashboardCardId,
+} from '@/lib/dashboard-preferences';
 
 export default function SettingsPage() {
     const router = useRouter();
     const { toast } = useToast();
-    const { user, showInstructions, setShowInstructions, budgetingMode, setBudgetingMode, envelopeSettings, setEnvelopeSettings, forecastSettings, setForecastSettings } = useAuth();
+    const { user, showInstructions, setShowInstructions, budgetingMode, setBudgetingMode, envelopeSettings, setEnvelopeSettings, forecastSettings, setForecastSettings, dashboardPreferences, setDashboardPreferences } = useAuth();
     const { categories } = useCategories();
     const { clearAllData } = useSettingsData();
     const {
@@ -76,6 +82,16 @@ export default function SettingsPage() {
     const [deleteConfirmation, setDeleteConfirmation] = useState('');
     const [deletePassword, setDeletePassword] = useState('');
     const [deletingAccount, setDeletingAccount] = useState(false);
+    const [dashboardCards, setDashboardCards] = useState<DashboardCardId[]>(
+        dashboardPreferences.visibleCards,
+    );
+    const [dashboardIncludedCategories, setDashboardIncludedCategories] = useState<string[]>(
+        dashboardPreferences.includedCategoryKeys,
+    );
+    const [dashboardExcludedCategories, setDashboardExcludedCategories] = useState<string[]>(
+        dashboardPreferences.excludedCategoryKeys,
+    );
+    const [savingDashboard, setSavingDashboard] = useState(false);
     const isMobile = useIsMobile();
 
     useEffect(() => {
@@ -92,6 +108,12 @@ export default function SettingsPage() {
     useEffect(() => {
         setMinimumOperatingBalance(envelopeSettings.minimumOperatingBalance.toString());
     }, [envelopeSettings.minimumOperatingBalance]);
+
+    useEffect(() => {
+        setDashboardCards(dashboardPreferences.visibleCards);
+        setDashboardIncludedCategories(dashboardPreferences.includedCategoryKeys);
+        setDashboardExcludedCategories(dashboardPreferences.excludedCategoryKeys);
+    }, [dashboardPreferences]);
 
     const handleSaveProfile = async () => {
         if (user) {
@@ -243,6 +265,39 @@ export default function SettingsPage() {
 
     const excludedCategories = forecastSettings?.baselineExclusions?.categories || [];
     const excludedMerchants = forecastSettings?.baselineExclusions?.merchants || [];
+    const dashboardCategoryOptions = useMemo(
+        () => categories
+            .filter((category) => category.type === 'income' || category.type === 'expense')
+            .map((category) => ({
+                value: `${category.type}:${category.id}`,
+                label: `${category.type === 'income' ? 'Income' : 'Expense'} · ${category.name}`,
+            }))
+            .sort((a, b) => a.label.localeCompare(b.label)),
+        [categories],
+    );
+    const saveDashboardPreferences = async () => {
+        setSavingDashboard(true);
+        try {
+            await setDashboardPreferences({
+                visibleCards: dashboardCards,
+                includedCategoryKeys: dashboardIncludedCategories,
+                excludedCategoryKeys: dashboardExcludedCategories,
+            });
+            toast({
+                title: 'Dashboard saved',
+                description: 'Your card and category choices are now active on every device.',
+            });
+        } catch (error) {
+            console.error('Could not save dashboard preferences', error);
+            toast({
+                variant: 'destructive',
+                title: 'Dashboard settings were not saved',
+                description: 'Please try again.',
+            });
+        } finally {
+            setSavingDashboard(false);
+        }
+    };
     const dateRangeLabel = dateRange?.from
         ? dateRange.to
             ? `${format(dateRange.from, "LLL dd, y")} – ${format(dateRange.to, "LLL dd, y")}`
@@ -385,7 +440,87 @@ export default function SettingsPage() {
                         </div>
                     </CardContent>
                 </Card>
-                 <Card>
+                <Card>
+                    <CardHeader className="p-4 sm:p-6">
+                        <CardTitle>Dashboard cards</CardTitle>
+                        <CardDescription>
+                            Choose what appears on the Dashboard and which categories feed its cash-flow figures.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6 px-4 pb-4 sm:px-6 sm:pb-6">
+                        <div className="space-y-3">
+                            <div>
+                                <Label>Cards and sections shown</Label>
+                                <p className="text-sm text-muted-foreground">Turn off anything you do not need. You can restore every card at any time.</p>
+                            </div>
+                            <div className="grid gap-2 sm:grid-cols-2">
+                                {DASHBOARD_CARD_OPTIONS.map((option) => (
+                                    <Label key={option.id} className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 font-normal">
+                                        <Checkbox
+                                            checked={dashboardCards.includes(option.id)}
+                                            onCheckedChange={(checked) => {
+                                                setDashboardCards((current) => checked
+                                                    ? [...new Set([...current, option.id])]
+                                                    : current.filter((id) => id !== option.id));
+                                            }}
+                                        />
+                                        {option.label}
+                                    </Label>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="grid gap-5 md:grid-cols-2">
+                            <div className="space-y-2">
+                                <Label>Only include categories</Label>
+                                <SearchableMultiSelect
+                                    options={dashboardCategoryOptions}
+                                    selected={dashboardIncludedCategories}
+                                    onChange={(selected) => {
+                                        setDashboardIncludedCategories(selected);
+                                        setDashboardExcludedCategories((current) => current.filter((key) => !selected.includes(key)));
+                                    }}
+                                    placeholder="Include all categories"
+                                    searchPlaceholder="Search categories…"
+                                    className="min-h-11"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Exclude categories</Label>
+                                <SearchableMultiSelect
+                                    options={dashboardCategoryOptions}
+                                    selected={dashboardExcludedCategories}
+                                    onChange={(selected) => {
+                                        setDashboardExcludedCategories(selected);
+                                        setDashboardIncludedCategories((current) => current.filter((key) => !selected.includes(key)));
+                                    }}
+                                    placeholder="Exclude no categories"
+                                    searchPlaceholder="Search categories…"
+                                    className="min-h-11"
+                                />
+                            </div>
+                        </div>
+                        <p className="rounded-lg border bg-muted/30 p-3 text-sm text-muted-foreground">
+                            Category choices affect income, expenses, savings, savings rate, monthly figures, and the income-versus-expense chart. Current Balance and Last Updated remain based on all posted account activity so they continue to represent the real account record.
+                        </p>
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                            <Button onClick={() => void saveDashboardPreferences()} disabled={savingDashboard}>
+                                {savingDashboard ? 'Saving…' : 'Save dashboard'}
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => {
+                                    setDashboardCards([...DEFAULT_DASHBOARD_PREFERENCES.visibleCards]);
+                                    setDashboardIncludedCategories([]);
+                                    setDashboardExcludedCategories([]);
+                                }}
+                            >
+                                Restore defaults
+                            </Button>
+                        </div>
+                    </CardContent>
+                </Card>
+                <Card>
                     <CardHeader className="p-4 sm:p-6">
                         <CardTitle>Forecast Settings</CardTitle>
                         <CardDescription>Exclude specific categories or merchants from baseline forecasting to improve accuracy for non-recurring expenses.</CardDescription>

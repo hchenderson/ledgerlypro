@@ -2,7 +2,8 @@
 
 "use client";
 
-import { Star, Flag } from "lucide-react";
+import { Star, Flag, SlidersHorizontal } from "lucide-react";
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { RecentTransactions } from "@/components/dashboard/recent-transactions";
@@ -29,6 +30,8 @@ import { EnvelopeSnapshot } from "@/components/dashboard/envelope-snapshot";
 import { useEnvelopes } from "@/hooks/use-envelopes";
 import { PlaidHealthStrip } from "@/components/plaid/plaid-health-strip";
 import { transactionBalanceDelta } from "@/lib/accounts";
+import type { DashboardCardId } from "@/lib/dashboard-preferences";
+import { Button } from "@/components/ui/button";
 
 const OverviewChart = dynamic(
   () => import("@/components/dashboard/overview-chart").then((module) => module.OverviewChart),
@@ -114,6 +117,7 @@ export default function DashboardPage() {
     showInstructions,
     loading: authLoading,
     activeYear,
+    dashboardPreferences,
   } = useAuth();
   const {
     transactions: priorTransactions,
@@ -151,8 +155,20 @@ export default function DashboardPage() {
       openingBalanceForYear,
       referenceDate,
       referenceDate,
+      categories,
+      {
+        includedCategoryKeys: dashboardPreferences.includedCategoryKeys,
+        excludedCategoryKeys: dashboardPreferences.excludedCategoryKeys,
+      },
     );
-  }, [transactions, activeYear, openingBalanceForYear]);
+  }, [
+    activeYear,
+    categories,
+    dashboardPreferences.excludedCategoryKeys,
+    dashboardPreferences.includedCategoryKeys,
+    openingBalanceForYear,
+    transactions,
+  ]);
 
   const goals = useMemo(
     () =>
@@ -218,24 +234,55 @@ export default function DashboardPage() {
       : endOfYear(new Date(activeYear, 0, 1));
   const currentMonthName = dashboardReferenceDate.toLocaleString('default', { month: 'long' });
   const previousMonthName = subMonths(dashboardReferenceDate, 1).toLocaleString('default', { month: 'long' });
+  const isVisible = (cardId: DashboardCardId) =>
+    dashboardPreferences.visibleCards.includes(cardId);
+  const showBalanceRow = isVisible("balance") || isVisible("last-updated");
+  const showYearTotals = isVisible("total-income") || isVisible("total-expenses") || isVisible("total-savings");
+  const showCurrentMonth = isVisible("current-month-income") || isVisible("current-month-expenses") || isVisible("savings-rate");
+  const showPreviousMonth = isVisible("previous-month-income") || isVisible("previous-month-expenses");
+  const showOverview = isVisible("overview-chart");
+  const showRecent = isVisible("recent-transactions");
+  const showGoals = isVisible("savings-goals");
+  const showBudgets = isVisible("favorite-budgets");
+  const dashboardCategoryFilterCount =
+    dashboardPreferences.includedCategoryKeys.length +
+    dashboardPreferences.excludedCategoryKeys.length;
 
   return (
     <div className="min-w-0 space-y-5 sm:space-y-6">
       <h1 className="sr-only">Dashboard</h1>
       <PlaidHealthStrip transactions={transactions} />
       {(transactions.length === 0 || showInstructions) && <InstructionsGuide />}
-      <EnvelopeSnapshot />
+      {dashboardCategoryFilterCount > 0 ? (
+        <Card className="border-primary/25 bg-secondary/20">
+          <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <SlidersHorizontal className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+              <div>
+                <p className="text-sm font-medium">Dashboard category filters are active</p>
+                <p className="text-xs text-muted-foreground">
+                  {dashboardCategoryFilterCount} category choice{dashboardCategoryFilterCount === 1 ? "" : "s"} currently affect cash-flow cards and the overview chart. Account balance remains unfiltered.
+                </p>
+              </div>
+            </div>
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/settings">Edit dashboard</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
+      {isVisible("envelope-snapshot") ? <EnvelopeSnapshot /> : null}
       
       {analytics ? (
         <>
-           <div className="grid gap-3 sm:gap-4 md:grid-cols-2">
-            <StatCard
+          {showBalanceRow ? <div className="grid gap-3 sm:gap-4 md:grid-cols-2">
+            {isVisible("balance") ? <StatCard
               title={activeYear === new Date().getFullYear() ? "Current Balance" : "Ending Balance"}
               value={analytics.currentBalance}
               icon="Wallet"
               trendValue={`Recorded balance through ${format(dashboardReferenceDate, "MMM d, yyyy")}`}
-            />
-            {lastUpdatedDate ? (
+            /> : null}
+            {isVisible("last-updated") && lastUpdatedDate ? (
               <StatCard
                 title="Last Updated"
                 value={0}
@@ -243,92 +290,92 @@ export default function DashboardPage() {
                 trendValue={format(lastUpdatedDate, "PPP")}
                 isDate
               />
-            ) : (
-               <StatCard
+            ) : isVisible("last-updated") ? (
+              <StatCard
                 title="Last Updated"
                 value={0}
                 icon="Activity"
                 trendValue="No transactions yet"
                 isDate
               />
-            )}
-          </div>
+            ) : null}
+          </div> : null}
 
-          <div className="grid gap-3 sm:gap-4 md:grid-cols-2 lg:grid-cols-3">
-            <StatCard
+          {showYearTotals ? <div className="grid gap-3 sm:gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {isVisible("total-income") ? <StatCard
               title="Total Income"
               value={analytics.totalIncome}
               icon="TrendingUp"
               trendValue={`All-time income for ${activeYear}`}
               variant="success"
-            />
-            <StatCard
+            /> : null}
+            {isVisible("total-expenses") ? <StatCard
               title="Total Expenses"
               value={analytics.totalExpenses}
               icon="TrendingDown"
               trendValue={`All-time expenses for ${activeYear}`}
               variant="danger"
-            />
-             <StatCard
+            /> : null}
+            {isVisible("total-savings") ? <StatCard
               title="Total Savings"
               value={analytics.totalIncome - analytics.totalExpenses}
               icon="PiggyBank"
               trendValue={`${analytics.totalIncome - analytics.totalExpenses >= 0 ? "You're in the green" : "You're in the red"} for ${activeYear}`}
               variant={analytics.totalIncome - analytics.totalExpenses >= 0 ? 'success' : 'danger'}
-            />
-          </div>
+            /> : null}
+          </div> : null}
 
-          <div className="grid gap-3 sm:gap-4 md:grid-cols-2 lg:grid-cols-3">
-            <StatCard
+          {showCurrentMonth ? <div className="grid gap-3 sm:gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {isVisible("current-month-income") ? <StatCard
               title={`${currentMonthName} Income`}
               value={analytics.currentMonthIncome}
               icon="CalendarClock"
               trendValue="Income this month"
               variant="success"
-            />
-            <StatCard
+            /> : null}
+            {isVisible("current-month-expenses") ? <StatCard
               title={`${currentMonthName} Expenses`}
               value={analytics.currentMonthExpenses}
               icon="CalendarClock"
               trendValue="Expenses this month"
               variant="danger"
-            />
-            <StatCard
+            /> : null}
+            {isVisible("savings-rate") ? <StatCard
               title="Savings Rate"
               value={analytics.savingsRate}
               icon="DollarSign"
               trendValue={`Based on ${activeYear} data`}
               isPercentage
-            />
-          </div>
+            /> : null}
+          </div> : null}
 
-           <div className="grid gap-3 sm:gap-4 md:grid-cols-2">
-              <StatCard
+          {showPreviousMonth ? <div className="grid gap-3 sm:gap-4 md:grid-cols-2">
+              {isVisible("previous-month-income") ? <StatCard
                 title={`${previousMonthName} Income`}
                 value={analytics.previousMonthIncome}
                 icon="CalendarClock"
                 trendValue="Income last month"
                 variant="success"
-              />
-              <StatCard
+              /> : null}
+              {isVisible("previous-month-expenses") ? <StatCard
                 title={`${previousMonthName} Expenses`}
                 value={analytics.previousMonthExpenses}
                 icon="CalendarClock"
                 trendValue="Expenses last month"
                 variant="danger"
-              />
-            </div>
+              /> : null}
+            </div> : null}
           
-          <div className="grid min-w-0 grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-5">
-            <Card className="min-w-0 overflow-hidden lg:col-span-3">
+          {showOverview || showRecent ? <div className="grid min-w-0 grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-5">
+            {showOverview ? <Card className={`min-w-0 overflow-hidden ${showRecent ? "lg:col-span-3" : "lg:col-span-5"}`}>
               <CardHeader className="p-4 sm:p-6">
                 <CardTitle className="break-words">Income vs. Expense ({activeYear})</CardTitle>
               </CardHeader>
               <CardContent className="px-2 pb-4 sm:px-6 sm:pb-6">
                 <OverviewChart data={analytics.overviewData}/>
               </CardContent>
-            </Card>
-            <Card className="min-w-0 overflow-hidden lg:col-span-2">
+            </Card> : null}
+            {showRecent ? <Card className={`min-w-0 overflow-hidden ${showOverview ? "lg:col-span-2" : "lg:col-span-5"}`}>
               <CardHeader className="p-4 sm:p-6">
                 <CardTitle className="break-words">Recent Transactions ({activeYear})</CardTitle>
               </CardHeader>
@@ -342,13 +389,13 @@ export default function DashboardPage() {
                     </div>
                 )}
               </CardContent>
-            </Card>
-          </div>
+            </Card> : null}
+          </div> : null}
         </>
       ): <DashboardSkeleton />}
 
-      <div className="grid min-w-0 grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
-        <Card className="min-w-0 overflow-hidden">
+      {showGoals || showBudgets ? <div className="grid min-w-0 grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
+        {showGoals ? <Card className={`min-w-0 overflow-hidden ${showBudgets ? "" : "lg:col-span-2"}`}>
           <CardHeader className="p-4 sm:p-6">
               <CardTitle className="flex items-center gap-2"><Flag className="shrink-0 text-primary" /> <span className="min-w-0">Savings Goals</span></CardTitle>
               <CardDescription>Track your progress towards your financial goals.</CardDescription>
@@ -356,8 +403,8 @@ export default function DashboardPage() {
           <CardContent className="px-4 pb-4 sm:px-6 sm:pb-6">
               <GoalProgress goals={goals} />
           </CardContent>
-        </Card>
-        <Card className="min-w-0 overflow-hidden">
+        </Card> : null}
+        {showBudgets ? <Card className={`min-w-0 overflow-hidden ${showGoals ? "" : "lg:col-span-2"}`}>
           <CardHeader className="p-4 sm:p-6">
               <CardTitle className="flex items-start gap-2"><Star className="mt-0.5 shrink-0 fill-yellow-400 text-yellow-400" /> <span className="min-w-0 break-words">Favorite Budgets ({activeYear})</span></CardTitle>
               <CardDescription>Your hand-picked budgets for quick insights.</CardDescription>
@@ -365,10 +412,10 @@ export default function DashboardPage() {
           <CardContent className="px-4 pb-4 sm:px-6 sm:pb-6">
               <BudgetProgress budgets={favoritedBudgets} />
           </CardContent>
-        </Card>
-      </div>
+        </Card> : null}
+      </div> : null}
 
-       <ForwardAnalyticsPanel />
+      {isVisible("forward-analytics") ? <ForwardAnalyticsPanel /> : null}
     </div>
   );
 }

@@ -1,11 +1,17 @@
 import { format, getMonth, getYear, parseISO, subMonths } from "date-fns";
 
-import type { Transaction } from "@/types";
+import type { Category, Transaction } from "@/types";
 import { transferBalanceDelta } from "@/lib/accounts";
 import { transactionAmount } from "@/lib/financial-summary";
 import { isTransactionFinalized } from "@/lib/categorization";
 import { isFinancialTransaction } from "@/lib/accounts";
 import { expandTransactionsForReporting } from "@/lib/transaction-allocations";
+import { financialCategoryKey } from "@/lib/financial-category";
+
+export interface DashboardCategoryFilters {
+  includedCategoryKeys: string[];
+  excludedCategoryKeys: string[];
+}
 
 export interface DashboardAnalytics {
   totalIncome: number;
@@ -24,6 +30,11 @@ export function computeDashboardAnalytics(
   startingBalanceForYear: number,
   referenceDate: Date,
   asOfDate?: Date,
+  categories: Category[] = [],
+  categoryFilters: DashboardCategoryFilters = {
+    includedCategoryKeys: [],
+    excludedCategoryKeys: [],
+  },
 ): DashboardAnalytics {
   const previousMonthDate = subMonths(referenceDate, 1);
   const referenceMonth = getMonth(referenceDate);
@@ -49,6 +60,9 @@ export function computeDashboardAnalytics(
   let previousMonthIncome = 0;
   let previousMonthExpenses = 0;
   let transferNet = 0;
+  let balanceNet = 0;
+  const includedCategoryKeys = new Set(categoryFilters.includedCategoryKeys);
+  const excludedCategoryKeys = new Set(categoryFilters.excludedCategoryKeys);
 
   const monthlyData = new Map<
     string,
@@ -67,6 +81,16 @@ export function computeDashboardAnalytics(
       continue;
     }
     if (!isFinancialTransaction(transaction)) continue;
+
+    balanceNet += transaction.type === "income" ? amount : -amount;
+    const categoryKey = financialCategoryKey(transaction, categories);
+    if (categoryKey && excludedCategoryKeys.has(categoryKey)) continue;
+    if (
+      includedCategoryKeys.size > 0 &&
+      (!categoryKey || !includedCategoryKeys.has(categoryKey))
+    ) {
+      continue;
+    }
 
     if (transaction.type === "income") totalIncome += amount;
     else if (transaction.type === "expense") {
@@ -114,8 +138,7 @@ export function computeDashboardAnalytics(
     totalExpenses,
     currentBalance:
       startingBalanceForYear +
-      totalIncome -
-      totalExpenses +
+      balanceNet +
       transferNet,
     overviewData: [...monthlyData.values()]
       .sort((a, b) => a.date.getTime() - b.date.getTime())
