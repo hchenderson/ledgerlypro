@@ -1,7 +1,10 @@
 import { endOfMonth, getDaysInMonth, getMonth } from "date-fns";
 
 import { findMainCategoryForTransaction } from "@/lib/category-tree";
-import { financialCategoryKey } from "@/lib/financial-category";
+import {
+  financialCategoryKey,
+  financialCategoryPathKeys,
+} from "@/lib/financial-category";
 import {
   filterTransactionsByDateRange,
   parseTransactionDate,
@@ -331,15 +334,22 @@ export function computeYearComparison(
   ranges: ComparisonDateRanges,
   categories: Category[] = [],
   excludedCategoryKeys: string[] = [],
+  includedCategoryKeys: string[] = [],
 ): YearComparisonAnalytics {
   const startMonth = getMonth(ranges.primary.from);
   const endMonth = getMonth(ranges.primary.to);
   const monthCount = endMonth - startMonth + 1;
 
   const excludedCategories = new Set(excludedCategoryKeys);
+  const includedCategories = new Set(includedCategoryKeys);
   const includeTransaction = (transaction: Transaction) => {
-    const categoryKey = comparisonCategoryKey(transaction, categories);
-    return !categoryKey || !excludedCategories.has(categoryKey);
+    if (!isFinancialTransaction(transaction)) return true;
+    const categoryKeys = financialCategoryPathKeys(transaction, categories);
+    if (categoryKeys.some((key) => excludedCategories.has(key))) return false;
+    return (
+      includedCategories.size === 0 ||
+      categoryKeys.some((key) => includedCategories.has(key))
+    );
   };
   const primaryTransactions = filterTransactionsByDateRange(
     expandTransactionsForReporting(transactions),

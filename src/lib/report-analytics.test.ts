@@ -144,6 +144,39 @@ describe("report analytics", () => {
     expect(filtered.map((item) => item.id)).not.toContain("removed");
   });
 
+  it("can include one nested category without including its siblings", () => {
+    const result = computeReportAnalytics(
+      [
+        ...transactions,
+        transaction("mortgage", "2026-01-08", 700, "expense", "Mortgage", {
+          categoryId: "mortgage",
+        }),
+      ],
+      range,
+      { ...filters, includedCategoryKeys: ["expense:rent"] },
+      [
+        {
+          ...categories.find((category) => category.id === "housing")!,
+          subCategories: [
+            { id: "rent", name: "Rent", subCategories: [] },
+            { id: "mortgage", name: "Mortgage", subCategories: [] },
+          ],
+        },
+        ...categories.filter((category) => category.id !== "housing"),
+      ],
+      [account],
+      "month",
+      account.id,
+    );
+
+    expect(result.summary.expenses).toBe(1_000);
+    expect(
+      result.transactions
+        .filter((item) => item.type !== "transfer")
+        .map((item) => item.id),
+    ).toEqual(["rent"]);
+  });
+
   it("builds exact prior-period and prior-year comparison ranges", () => {
     const previous = buildReportComparisonRange(range, "previous-period");
     const priorYear = buildReportComparisonRange(range, "previous-year");

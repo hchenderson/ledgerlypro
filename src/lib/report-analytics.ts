@@ -34,7 +34,7 @@ import {
   normalizeCategoryName,
 } from "@/lib/category-tree";
 import {
-  financialCategoryKey,
+  financialCategoryPathKeys,
   financialCategoryLabel,
 } from "@/lib/financial-category";
 import {
@@ -257,9 +257,14 @@ export function filterReportTransactions(
     if (transaction.type === "transfer") return filters.includeTransfers;
     if (!filters.transactionTypes.includes(transaction.type)) return false;
 
-    const categoryKey = financialCategoryKey(transaction, categories);
-    if (categoryKey && excluded.has(categoryKey)) return false;
-    if (included.size > 0 && (!categoryKey || !included.has(categoryKey))) {
+    const categoryKeys = financialCategoryPathKeys(transaction, categories);
+    if (categoryKeys.some((categoryKey) => excluded.has(categoryKey))) {
+      return false;
+    }
+    if (
+      included.size > 0 &&
+      !categoryKeys.some((categoryKey) => included.has(categoryKey))
+    ) {
       return false;
     }
     return true;
@@ -652,14 +657,29 @@ export function computeReportBudgets(
         budget.categoryId,
         categories,
       );
-      const rootCategory = categoryResult?.path[0];
-      const categoryKey = rootCategory
-        ? `expense:${rootCategory.id}`
-        : `expense:${budget.categoryId}`;
-      if (excludedCategoryKeys.has(categoryKey)) return null;
+      const categoryPathKeys = categoryResult
+        ? categoryResult.path.map((category) => `expense:${category.id}`)
+        : [`expense:${budget.categoryId}`];
+      const categorySubtreeKeys = categoryResult
+        ? getCategorySubtreeIdsAndNames(categoryResult.category).ids.map(
+            (categoryId) => `expense:${categoryId}`,
+          )
+        : categoryPathKeys;
+      if (
+        categoryPathKeys.some((categoryKey) =>
+          excludedCategoryKeys.has(categoryKey),
+        )
+      ) {
+        return null;
+      }
       if (
         includedCategoryKeys.size > 0 &&
-        !includedCategoryKeys.has(categoryKey)
+        !categoryPathKeys.some((categoryKey) =>
+          includedCategoryKeys.has(categoryKey),
+        ) &&
+        !categorySubtreeKeys.some((categoryKey) =>
+          includedCategoryKeys.has(categoryKey),
+        )
       ) {
         return null;
       }

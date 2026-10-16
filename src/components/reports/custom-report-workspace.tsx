@@ -120,6 +120,7 @@ import {
 } from "@/lib/report-analytics";
 import { cn } from "@/lib/utils";
 import { buildProcessedGoals } from "@/lib/goal-progress";
+import { buildFinancialCategoryOptions } from "@/lib/financial-category";
 import { transactionAmount } from "@/lib/financial-summary";
 import type { ReportPdfData } from "@/lib/report-pdf";
 
@@ -599,16 +600,7 @@ export function CustomReportWorkspace({
   );
 
   const categoryOptions = useMemo(
-    () => [
-      ...categories
-        .map((category) => ({
-          value: `${category.type}:${category.id}`,
-          label: `${category.type === "income" ? "Income" : "Expense"} · ${category.name}`,
-        }))
-        .sort((a, b) => a.label.localeCompare(b.label)),
-      { value: "expense:uncategorized", label: "Expense · Uncategorized" },
-      { value: "income:uncategorized", label: "Income · Uncategorized" },
-    ],
+    () => buildFinancialCategoryOptions(categories),
     [categories],
   );
   const accountOptions = activeAccounts.map((account) => ({
@@ -978,19 +970,14 @@ export function CustomReportWorkspace({
     } else {
       preset = "custom-dates";
     }
-    const allowed = new Set(includedCategoryKeys);
-    const implicitExclusions =
-      allowed.size > 0
-        ? categoryOptions
-            .map((option) => option.value)
-            .filter((value) => !allowed.has(value))
-        : [];
-    const typeExclusions = categoryOptions
-      .map((option) => option.value)
-      .filter((value) => {
-        const type = value.split(":", 1)[0];
-        return !transactionTypes.includes(type as "income" | "expense");
-      });
+    const typeExclusions = includedCategoryKeys.length > 0
+      ? []
+      : categoryOptions
+          .map((option) => option.value)
+          .filter((value) => {
+            const type = value.split(":", 1)[0];
+            return !transactionTypes.includes(type as "income" | "expense");
+          });
     window.localStorage.setItem(
       "ledgerly-report-compare-handoff",
       JSON.stringify({
@@ -1000,10 +987,10 @@ export function CustomReportWorkspace({
         endMonth,
         customStartDate: format(primaryRange.from, "yyyy-MM-dd"),
         customEndDate: format(primaryRange.to, "yyyy-MM-dd"),
+        includedCategoryKeys,
         excludedCategoryKeys: [
           ...new Set([
             ...excludedCategoryKeys,
-            ...implicitExclusions,
             ...typeExclusions,
           ]),
         ],

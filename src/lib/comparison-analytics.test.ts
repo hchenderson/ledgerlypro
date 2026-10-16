@@ -238,6 +238,42 @@ describe("computeYearComparison", () => {
     expect(result.primary.largestExpense?.id).toBe("food");
   });
 
+  it("can include one nested category without including sibling activity", () => {
+    const categories: Category[] = [
+      {
+        id: "housing",
+        name: "Housing",
+        type: "expense",
+        subCategories: [
+          { id: "rent", name: "Rent", subCategories: [] },
+          { id: "mortgage", name: "Mortgage", subCategories: [] },
+        ],
+      },
+    ];
+    const result = computeYearComparison(
+      [
+        {
+          ...transaction("rent", "2025-01-05", 900, "expense", "Rent"),
+          categoryId: "rent",
+        },
+        {
+          ...transaction("mortgage", "2025-01-06", 1_200, "expense", "Mortgage"),
+          categoryId: "mortgage",
+        },
+      ],
+      2025,
+      2024,
+      fullYearRanges,
+      categories,
+      [],
+      ["expense:rent"],
+    );
+
+    expect(result.primary.expenses).toBe(900);
+    expect(result.primary.transactionCount).toBe(1);
+    expect(result.primary.largestExpense?.id).toBe("rent");
+  });
+
   it.each([
     ["full", 0, 11],
     ["ytd", 0, 11],

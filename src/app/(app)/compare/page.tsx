@@ -65,6 +65,7 @@ import {
   type ComparisonDelta,
   type ComparisonRangePreset,
 } from "@/lib/comparison-analytics";
+import { buildFinancialCategoryOptions } from "@/lib/financial-category";
 import { cn } from "@/lib/utils";
 
 const MONTHS = [
@@ -254,6 +255,7 @@ export default function ComparePage() {
   const [metric, setMetric] = useState<ComparisonMetric>("net");
   const [categoryLimit, setCategoryLimit] = useState(5);
   const [cumulative, setCumulative] = useState(false);
+  const [includedCategoryKeys, setIncludedCategoryKeys] = useState<string[]>([]);
   const [excludedCategoryKeys, setExcludedCategoryKeys] = useState<string[]>([]);
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(true);
@@ -302,6 +304,7 @@ export default function ComparePage() {
           metric?: ComparisonMetric;
           categoryLimit?: number;
           cumulative?: boolean;
+          includedCategoryKeys?: string[];
           excludedCategoryKeys?: string[];
           customStartDate?: string;
           customEndDate?: string;
@@ -312,6 +315,13 @@ export default function ComparePage() {
         if (preferences.metric) setMetric(preferences.metric);
         if ([5, 8, 12].includes(preferences.categoryLimit ?? 0)) setCategoryLimit(preferences.categoryLimit!);
         if (typeof preferences.cumulative === "boolean") setCumulative(preferences.cumulative);
+        if (Array.isArray(preferences.includedCategoryKeys)) {
+          setIncludedCategoryKeys(
+            preferences.includedCategoryKeys.filter(
+              (value): value is string => typeof value === "string",
+            ),
+          );
+        }
         if (Array.isArray(preferences.excludedCategoryKeys)) {
           setExcludedCategoryKeys(
             preferences.excludedCategoryKeys.filter(
@@ -331,6 +341,7 @@ export default function ComparePage() {
           rangePreset?: ComparisonRangePreset;
           startMonth?: number;
           endMonth?: number;
+          includedCategoryKeys?: string[];
           excludedCategoryKeys?: string[];
           customStartDate?: string;
           customEndDate?: string;
@@ -341,6 +352,13 @@ export default function ComparePage() {
         if (next.rangePreset) setRangePreset(next.rangePreset);
         if (Number.isInteger(next.startMonth)) setStartMonth(next.startMonth!);
         if (Number.isInteger(next.endMonth)) setEndMonth(next.endMonth!);
+        if (Array.isArray(next.includedCategoryKeys)) {
+          setIncludedCategoryKeys(
+            next.includedCategoryKeys.filter(
+              (value): value is string => typeof value === "string",
+            ),
+          );
+        }
         if (Array.isArray(next.excludedCategoryKeys)) {
           setExcludedCategoryKeys(
             next.excludedCategoryKeys.filter(
@@ -365,25 +383,12 @@ export default function ComparePage() {
     if (!preferencesLoaded) return;
     window.localStorage.setItem(
       "ledgerly-comparison-preferences",
-      JSON.stringify({ rangePreset, startMonth, endMonth, metric, categoryLimit, cumulative, excludedCategoryKeys, customStartDate, customEndDate })
+      JSON.stringify({ rangePreset, startMonth, endMonth, metric, categoryLimit, cumulative, includedCategoryKeys, excludedCategoryKeys, customStartDate, customEndDate })
     );
-  }, [categoryLimit, cumulative, customEndDate, customStartDate, endMonth, excludedCategoryKeys, metric, preferencesLoaded, rangePreset, startMonth]);
+  }, [categoryLimit, cumulative, customEndDate, customStartDate, endMonth, excludedCategoryKeys, includedCategoryKeys, metric, preferencesLoaded, rangePreset, startMonth]);
 
-  const categoryExclusionOptions = useMemo(
-    () => [
-      ...categories
-        .filter(
-          (category) =>
-            category.type === "income" || category.type === "expense",
-        )
-        .map((category) => ({
-          value: `${category.type}:${category.id}`,
-          label: `${category.type === "income" ? "Income" : "Expense"} · ${category.name}`,
-        }))
-        .sort((a, b) => a.label.localeCompare(b.label)),
-      { value: "expense:uncategorized", label: "Expense · Uncategorized" },
-      { value: "income:uncategorized", label: "Income · Uncategorized" },
-    ],
+  const categoryOptions = useMemo(
+    () => buildFinancialCategoryOptions(categories),
     [categories],
   );
 
@@ -410,8 +415,9 @@ export default function ComparePage() {
         ranges,
         categories,
         excludedCategoryKeys,
+        includedCategoryKeys,
       ),
-    [activeYear, allTransactions, categories, excludedCategoryKeys, ranges, selectedComparisonYear]
+    [activeYear, allTransactions, categories, excludedCategoryKeys, includedCategoryKeys, ranges, selectedComparisonYear]
   );
 
   const largestExpenseMover = useMemo(
@@ -432,6 +438,7 @@ export default function ComparePage() {
     setCumulative(false);
     setCustomStartDate(`${activeYear}-01-01`);
     setCustomEndDate(`${activeYear}-12-31`);
+    setIncludedCategoryKeys([]);
     setExcludedCategoryKeys([]);
     setComparisonYear(undefined);
   };
@@ -586,11 +593,35 @@ export default function ComparePage() {
             </div>
           )}
           <div className="space-y-2 sm:col-span-2 xl:col-span-5">
+            <Label>Only include categories</Label>
+            <SearchableMultiSelect
+              options={categoryOptions}
+              selected={includedCategoryKeys}
+              onChange={(next) => {
+                setIncludedCategoryKeys(next);
+                setExcludedCategoryKeys((current) =>
+                  current.filter((key) => !next.includes(key)),
+                );
+              }}
+              placeholder="All categories"
+              searchPlaceholder="Search categories…"
+              maxDisplayItems={4}
+            />
+            <p className="text-xs text-muted-foreground">
+              Choose a main category or any nested subcategory to limit both years.
+            </p>
+          </div>
+          <div className="space-y-2 sm:col-span-2 xl:col-span-5">
             <Label>Exclude categories</Label>
             <SearchableMultiSelect
-              options={categoryExclusionOptions}
+              options={categoryOptions}
               selected={excludedCategoryKeys}
-              onChange={setExcludedCategoryKeys}
+              onChange={(next) => {
+                setExcludedCategoryKeys(next);
+                setIncludedCategoryKeys((current) =>
+                  current.filter((key) => !next.includes(key)),
+                );
+              }}
               placeholder="Include all categories"
               searchPlaceholder="Search categories…"
               maxDisplayItems={4}
@@ -622,6 +653,16 @@ export default function ComparePage() {
           <AlertTitle>Category exclusions are active</AlertTitle>
           <AlertDescription>
             {excludedCategoryKeys.length} categor{excludedCategoryKeys.length === 1 ? "y is" : "ies are"} excluded from every comparison value shown below.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      {includedCategoryKeys.length > 0 ? (
+        <Alert className="border-primary/20 bg-primary/5">
+          <ListFilter className="h-4 w-4" />
+          <AlertTitle>Category inclusions are active</AlertTitle>
+          <AlertDescription>
+            Only activity in {includedCategoryKeys.length} selected categor{includedCategoryKeys.length === 1 ? "y" : "ies"} is included in the comparison.
           </AlertDescription>
         </Alert>
       ) : null}
