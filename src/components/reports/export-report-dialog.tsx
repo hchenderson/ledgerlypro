@@ -26,6 +26,7 @@ import {
   type ReportPdfData,
   type ReportPdfMode,
 } from "@/lib/report-pdf";
+import { buildReportCsvRows } from "@/lib/report-export";
 
 interface ExportReportDialogProps {
   transactions: Transaction[];
@@ -98,18 +99,7 @@ export function ExportReportDialog({ transactions, dateRange, chartId, chartTitl
     setIsLoading(true);
     try {
       const { default: Papa } = await import("papaparse");
-      const exportData = transactions.map(transaction => ({
-        Date: transaction.date ? format(new Date(transaction.date), "yyyy-MM-dd") : '',
-        Description: transaction.description || '',
-        Account: getAccountName(transaction.accountId),
-        Category: transaction.category || '',
-        Type: transaction.type || '',
-        Direction:
-          transaction.type === "transfer"
-            ? transaction.transferDirection ?? ""
-            : "",
-        Amount: transaction.amount || 0,
-      }));
+      const exportData = buildReportCsvRows(transactions, getAccountName);
 
       const csv = Papa.unparse(exportData);
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });

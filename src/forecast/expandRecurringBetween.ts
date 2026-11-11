@@ -1,4 +1,9 @@
-import { addDays, addWeeks, addMonths, addYears, isBefore, startOfDay, parseISO } from "date-fns";
+import { startOfDay } from "date-fns";
+import {
+  recurringOccurrenceDatesBetween,
+  recurringOccurrenceId,
+} from "@/lib/recurring";
+import { minorToMajor, moneyMinor } from "@/lib/money";
 
 // Keep this small and compatible with your existing data
 export type ForecastTxType = "income" | "expense";
@@ -7,10 +12,23 @@ export type ForecastTx = {
   id: string;
   date: string; // ISO
   amount: number;
+  amountMinor?: number;
+  currency?: string;
   type: ForecastTxType;
   category?: string;
+  categoryId?: string;
+  accountId?: string;
+  merchantName?: string;
   description?: string;
   source: "recurring" | "baseline" | "actual";
+  component?:
+    | "scheduled"
+    | "merchant-estimate"
+    | "category-estimate"
+    | "residual-estimate";
+  recurringOccurrenceId?: string;
+  originalDueDate?: string;
+  expectedAmount?: number;
 };
 
 export type RecurringTxLike = {
@@ -20,21 +38,10 @@ export type RecurringTxLike = {
   amount: number;
   type: ForecastTxType;
   category: string;
+  categoryId?: string;
+  accountId?: string;
   description: string;
 };
-
-function stepDate(d: Date, frequency: RecurringTxLike["frequency"]) {
-  switch (frequency) {
-    case "daily":
-      return addDays(d, 1);
-    case "weekly":
-      return addWeeks(d, 1);
-    case "monthly":
-      return addMonths(d, 1);
-    case "yearly":
-      return addYears(d, 1);
-  }
-}
 
 export function expandRecurringBetween(
   recurring: RecurringTxLike[],
@@ -46,26 +53,27 @@ export function expandRecurringBetween(
   const out: ForecastTx[] = [];
 
   for (const rt of recurring) {
-    const rtStart = startOfDay(parseISO(rt.startDate));
-
-    // Advance cursor to first occurrence on/after startDay
-    let cursor = rtStart;
-    while (isBefore(cursor, startDay)) {
-      cursor = stepDate(cursor, rt.frequency);
-    }
-
-    // Emit occurrences through endDay (inclusive)
-    while (isBefore(cursor, endDay) || cursor.getTime() === endDay.getTime()) {
+    for (const dueDate of recurringOccurrenceDatesBetween(rt, startDay, endDay)) {
+      const localDueDate = new Date(
+        dueDate.getUTCFullYear(),
+        dueDate.getUTCMonth(),
+        dueDate.getUTCDate(),
+      );
       out.push({
-        id: `forecast_${rt.id}_${cursor.toISOString()}`,
-        date: cursor.toISOString(),
-        amount: Math.abs(rt.amount),
+        id: `forecast_${recurringOccurrenceId(rt.id, dueDate)}`,
+        date: localDueDate.toISOString(),
+        amount: minorToMajor(moneyMinor(rt)),
         type: rt.type,
         category: rt.category,
+        categoryId: rt.categoryId,
+        accountId: rt.accountId,
         description: `(Forecast) ${rt.description}`,
         source: "recurring",
+        component: "scheduled",
+        recurringOccurrenceId: recurringOccurrenceId(rt.id, dueDate),
+        originalDueDate: dueDate.toISOString(),
+        expectedAmount: minorToMajor(moneyMinor(rt)),
       });
-      cursor = stepDate(cursor, rt.frequency);
     }
   }
 

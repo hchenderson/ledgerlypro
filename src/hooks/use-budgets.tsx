@@ -27,37 +27,24 @@ import {
   userCollectionRef,
 } from "@/hooks/use-firestore-user-collection";
 import { chunkArray } from "@/lib/batching";
+import { canonicalMoneyFields } from "@/lib/money";
+import {
+  calculateBudgetDetails,
+  type BudgetDetails,
+  type GetBudgetDetailsParams,
+} from "@/lib/budget-analytics";
 import {
   findCategoryByIdRecursive,
-  findCategoryWithPathById,
   getCategorySubtreeIdsAndNames,
-  normalizeCategoryName,
 } from "@/lib/category-tree";
 import { db } from "@/lib/firebase";
-import { transactionAmount } from "@/lib/financial-summary";
-import { expandTransactionsForReporting } from "@/lib/transaction-allocations";
-import type { Budget, Category, Transaction } from "@/types";
+import type { Budget, Transaction } from "@/types";
 
-export interface BudgetDetails extends Budget {
-  categoryName: string;
-  spent: number;
-  remaining: number;
-  progress: number;
-  deltas: {
-    amount: number;
-    spent: number;
-    remaining: number;
-  } | null;
-}
-
-interface GetBudgetDetailsParams {
-  activeBudgets: Budget[];
-  comparisonBudgets?: Budget[];
-  transactions: Transaction[];
-  categories: Category[];
-  forDate: Date;
-  comparisonYear?: number;
-}
+export {
+  calculateBudgetDetails,
+  type BudgetDetails,
+  type GetBudgetDetailsParams,
+} from "@/lib/budget-analytics";
 
 export interface BudgetsContextType {
   budgets: Budget[];
@@ -76,156 +63,6 @@ export interface BudgetsContextType {
 }
 
 const BudgetsContext = createContext<BudgetsContextType | null>(null);
-
-export function calculateBudgetDetails(
-  {
-    activeBudgets,
-    comparisonBudgets = [],
-    transactions,
-    categories,
-    forDate,
-    comparisonYear,
-  }: GetBudgetDetailsParams,
-  firstYear: number,
-): BudgetDetails[] {
-  const reportYear = getYear(forDate);
-  const reportingTransactions = expandTransactionsForReporting(transactions);
-
-  const findFirstTransactionYearForBudget = (
-    allTransactions: Transaction[],
-    categoryIds: string[],
-    categoryNames: string[],
-  ) => {
-    const budgetTransactions = allTransactions
-      .filter(
-        (transaction) =>
-          transaction.type === "expense" &&
-          (transaction.categoryId
-            ? categoryIds.includes(transaction.categoryId)
-            : categoryNames.includes(transaction.category)),
-      )
-      .sort(
-        (first, second) =>
-          new Date(first.date).getTime() -
-          new Date(second.date).getTime(),
-      );
-
-    return budgetTransactions.length > 0
-      ? getYear(new Date(budgetTransactions[0].date))
-      : null;
-  };
-
-  const relevantBudgets = activeBudgets.filter((budget) => {
-    let effectiveYear = budget.year;
-    if (typeof effectiveYear !== "number") {
-      const category = findCategoryByIdRecursive(
-        budget.categoryId,
-        categories,
-      );
-      const subtree = category
-        ? getCategorySubtreeIdsAndNames(category)
-        : { ids: [], names: [] };
-      effectiveYear =
-        findFirstTransactionYearForBudget(
-          reportingTransactions,
-          subtree.ids,
-          subtree.names,
-        ) ?? firstYear;
-    }
-    return effectiveYear === reportYear;
-  });
-
-  const calculateSpending = (
-    budget: Budget,
-    categoryIds: string[],
-    categoryNames: string[],
-    currentDate: Date,
-    year: number,
-  ) =>
-    reportingTransactions
-      .filter((transaction) => {
-        const transactionDate = new Date(transaction.date);
-        if (getYear(transactionDate) !== year) return false;
-        if (transaction.type !== "expense") return false;
-
-        const categoryMatches = transaction.categoryId
-          ? categoryIds.includes(transaction.categoryId)
-          : categoryNames.includes(
-              normalizeCategoryName(transaction.category),
-            );
-        if (!categoryMatches) return false;
-
-        if (budget.period === "monthly") {
-          return transactionDate.getMonth() === currentDate.getMonth();
-        }
-        return budget.period === "yearly";
-      })
-      .reduce(
-        (sum, transaction) => sum + transactionAmount(transaction),
-        0,
-      );
-
-  return relevantBudgets.map((budget) => {
-    const categoryResult = findCategoryWithPathById(
-      budget.categoryId,
-      categories,
-    );
-    const categoryName = categoryResult
-      ? categoryResult.path.map((category) => category.name).join(" > ")
-      : "Unknown Category";
-    const subtree = categoryResult
-      ? getCategorySubtreeIdsAndNames(categoryResult.category)
-      : { ids: [], names: [] };
-    const spent = calculateSpending(
-      budget,
-      subtree.ids,
-      subtree.names,
-      forDate,
-      reportYear,
-    );
-    const remaining = budget.amount - spent;
-    const progress =
-      budget.amount > 0 ? (spent / budget.amount) * 100 : 0;
-
-    let deltas: BudgetDetails["deltas"] = null;
-    if (comparisonYear && comparisonBudgets.length > 0) {
-      const comparisonBudget = comparisonBudgets.find(
-        (candidate) =>
-          candidate.categoryId === budget.categoryId &&
-          candidate.period === budget.period,
-      );
-      if (comparisonBudget) {
-        const comparisonDate = new Date(
-          comparisonYear,
-          forDate.getMonth(),
-          1,
-        );
-        const comparisonSpent = calculateSpending(
-          comparisonBudget,
-          subtree.ids,
-          subtree.names,
-          comparisonDate,
-          comparisonYear,
-        );
-        deltas = {
-          amount: budget.amount - comparisonBudget.amount,
-          spent: spent - comparisonSpent,
-          remaining:
-            remaining - (comparisonBudget.amount - comparisonSpent),
-        };
-      }
-    }
-
-    return {
-      ...budget,
-      categoryName,
-      spent,
-      remaining,
-      progress,
-      deltas,
-    };
-  });
-}
 
 export function BudgetsProvider({
   children,
@@ -341,6 +178,7 @@ export function BudgetsProvider({
       const newDocumentRef = doc(collectionRef);
       await setDoc(newDocumentRef, {
         ...budget,
+        ...canonicalMoneyFields(budget.amount),
         id: newDocumentRef.id,
       });
     },
@@ -353,7 +191,10 @@ export function BudgetsProvider({
       values: Partial<Omit<Budget, "id">>,
     ) => {
       if (!collectionRef) return;
-      await setDoc(doc(collectionRef, id), values, { merge: true });
+      await setDoc(doc(collectionRef, id), {
+        ...values,
+        ...(values.amount !== undefined ? canonicalMoneyFields(values.amount) : {}),
+      }, { merge: true });
     },
     [collectionRef],
   );

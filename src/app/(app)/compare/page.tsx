@@ -193,7 +193,7 @@ function CategoryBreakdown({
       {visible.map((item) => {
         const improved = inverse ? item.delta <= 0 : item.delta >= 0;
         return (
-          <div key={item.category} className="space-y-2">
+          <div key={item.key} className="space-y-2">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium">{item.category}</p>

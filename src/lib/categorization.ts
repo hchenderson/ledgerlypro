@@ -2,6 +2,7 @@ import type {
   CategorizationRule,
   Transaction,
 } from "@/types";
+import { minorToMajor, moneyMinor } from "@/lib/money";
 
 export interface CategorizationResult {
   categoryId?: string;
@@ -98,7 +99,7 @@ export function categorizationRuleMatches(
   ) {
     return false;
   }
-  const amount = Math.abs(transaction.amount);
+  const amount = minorToMajor(moneyMinor(transaction));
   if (
     conditions.minimumAmount !== undefined &&
     amount < conditions.minimumAmount

@@ -1,7 +1,11 @@
 
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getFirestore, enableNetwork } from "firebase/firestore";
-import { getAuth } from "firebase/auth";
+import {
+  connectFirestoreEmulator,
+  enableNetwork,
+  getFirestore,
+} from "firebase/firestore";
+import { connectAuthEmulator, getAuth } from "firebase/auth";
 import {
   initializeAppCheck,
   ReCaptchaEnterpriseProvider,
@@ -30,7 +34,57 @@ const db = getFirestore(app);
 const auth = getAuth(app);
 let appCheck: AppCheck | null = null;
 
+const RELEASE_TEST_PROJECT_ID = "ledgerly-release-demo";
+const useEmulators = process.env.NEXT_PUBLIC_FIREBASE_USE_EMULATORS === "true";
+
+function parseLocalEmulatorHost(value: string | undefined, expectedPort: number) {
+  if (!value) throw new Error(`Isolated Firebase testing requires localhost:${expectedPort}.`);
+  const [host, portText] = value.split(":");
+  const port = Number(portText);
+  if (!(["127.0.0.1", "localhost"].includes(host)) || port !== expectedPort) {
+    throw new Error(`Isolated Firebase testing requires localhost:${expectedPort}; received ${value}.`);
+  }
+  return { host, port };
+}
+
+if (useEmulators) {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("Firebase emulator mode is forbidden in production builds.");
+  }
+  if (firebaseConfig.projectId !== RELEASE_TEST_PROJECT_ID) {
+    throw new Error(`Firebase emulator mode requires project ${RELEASE_TEST_PROJECT_ID}.`);
+  }
+  const globalState = globalThis as typeof globalThis & {
+    __ledgerlyFirebaseEmulatorsConnected?: boolean;
+  };
+  if (!globalState.__ledgerlyFirebaseEmulatorsConnected) {
+    const firestore = parseLocalEmulatorHost(
+      process.env.NEXT_PUBLIC_FIRESTORE_EMULATOR_HOST,
+      8085,
+    );
+    const authentication = parseLocalEmulatorHost(
+      process.env.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST,
+      9099,
+    );
+    connectFirestoreEmulator(db, firestore.host, firestore.port);
+    connectAuthEmulator(
+      auth,
+      `http://${authentication.host}:${authentication.port}`,
+      { disableWarnings: true },
+    );
+    globalState.__ledgerlyFirebaseEmulatorsConnected = true;
+  }
+}
+
 if (typeof window !== "undefined" && process.env.NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY) {
+  if (
+    process.env.NODE_ENV !== "production"
+    && process.env.NEXT_PUBLIC_FIREBASE_APPCHECK_DEBUG === "true"
+  ) {
+    (globalThis as typeof globalThis & {
+      FIREBASE_APPCHECK_DEBUG_TOKEN?: boolean;
+    }).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+  }
   appCheck = initializeAppCheck(app, {
     provider: new ReCaptchaEnterpriseProvider(
       process.env.NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY,

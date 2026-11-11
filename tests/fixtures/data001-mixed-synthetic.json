@@ -1,0 +1,106 @@
+{
+  "transactions": [
+    {
+      "id": "legacy-clean",
+      "date": "2026-01-15",
+      "description": "Synthetic legacy expense",
+      "amount": 12.34,
+      "type": "expense",
+      "category": "Supplies"
+    },
+    {
+      "id": "canonical-clean",
+      "date": "2026-01-16",
+      "ledgerDate": "2026-01-16",
+      "description": "Synthetic canonical income",
+      "amount": 20,
+      "amountMinor": 2000,
+      "currency": "USD",
+      "type": "income",
+      "category": "Giving"
+    },
+    {
+      "id": "fractional-cent",
+      "date": "2026-01-17",
+      "description": "Synthetic fractional amount",
+      "amount": 1.005,
+      "type": "expense",
+      "category": "Supplies"
+    },
+    {
+      "id": "canonical-conflict",
+      "date": "2026-01-18",
+      "ledgerDate": "2026-01-18",
+      "description": "Synthetic conflicting amount",
+      "amount": 10,
+      "amountMinor": 999,
+      "currency": "USD",
+      "type": "expense",
+      "category": "Supplies"
+    },
+    {
+      "id": "ambiguous-date",
+      "date": "01/19/2026",
+      "description": "Synthetic ambiguous date",
+      "amount": 5,
+      "type": "expense",
+      "category": "Supplies"
+    },
+    {
+      "id": "unsupported-currency",
+      "date": "2026-01-20",
+      "description": "Synthetic unsupported currency",
+      "amount": 7,
+      "currency": "EUR",
+      "type": "expense",
+      "category": "Supplies"
+    },
+    {
+      "id": "split-mismatch",
+      "date": "2026-01-21",
+      "description": "Synthetic split mismatch",
+      "amount": 10,
+      "type": "expense",
+      "category": "Split",
+      "allocations": [
+        { "id": "line-a", "amount": 4, "category": "Supplies" },
+        { "id": "line-b", "amount": 5, "category": "Fees" }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "id": "legacy-account",
+      "name": "Synthetic legacy account",
+      "type": "checking",
+      "classification": "asset",
+      "openingBalance": 100,
+      "createdAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "canonical-account",
+      "name": "Synthetic canonical account",
+      "type": "savings",
+      "classification": "asset",
+      "openingBalance": 250,
+      "openingBalanceMinor": 25000,
+      "currency": "USD",
+      "createdAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "budgets": [
+    { "id": "legacy-budget", "categoryId": "supplies", "amount": 100, "period": "monthly", "year": 2026 },
+    { "id": "canonical-budget", "categoryId": "fees", "amount": 50, "amountMinor": 5000, "currency": "USD", "period": "monthly", "year": 2026 }
+  ],
+  "recurringTransactions": [
+    {
+      "id": "legacy-recurring",
+      "description": "Synthetic recurring",
+      "amount": 25,
+      "type": "expense",
+      "category": "Supplies",
+      "frequency": "monthly",
+      "startDate": "2026-01-01"
+    }
+  ]
+}

@@ -22,7 +22,9 @@ const DeleteReportSchema = z.object({
   reportId: z
     .string()
     .trim()
-    .regex(/^Q[1-4] \d{4}(--accounts-[a-z0-9]+)?$/),
+    .min(1)
+    .max(200)
+    .regex(/^[^/]+$/),
 });
 
 export async function POST(req: Request) {

@@ -1,5 +1,5 @@
 
-import { addWeeks, startOfDay, parseISO, isWithinInterval } from "date-fns";
+import { addWeeks, startOfDay, parseISO } from "date-fns";
 import type { ForecastTx } from "./expandRecurringBetween";
 import { quantiles } from "./stats";
 
@@ -26,14 +26,15 @@ export type WeeklyBandPoint = {
 
 export function buildWeeklyNetBand(
   actuals: ForecastTx[],
-  lookbackWeeks = 26
+  lookbackWeeks = 26,
+  asOfExclusive = new Date(),
 ) {
-  const today = startOfDay(new Date());
-  const start = addWeeks(today, -lookbackWeeks);
+  const asOf = startOfDay(asOfExclusive);
+  const start = addWeeks(asOf, -lookbackWeeks);
 
   const inRange = actuals.filter(t => {
     const d = parseISO(t.date);
-    return isActualVariable(t) && isWithinInterval(d, { start, end: today });
+    return isActualVariable(t) && d >= start && d < asOf;
   });
 
   const byWeek = new Map<string, { income: number; expense: number }>();

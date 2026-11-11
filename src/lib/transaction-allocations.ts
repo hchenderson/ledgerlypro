@@ -1,15 +1,17 @@
 import type { Transaction, TransactionAllocation } from "@/types";
+import { canonicalMoneyFields, minorToMajor, moneyMinor } from "@/lib/money";
 
-const cents = (value: number) => Math.round(value * 100);
-const dollars = (value: number) => value / 100;
+function allocationMinor(allocation: TransactionAllocation): number {
+  return moneyMinor(allocation);
+}
 
 export function allocationTotal(
   allocations?: TransactionAllocation[],
 ): number {
-  return dollars(
+  return minorToMajor(
     (allocations ?? []).reduce(
       (total, allocation) =>
-        total + Math.max(0, cents(Number(allocation.amount) || 0)),
+        total + allocationMinor(allocation),
       0,
     ),
   );
@@ -19,7 +21,10 @@ export function allocationDifference(
   amount: number,
   allocations?: TransactionAllocation[],
 ): number {
-  return dollars(cents(Math.abs(amount)) - cents(allocationTotal(allocations)));
+  return minorToMajor(
+    moneyMinor({ amount }) -
+      (allocations ?? []).reduce((sum, allocation) => sum + allocationMinor(allocation), 0),
+  );
 }
 
 export function allocationsAreComplete(
@@ -36,9 +41,9 @@ export function allocationsAreComplete(
           allocation.category.trim() &&
           allocation.category !== "Unallocated",
         ) &&
-        cents(allocation.amount) > 0,
+        allocationMinor(allocation) > 0,
     ) &&
-    cents(allocationDifference(amount, allocations)) === 0
+    moneyMinor({ amount: allocationDifference(amount, allocations) }) === 0
   );
 }
 
@@ -49,26 +54,28 @@ export function allocationsAreComplete(
 export function expandTransactionAllocations(
   transaction: Transaction,
 ): Transaction[] {
-  if (
-    transaction.type === "transfer" ||
-    !transaction.allocations ||
-    transaction.allocations.length === 0
-  ) {
+  if (transaction.type === "transfer") {
     return [transaction];
   }
+  if (!transaction.allocations || transaction.allocations.length === 0) {
+    return transaction.refundOfTransactionId && transaction.refundStatus === "confirmed"
+      ? [{ ...transaction, type: "expense" }]
+      : [transaction];
+  }
 
-  const transactionCents = Math.max(0, cents(Math.abs(transaction.amount)));
+  const transactionCents = moneyMinor(transaction);
   let remainingCents = transactionCents;
   const entries: Transaction[] = [];
 
   for (const allocation of transaction.allocations) {
-    const requestedCents = Math.max(0, cents(Number(allocation.amount) || 0));
+    const requestedCents = allocationMinor(allocation);
     const allocatedCents = Math.min(remainingCents, requestedCents);
     if (allocatedCents <= 0) continue;
     entries.push({
       ...transaction,
       id: `${transaction.id}::allocation::${allocation.id}`,
-      amount: dollars(allocatedCents),
+      ...canonicalMoneyFields(minorToMajor(allocatedCents)),
+      type: transaction.refundOfTransactionId && transaction.refundStatus === "confirmed" ? "expense" : transaction.type,
       category: allocation.category || "Unallocated",
       categoryId: allocation.categoryId,
       envelopeId: allocation.envelopeId ?? null,
@@ -83,7 +90,8 @@ export function expandTransactionAllocations(
     entries.push({
       ...transaction,
       id: `${transaction.id}::allocation::unallocated`,
-      amount: dollars(remainingCents),
+      ...canonicalMoneyFields(minorToMajor(remainingCents)),
+      type: transaction.refundOfTransactionId && transaction.refundStatus === "confirmed" ? "expense" : transaction.type,
       category: "Unallocated",
       categoryId: undefined,
       envelopeId: null,
@@ -95,6 +103,30 @@ export function expandTransactionAllocations(
   }
 
   return entries.length > 0 ? entries : [transaction];
+}
+
+/** Writes both rollout fields and requires split lines to reconcile exactly in cents. */
+export function canonicalizeTransactionMoney(transaction: Transaction): Transaction {
+  const money = transaction.amountMinor === undefined
+    ? canonicalMoneyFields(transaction.amount)
+    : canonicalMoneyFields(transaction);
+  const allocations = transaction.allocations?.map((allocation) => ({
+    ...allocation,
+    ...(allocation.amountMinor === undefined
+      ? canonicalMoneyFields(allocation.amount)
+      : canonicalMoneyFields(allocation)),
+  }));
+  if (allocations && allocations.length > 0) {
+    const allocated = allocations.reduce((sum, allocation) => sum + allocation.amountMinor, 0);
+    if (allocated !== money.amountMinor) throw new Error("Split allocations must equal the transaction amount exactly.");
+  }
+  const canonical = { ...transaction, ...money };
+  if (allocations === undefined) {
+    delete canonical.allocations;
+  } else {
+    canonical.allocations = allocations;
+  }
+  return canonical;
 }
 
 export function expandTransactionsForReporting(

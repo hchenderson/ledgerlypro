@@ -8,7 +8,7 @@ import type {
   ProcessedGoal,
   Transaction,
 } from "@/types";
-import { transactionAmount } from "@/lib/financial-summary";
+import { financialTransactionAmount } from "@/lib/financial-summary";
 import { isFinancialTransaction } from "@/lib/accounts";
 import { expandTransactionsForReporting } from "@/lib/transaction-allocations";
 
@@ -95,7 +95,7 @@ export function buildProcessedGoals(
       return Boolean(matchesById || matchesByName || matchesByPath);
     });
     const autoSavedAmount = contributions.reduce(
-      (sum, transaction) => sum + transactionAmount(transaction),
+      (sum, transaction) => sum + financialTransactionAmount(transaction),
       0,
     );
 
@@ -108,7 +108,7 @@ export function buildProcessedGoals(
       contributionLedger: contributions.map((transaction) => ({
         transactionId: transaction.id,
         date: transaction.date,
-        amount: transactionAmount(transaction),
+        amount: financialTransactionAmount(transaction),
         description: transaction.description,
         category: transaction.category,
       })),

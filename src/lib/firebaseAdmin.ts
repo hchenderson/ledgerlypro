@@ -12,6 +12,31 @@ let adminDb: Firestore | null = null;
 let adminAppCheck: AppCheck | null = null;
 let adminCredentialIssue: string | null = null;
 
+const RELEASE_TEST_PROJECT_ID = "ledgerly-release-demo";
+
+function assertIsolatedEmulatorConfiguration() {
+  if (process.env.LEDGERLY_ISOLATED_TEST !== "true") return;
+  const projectId =
+    process.env.GOOGLE_CLOUD_PROJECT ||
+    process.env.GCLOUD_PROJECT ||
+    process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("Isolated Firebase mode is forbidden in production.");
+  }
+  if (projectId !== RELEASE_TEST_PROJECT_ID) {
+    throw new Error(`Isolated Firebase mode requires project ${RELEASE_TEST_PROJECT_ID}.`);
+  }
+  if (process.env.FIRESTORE_EMULATOR_HOST !== "127.0.0.1:8085") {
+    throw new Error("Isolated Firebase mode requires Firestore at 127.0.0.1:8085.");
+  }
+  if (process.env.FIREBASE_AUTH_EMULATOR_HOST !== "127.0.0.1:9099") {
+    throw new Error("Isolated Firebase mode requires Auth at 127.0.0.1:9099.");
+  }
+  if (process.env.NEXT_PUBLIC_FIREBASE_USE_EMULATORS !== "true") {
+    throw new Error("Isolated Firebase mode requires browser emulator wiring.");
+  }
+}
+
 function parseServiceAccount(raw: string | undefined): ServiceAccount | null {
   if (!raw) return null;
   try {
@@ -38,6 +63,7 @@ function parseServiceAccount(raw: string | undefined): ServiceAccount | null {
 }
 
 try {
+  assertIsolatedEmulatorConfiguration();
   if (getApps().length) {
     adminApp = getApps()[0];
   } else {

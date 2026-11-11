@@ -35,6 +35,8 @@ import {
   prepareTransactionImport,
   type TransactionImportSummary,
 } from "@/lib/transaction-import";
+import { calendarDateToLedgerDate } from "@/lib/ledger-date";
+import { minorToMajor, parseMoneyToMinor } from "@/lib/money";
 
 type ImportStep = "upload" | "mapping" | "review";
 
@@ -265,8 +267,8 @@ export function ImportTransactionsDialog({
             const creditCleaned = creditStr.replace(/[$,\s]/g, '').replace(/[^0-9.-]/g, '');
             const debitCleaned = debitStr.replace(/[$,\s]/g, '').replace(/[^0-9.-]/g, '');
             
-            const creditAmount = creditCleaned === '' ? 0 : parseFloat(creditCleaned);
-            const debitAmount = debitCleaned === '' ? 0 : parseFloat(debitCleaned);
+            const creditAmount = creditCleaned === '' ? 0 : minorToMajor(parseMoneyToMinor(creditCleaned));
+            const debitAmount = debitCleaned === '' ? 0 : minorToMajor(parseMoneyToMinor(debitCleaned));
             
             // Handle different scenarios
             if (!isNaN(creditAmount) && creditAmount > 0) {
@@ -303,7 +305,8 @@ export function ImportTransactionsDialog({
 
             const transaction = {
               amount: amountVal,
-              date: date.toISOString(),
+              date: calendarDateToLedgerDate(date),
+              ledgerDate: calendarDateToLedgerDate(date),
               description: descriptionStr.trim(),
               type: type,
               category: finalCategory.name,

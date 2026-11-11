@@ -10,7 +10,7 @@ import {
 import { useIsMobile } from "@/hooks/use-mobile"
 
 interface CategoryPieChartProps {
-    data: { category: string; amount: number }[];
+    data: { key?: string; category: string; amount: number }[];
 }
 
 const CustomTooltip = ({ active, payload }: any) => {
@@ -59,6 +59,7 @@ export function CategoryPieChart({ data }: CategoryPieChartProps) {
   const totalAmount = data.reduce((sum, d) => sum + d.amount, 0);
 
   const processedData = data.map((item, index) => ({
+    key: item.key ?? `${item.category}-${index}`,
     name: item.category,
     value: item.amount,
     fill: COLORS[index % COLORS.length],
@@ -109,7 +110,7 @@ export function CategoryPieChart({ data }: CategoryPieChartProps) {
 
       <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border p-3 sm:hidden">
         {processedData.map((item) => (
-          <div key={item.name} className="flex items-center justify-between gap-3 text-xs">
+          <div key={item.key} className="flex items-center justify-between gap-3 text-xs">
             <span className="flex min-w-0 items-center gap-2">
               <span
                 className="h-2.5 w-2.5 shrink-0 rounded-sm"
@@ -140,7 +141,7 @@ export function CategoryPieChart({ data }: CategoryPieChartProps) {
             </thead>
             <tbody>
               {processedData.map((item) => (
-                <tr key={item.name} className="border-t">
+                <tr key={item.key} className="border-t">
                   <td className="px-3 py-2">{item.name}</td>
                   <td className="px-3 py-2 text-right tabular-nums">
                     {new Intl.NumberFormat("en-US", {

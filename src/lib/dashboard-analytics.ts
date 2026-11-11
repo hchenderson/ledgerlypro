@@ -1,12 +1,13 @@
-import { format, getMonth, getYear, parseISO, subMonths } from "date-fns";
+import { format, getMonth, getYear, subMonths } from "date-fns";
 
 import type { Category, Transaction } from "@/types";
 import { transferBalanceDelta } from "@/lib/accounts";
-import { transactionAmount } from "@/lib/financial-summary";
+import { financialTransactionAmount } from "@/lib/financial-summary";
 import { isTransactionFinalized } from "@/lib/categorization";
 import { isFinancialTransaction } from "@/lib/accounts";
 import { expandTransactionsForReporting } from "@/lib/transaction-allocations";
-import { financialCategoryKey } from "@/lib/financial-category";
+import { financialCategoryPathKeys } from "@/lib/financial-category";
+import { ledgerDateToDate, transactionLedgerDate } from "@/lib/ledger-date";
 
 export interface DashboardCategoryFilters {
   includedCategoryKeys: string[];
@@ -71,10 +72,10 @@ export function computeDashboardAnalytics(
 
   for (const transaction of expandTransactionsForReporting(transactions)) {
     if (!isTransactionFinalized(transaction)) continue;
-    const transactionDate = parseISO(transaction.date);
+    const transactionDate = ledgerDateToDate(transactionLedgerDate(transaction));
     if (Number.isNaN(transactionDate.getTime())) continue;
     if (transactionDate.getTime() > asOfTime) continue;
-    const amount = transactionAmount(transaction);
+    const amount = financialTransactionAmount(transaction);
 
     if (transaction.type === "transfer") {
       transferNet += transferBalanceDelta(transaction);
@@ -83,11 +84,11 @@ export function computeDashboardAnalytics(
     if (!isFinancialTransaction(transaction)) continue;
 
     balanceNet += transaction.type === "income" ? amount : -amount;
-    const categoryKey = financialCategoryKey(transaction, categories);
-    if (categoryKey && excludedCategoryKeys.has(categoryKey)) continue;
+    const categoryKeys = financialCategoryPathKeys(transaction, categories);
+    if (categoryKeys.some((key) => excludedCategoryKeys.has(key))) continue;
     if (
       includedCategoryKeys.size > 0 &&
-      (!categoryKey || !includedCategoryKeys.has(categoryKey))
+      !categoryKeys.some((key) => includedCategoryKeys.has(key))
     ) {
       continue;
     }

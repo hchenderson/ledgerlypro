@@ -1,4 +1,4 @@
-import { addDays, startOfDay, parseISO } from "date-fns";
+import { addDays, format, startOfDay, parseISO } from "date-fns";
 import type { ForecastTx } from "./expandRecurringBetween";
 
 export type ForecastPoint = {
@@ -10,7 +10,9 @@ export type ForecastPoint = {
 };
 
 export function buildForecastSeries(txs: ForecastTx[], start: Date, end: Date): ForecastPoint[] {
-  const dayKey = (iso: string) => iso.slice(0, 10); // YYYY-MM-DD
+  // Forecasts follow the browser's local reporting calendar. Do not slice an
+  // ISO string here: west-of-UTC local midnight serializes as the prior UTC day.
+  const dayKey = (iso: string) => format(parseISO(iso), "yyyy-MM-dd");
 
   const buckets = new Map<string, { income: number; expense: number }>();
 
@@ -30,7 +32,7 @@ export function buildForecastSeries(txs: ForecastTx[], start: Date, end: Date): 
 
   for (let d = startDay; d <= endDay; d = addDays(d, 1)) {
     const iso = d.toISOString();
-    const k = dayKey(iso);
+    const k = format(d, "yyyy-MM-dd");
     const v = buckets.get(k) ?? { income: 0, expense: 0 };
     const net = v.income - v.expense;
     cumulativeNet += net;

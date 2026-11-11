@@ -37,6 +37,7 @@ import {
   canEditTransaction,
   historicalTransactionYear,
 } from "@/lib/transaction-edit-policy";
+import { calendarDateToLedgerDate } from "@/lib/ledger-date";
 
 const NewTransactionSheet = dynamic(
   () =>
@@ -190,7 +191,8 @@ export default function TransactionsPage() {
   }, []);
   
   const handleTransactionCreated = useCallback(async (values: any) => {
-    await addTransaction({...values, date: values.date.toISOString()});
+    const ledgerDate = calendarDateToLedgerDate(values.date);
+    await addTransaction({...values, date: ledgerDate, ledgerDate});
     toast({ title: "Transaction Added", description: "The transaction has been successfully created." });
   }, [addTransaction, toast]);
 
@@ -199,7 +201,8 @@ export default function TransactionsPage() {
     const now = new Date().toISOString();
     await updateTransaction(id, {
       ...values,
-      date: values.date.toISOString(),
+      date: calendarDateToLedgerDate(values.date),
+      ledgerDate: calendarDateToLedgerDate(values.date),
       ...(existing?.provider === "plaid"
         ? {
             classificationLocked: true,

@@ -12,6 +12,7 @@ import {
   normalizeDashboardPreferences,
   type DashboardPreferences,
 } from '@/lib/dashboard-preferences';
+import { DEFAULT_REPORTING_TIME_ZONE, isValidReportingTimeZone } from '@/lib/ledger-date';
 
 interface AuthContextType {
   user: User | null;
@@ -31,6 +32,8 @@ interface AuthContextType {
   setForecastSettings: (settings: Partial<ForecastSettings>) => void;
   dashboardPreferences: DashboardPreferences;
   setDashboardPreferences: (settings: Partial<DashboardPreferences>) => Promise<void>;
+  reportingTimeZone: string;
+  setReportingTimeZone: (timeZone: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({ 
@@ -51,6 +54,8 @@ const AuthContext = createContext<AuthContextType>({
   setForecastSettings: () => {},
   dashboardPreferences: DEFAULT_DASHBOARD_PREFERENCES,
   setDashboardPreferences: async () => {},
+  reportingTimeZone: DEFAULT_REPORTING_TIME_ZONE,
+  setReportingTimeZone: async () => {},
 });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -70,6 +75,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [forecastSettings, setForecastSettingsState] = useState<ForecastSettings>({});
   const [dashboardPreferences, setDashboardPreferencesState] =
     useState<DashboardPreferences>(DEFAULT_DASHBOARD_PREFERENCES);
+  const [reportingTimeZone, setReportingTimeZoneState] = useState(DEFAULT_REPORTING_TIME_ZONE);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -90,6 +96,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           } as EnvelopeSettings,
           forecastSettings: {},
           dashboardPreferences: DEFAULT_DASHBOARD_PREFERENCES,
+          reportingTimeZone: DEFAULT_REPORTING_TIME_ZONE,
         };
 
         if (userDoc.exists()) {
@@ -115,6 +122,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setDashboardPreferencesState(
           normalizeDashboardPreferences(settingsData.dashboardPreferences),
         );
+        setReportingTimeZoneState(
+          isValidReportingTimeZone(settingsData.reportingTimeZone)
+            ? settingsData.reportingTimeZone
+            : DEFAULT_REPORTING_TIME_ZONE,
+        );
 
       } else {
         // No user, reset to defaults
@@ -129,6 +141,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
         setForecastSettingsState({});
         setDashboardPreferencesState(DEFAULT_DASHBOARD_PREFERENCES);
+        setReportingTimeZoneState(DEFAULT_REPORTING_TIME_ZONE);
       }
       setLoading(false);
     });
@@ -194,6 +207,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       );
     }
   }, [dashboardPreferences, user]);
+
+  const setReportingTimeZone = useCallback(async (timeZone: string) => {
+    if (!isValidReportingTimeZone(timeZone)) throw new Error("Choose a valid IANA reporting time zone.");
+    setReportingTimeZoneState(timeZone);
+    if (user) {
+      await setDoc(doc(db, 'users', user.uid, 'settings', 'main'), { reportingTimeZone: timeZone }, { merge: true });
+    }
+  }, [user]);
   
    const setForecastSettings = useCallback(async (settings: Partial<ForecastSettings>) => {
     if (user) {
@@ -218,7 +239,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [user, forecastSettings]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, onboardingComplete, setOnboardingComplete, showInstructions, setShowInstructions, activeYear, setActiveYear, firstYear, budgetingMode, setBudgetingMode, envelopeSettings, setEnvelopeSettings, forecastSettings, setForecastSettings, dashboardPreferences, setDashboardPreferences }}>
+    <AuthContext.Provider value={{ user, loading, onboardingComplete, setOnboardingComplete, showInstructions, setShowInstructions, activeYear, setActiveYear, firstYear, budgetingMode, setBudgetingMode, envelopeSettings, setEnvelopeSettings, forecastSettings, setForecastSettings, dashboardPreferences, setDashboardPreferences, reportingTimeZone, setReportingTimeZone }}>
       {children}
     </AuthContext.Provider>
   );

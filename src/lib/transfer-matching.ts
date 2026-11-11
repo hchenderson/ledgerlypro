@@ -1,5 +1,7 @@
 import type { Transaction } from "@/types";
 import { isTransactionFinalized } from "@/lib/categorization";
+import { transactionLedgerDate } from "@/lib/ledger-date";
+import { moneyMinor } from "@/lib/money";
 
 export type TransferMatchConfidence = "high" | "possible";
 
@@ -54,7 +56,7 @@ function dateDifferenceDays(left: string, right: string): number {
 }
 
 function amountInCents(transaction: Transaction): number {
-  return Math.round(Math.abs(transaction.amount) * 100);
+  return moneyMinor(transaction);
 }
 
 function isMatchable(transaction: Transaction): boolean {
@@ -65,9 +67,8 @@ function isMatchable(transaction: Transaction): boolean {
     Boolean(transaction.accountId) &&
     !transaction.transferId &&
     !transaction.linkedTransactionId &&
-    Number.isFinite(transaction.amount) &&
-    transaction.amount > 0 &&
-    Number.isFinite(new Date(transaction.date).getTime())
+    moneyMinor(transaction) > 0 &&
+    Boolean(transactionLedgerDate(transaction))
   );
 }
 

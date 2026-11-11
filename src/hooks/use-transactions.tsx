@@ -22,11 +22,13 @@ import {
   where,
   writeBatch,
 } from "firebase/firestore";
-import { endOfDay, endOfYear, startOfDay, startOfYear } from "date-fns";
+import { endOfYear, startOfYear } from "date-fns";
+import type { User } from "firebase/auth";
 
 import { useAuth } from "@/hooks/use-auth";
 import { useAccounts } from "@/hooks/use-accounts";
 import { db } from "@/lib/firebase";
+import { authenticatedFetch } from "@/lib/authenticated-fetch";
 import { chunkArray } from "@/lib/batching";
 import {
   FINANCIAL_AGGREGATE_VERSION,
@@ -50,7 +52,12 @@ import {
   envelopeEventForTransaction,
   envelopeEventsForTransfer,
 } from "@/lib/envelopes";
-import { allocationsAreComplete } from "@/lib/transaction-allocations";
+import {
+  allocationsAreComplete,
+  canonicalizeTransactionMoney,
+} from "@/lib/transaction-allocations";
+import { transactionLedgerDate } from "@/lib/ledger-date";
+import { canonicalMoneyFields, moneyMinor } from "@/lib/money";
 
 interface TransactionQueryResult {
   transactions: Transaction[];
@@ -102,18 +109,23 @@ function envelopeEventCollection(uid: string) {
 
 function transactionFromSnapshot(
   snapshot: { id: string; data: () => unknown },
+  reportingTimeZone?: string,
 ): Transaction {
-  return {
+  const transaction = {
     ...(snapshot.data() as Omit<Transaction, "id">),
     id: snapshot.id,
   };
+  const ledgerDate = transactionLedgerDate(transaction, reportingTimeZone);
+  return {
+    ...transaction,
+    date: ledgerDate,
+    ledgerDate,
+  };
 }
 
-function rangeToBounds(range: FinancialDateRange) {
-  return {
-    from: startOfDay(range.from).toISOString(),
-    to: endOfDay(range.to).toISOString(),
-  };
+function rangeToLedgerBounds(range: FinancialDateRange) {
+  const key = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  return { from: key(range.from), to: key(range.to) };
 }
 
 export function yearTransactionRange(year: number): FinancialDateRange {
@@ -131,7 +143,7 @@ export function useTransactionRange(
     respectAccountFilter = true,
   }: TransactionQueryOptions = {},
 ): TransactionQueryResult {
-  const { user } = useAuth();
+  const { user, reportingTimeZone } = useAuth();
   const { filterTransactions } = useAccounts();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(enabled);
@@ -147,7 +159,7 @@ export function useTransactionRange(
       return;
     }
 
-    const bounds = rangeToBounds({
+    const bounds = rangeToLedgerBounds({
       from: new Date(fromTime),
       to: new Date(toTime),
     });
@@ -155,16 +167,11 @@ export function useTransactionRange(
     setError(null);
 
     return onSnapshot(
-      query(
-        transactionCollection(user.uid),
-        where("date", ">=", bounds.from),
-        where("date", "<=", bounds.to),
-        orderBy("date", "desc"),
-      ),
+      query(transactionCollection(user.uid), orderBy("date", "desc")),
       (snapshot) => {
-        const nextTransactions = snapshot.docs.map(
-          transactionFromSnapshot,
-        );
+        const nextTransactions = snapshot.docs
+          .map((document) => transactionFromSnapshot(document, reportingTimeZone))
+          .filter((transaction) => transaction.ledgerDate! >= bounds.from && transaction.ledgerDate! <= bounds.to);
         setTransactions(
           respectAccountFilter
             ? filterTransactions(nextTransactions)
@@ -187,6 +194,7 @@ export function useTransactionRange(
     filterTransactions,
     fromTime,
     respectAccountFilter,
+    reportingTimeZone,
     toTime,
     user,
   ]);
@@ -209,7 +217,7 @@ export function useTransactionsForYears(
     respectAccountFilter = true,
   }: TransactionQueryOptions = {},
 ): TransactionQueryResult {
-  const { user } = useAuth();
+  const { user, reportingTimeZone } = useAuth();
   const { filterTransactions } = useAccounts();
   const normalizedYears = useMemo(
     () => [...new Set(years)].filter(Number.isFinite).sort(),
@@ -230,57 +238,24 @@ export function useTransactionsForYears(
 
     setLoading(true);
     setError(null);
-    const byYear = new Map<number, Transaction[]>();
-    const readyYears = new Set<number>();
-
-    const publish = () => {
-      setTransactions(
-        [...byYear.values()]
-          .flat()
-          .sort(
-            (a, b) =>
-              new Date(b.date).getTime() - new Date(a.date).getTime(),
-          ),
-      );
-      if (readyYears.size === normalizedYears.length) setLoading(false);
-    };
-
-    const unsubscribers = normalizedYears.map((year) => {
-      const bounds = rangeToBounds(yearTransactionRange(year));
-      return onSnapshot(
-        query(
-          transactionCollection(user.uid),
-          where("date", ">=", bounds.from),
-          where("date", "<=", bounds.to),
-          orderBy("date", "desc"),
-        ),
-        (snapshot) => {
-          const nextTransactions = snapshot.docs.map(
-            transactionFromSnapshot,
-          );
-          byYear.set(
-            year,
-            respectAccountFilter
-              ? filterTransactions(nextTransactions)
-              : nextTransactions,
-          );
-          readyYears.add(year);
-          publish();
-        },
-        (snapshotError) => {
-          console.error(`Error loading transactions for ${year}:`, snapshotError);
-          setError(
-            snapshotError instanceof Error
-              ? snapshotError
-              : new Error(`Unable to load ${year} transactions.`),
-          );
-          readyYears.add(year);
-          publish();
-        },
-      );
-    });
-
-    return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
+    return onSnapshot(
+      query(transactionCollection(user.uid), orderBy("date", "desc")),
+      (snapshot) => {
+        const yearSet = new Set(normalizedYears);
+        const nextTransactions = snapshot.docs
+          .map((document) => transactionFromSnapshot(document, reportingTimeZone))
+          .filter((transaction) => yearSet.has(Number(transaction.ledgerDate!.slice(0, 4))))
+          .sort((left, right) => right.ledgerDate!.localeCompare(left.ledgerDate!));
+        setTransactions(respectAccountFilter ? filterTransactions(nextTransactions) : nextTransactions);
+        setLoading(false);
+        setError(null);
+      },
+      (snapshotError) => {
+        console.error("Error loading transactions for selected years:", snapshotError);
+        setError(snapshotError instanceof Error ? snapshotError : new Error("Unable to load selected years."));
+        setLoading(false);
+      },
+    );
     // yearsKey is the stable subscription identity; normalizedYears is recreated
     // only when that identity changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -288,6 +263,7 @@ export function useTransactionsForYears(
     enabled,
     filterTransactions,
     respectAccountFilter,
+    reportingTimeZone,
     user,
     yearsKey,
   ]);
@@ -301,7 +277,7 @@ export function useAllTransactions(
     respectAccountFilter = true,
   }: TransactionQueryOptions = {},
 ): TransactionQueryResult {
-  const { user } = useAuth();
+  const { user, reportingTimeZone } = useAuth();
   const { filterTransactions } = useAccounts();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(enabled);
@@ -319,8 +295,8 @@ export function useAllTransactions(
     return onSnapshot(
       query(transactionCollection(user.uid), orderBy("date", "desc")),
       (snapshot) => {
-        const nextTransactions = snapshot.docs.map(
-          transactionFromSnapshot,
+        const nextTransactions = snapshot.docs.map((document) =>
+          transactionFromSnapshot(document, reportingTimeZone),
         );
         setTransactions(
           respectAccountFilter
@@ -344,6 +320,7 @@ export function useAllTransactions(
     enabled,
     filterTransactions,
     respectAccountFilter,
+    reportingTimeZone,
     user,
   ]);
 
@@ -412,7 +389,7 @@ export function usePriorYearsNet(
   loading: boolean;
   error: Error | null;
 } {
-  const { user } = useAuth();
+  const { user, reportingTimeZone } = useAuth();
   const {
     allAccountsSelected,
     selectedAccountIds,
@@ -490,7 +467,7 @@ export function usePriorYearsNet(
     void (async () => {
       try {
         for (const year of missingYears) {
-          await rebuildFinancialSummariesForYear(user.uid, year);
+          await rebuildFinancialSummariesForYear(user, year);
         }
       } catch (backfillError) {
         console.error("Unable to backfill yearly summaries:", backfillError);
@@ -503,7 +480,7 @@ export function usePriorYearsNet(
         setBackfilling(false);
       }
     })();
-  }, [activeYear, error, firstYear, loading, summaries, user]);
+  }, [activeYear, error, firstYear, loading, reportingTimeZone, summaries, user]);
 
   const net = useMemo(() => {
     const priorSummaries = summaries.filter(
@@ -542,7 +519,7 @@ export function useTransactionsBeforeYear(
     respectAccountFilter = true,
   }: Pick<TransactionQueryOptions, "respectAccountFilter"> = {},
 ): TransactionQueryResult {
-  const { user } = useAuth();
+  const { user, reportingTimeZone } = useAuth();
   const { filterTransactions } = useAccounts();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -556,17 +533,13 @@ export function useTransactionsBeforeYear(
     }
 
     setLoading(true);
-    const upperBound = startOfYear(new Date(year, 0, 1)).toISOString();
+    const upperBound = `${year}-01-01`;
     return onSnapshot(
-      query(
-        transactionCollection(user.uid),
-        where("date", "<", upperBound),
-        orderBy("date", "desc"),
-      ),
+      query(transactionCollection(user.uid), orderBy("date", "desc")),
       (snapshot) => {
-        const nextTransactions = snapshot.docs.map(
-          transactionFromSnapshot,
-        );
+        const nextTransactions = snapshot.docs
+          .map((document) => transactionFromSnapshot(document, reportingTimeZone))
+          .filter((transaction) => transaction.ledgerDate! < upperBound);
         setTransactions(
           respectAccountFilter
             ? filterTransactions(nextTransactions)
@@ -588,6 +561,7 @@ export function useTransactionsBeforeYear(
   }, [
     filterTransactions,
     respectAccountFilter,
+    reportingTimeZone,
     user,
     year,
   ]);
@@ -595,74 +569,17 @@ export function useTransactionsBeforeYear(
   return { transactions, loading, error };
 }
 
-async function syncFinancialAggregateDocuments(
-  uid: string,
-  year: number,
-  transactions: Transaction[],
-): Promise<void> {
-  const summariesRef = collection(db, "users", uid, "financialSummaries");
-  const existingSnapshot = await getDocs(
-    query(summariesRef, where("year", "==", year)),
-  );
-  const existing = new Map(
-    existingSnapshot.docs.map((summaryDoc) => [
-      summaryDoc.id,
-      summaryDoc.data() as FinancialAggregateDocument,
-    ]),
-  );
-  const accountIds = new Set(
-    [
-      ...transactions.map((transaction) => transaction.accountId),
-      ...existingSnapshot.docs.map(
-        (summary) =>
-          (summary.data() as FinancialAggregateDocument).accountId,
-      ),
-    ].filter((accountId): accountId is string => Boolean(accountId)),
-  );
-  const nextDocuments = [
-    ...buildFinancialAggregateDocuments(transactions, year),
-    ...[...accountIds].flatMap((accountId) =>
-      buildFinancialAggregateDocuments(
-        transactions,
-        year,
-        accountId,
-      ),
-    ),
-  ];
-  const changed = nextDocuments.filter(
-    (summary) =>
-      existing.get(summary.id)?.sourceFingerprint !==
-        summary.sourceFingerprint ||
-      existing.get(summary.id)?.version !== summary.version,
-  );
-
-  for (const summaryChunk of chunkArray(changed, 450)) {
-    const batch = writeBatch(db);
-    for (const summary of summaryChunk) {
-      batch.set(doc(summariesRef, summary.id), summary);
-    }
-    await batch.commit();
-  }
-}
-
 async function rebuildFinancialSummariesForYear(
-  uid: string,
+  user: User,
   year: number,
 ): Promise<void> {
-  const bounds = rangeToBounds(yearTransactionRange(year));
-  const snapshot = await getDocs(
-    query(
-      transactionCollection(uid),
-      where("date", ">=", bounds.from),
-      where("date", "<=", bounds.to),
-      orderBy("date", "desc"),
-    ),
-  );
-  await syncFinancialAggregateDocuments(
-    uid,
-    year,
-    snapshot.docs.map(transactionFromSnapshot),
-  );
+  const response = await authenticatedFetch(user, "/api/financial-summaries/rebuild", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ year }),
+  });
+  const payload = (await response.json().catch(() => ({}))) as { error?: string };
+  if (!response.ok) throw new Error(payload.error ?? "Unable to rebuild financial summaries.");
 }
 
 export function TransactionDataProvider({
@@ -670,7 +587,7 @@ export function TransactionDataProvider({
 }: {
   children: ReactNode;
 }) {
-  const { user, activeYear, envelopeSettings } = useAuth();
+  const { user, activeYear, envelopeSettings, reportingTimeZone } = useAuth();
   const {
     primaryAccountId,
     filterTransactions,
@@ -701,11 +618,7 @@ export function TransactionDataProvider({
     syncedFingerprint.current = aggregateKey;
 
     const timeout = window.setTimeout(() => {
-      void syncFinancialAggregateDocuments(
-        user.uid,
-        activeYear,
-        activeYearQuery.transactions,
-      ).catch((syncError) => {
+      void rebuildFinancialSummariesForYear(user, activeYear).catch((syncError) => {
         syncedFingerprint.current = null;
         console.error("Unable to cache financial summaries:", syncError);
       });
@@ -724,7 +637,7 @@ export function TransactionDataProvider({
     async (years: Iterable<number>) => {
       if (!user) return;
       for (const year of [...new Set(years)]) {
-        await rebuildFinancialSummariesForYear(user.uid, year);
+        await rebuildFinancialSummariesForYear(user, year);
       }
     },
     [user],
@@ -872,11 +785,12 @@ export function TransactionDataProvider({
         );
       }
       const newDocRef = doc(transactionCollection(user.uid));
-      const nextTransaction: Transaction = {
+      const nextTransaction = canonicalizeTransactionMoney({
         ...transaction,
+        ledgerDate: transactionLedgerDate(transaction),
         accountId,
         id: newDocRef.id,
-      };
+      });
       const event = envelopeEventForTransaction(
         nextTransaction,
         primaryAccountId,
@@ -890,7 +804,7 @@ export function TransactionDataProvider({
         );
       }
       await batch.commit();
-      const year = new Date(transaction.date).getFullYear();
+      const year = Number(nextTransaction.ledgerDate?.slice(0, 4));
       if (Number.isFinite(year) && year !== activeYear) {
         await rebuildYears([year]);
       }
@@ -906,7 +820,7 @@ export function TransactionDataProvider({
       const collRef = transactionCollection(user.uid);
       const existingSnapshot = await getDocs(query(collRef, orderBy("date", "desc")));
       const existingTransactions =
-        existingSnapshot.docs.map(transactionFromSnapshot);
+        existingSnapshot.docs.map((document) => transactionFromSnapshot(document));
       const transactionsWithAccounts = importedTransactions.map(
         (transaction) => {
           const accountId =
@@ -916,7 +830,12 @@ export function TransactionDataProvider({
               "Select an account before importing transactions.",
             );
           }
-          return { ...transaction, accountId };
+          return canonicalizeTransactionMoney({
+            ...transaction,
+            ledgerDate: transactionLedgerDate(transaction),
+            accountId,
+            id: "import-validation",
+          });
         },
       );
       const prepared = prepareTransactionImport(
@@ -949,7 +868,7 @@ export function TransactionDataProvider({
 
       await rebuildYears(
         prepared.transactions
-          .map((transaction) => new Date(transaction.date).getFullYear())
+          .map((transaction) => Number(transaction.ledgerDate?.slice(0, 4)))
           .filter(Number.isFinite),
       );
 
@@ -977,7 +896,7 @@ export function TransactionDataProvider({
           );
           const currentBalance = calculateAccountBalance(
             operatingAccount,
-            accountSnapshot.docs.map(transactionFromSnapshot),
+            accountSnapshot.docs.map((document) => transactionFromSnapshot(document)),
           );
           if (
             currentBalance - Math.abs(transfer.amount) <
@@ -1101,8 +1020,7 @@ export function TransactionDataProvider({
         );
       }
       if (
-        Math.round(Math.abs(outgoing.amount) * 100) !==
-        Math.round(Math.abs(incoming.amount) * 100)
+        moneyMinor(outgoing) !== moneyMinor(incoming)
       ) {
         throw new Error(
           "The withdrawal and deposit amounts no longer match.",
@@ -1127,8 +1045,7 @@ export function TransactionDataProvider({
         transferPurpose: purpose ?? "ordinary",
         envelopeId: envelopeId ?? deleteField(),
         relatedEnvelopeId: relatedEnvelopeId ?? deleteField(),
-        amount: Math.abs(outgoing.amount),
-        source: "actual" as const,
+        ...canonicalMoneyFields(outgoing),
         ...(description?.trim()
           ? { description: description.trim() }
           : {}),
@@ -1216,12 +1133,18 @@ export function TransactionDataProvider({
           ),
         );
         const sharedValues = {
-          ...(values.date ? { date: values.date } : {}),
+          ...(values.date
+            ? { date: values.date, ledgerDate: transactionLedgerDate({ date: values.date }) }
+            : {}),
           ...(values.description
             ? { description: values.description }
             : {}),
-          ...(values.amount !== undefined
-            ? { amount: Math.abs(values.amount) }
+          ...(values.amount !== undefined || values.amountMinor !== undefined
+            ? canonicalMoneyFields({
+                amount: values.amount ?? previous.amount,
+                amountMinor: values.amountMinor,
+                currency: values.currency,
+              })
             : {}),
         };
         const batch = writeBatch(db);
@@ -1253,22 +1176,37 @@ export function TransactionDataProvider({
         });
         await batch.commit();
       } else {
-        const nextTransaction = {
+        const canonicalValues =
+          values.amount !== undefined || values.amountMinor !== undefined
+            ? {
+                ...values,
+                ...canonicalMoneyFields({
+                  amount: values.amount ?? previous?.amount ?? 0,
+                  amountMinor: values.amountMinor,
+                  currency: values.currency ?? previous?.currency,
+                }),
+              }
+            : values;
+        const nextTransaction = canonicalizeTransactionMoney({
           ...previous,
-          ...values,
+          ...canonicalValues,
           id,
+          ledgerDate: transactionLedgerDate({
+            date: values.date ?? previous?.date ?? new Date().toISOString(),
+            ledgerDate: values.ledgerDate ?? previous?.ledgerDate,
+          }),
           accountId:
             values.accountId ??
             previous?.accountId ??
             primaryAccountId ??
             undefined,
-        } as Transaction;
+        } as Transaction);
         const event = envelopeEventForTransaction(
           nextTransaction,
           primaryAccountId,
         );
         const batch = writeBatch(db);
-        batch.set(transactionRef, values, { merge: true });
+        batch.set(transactionRef, nextTransaction, { merge: true });
         const eventRef = doc(
           envelopeEventCollection(user.uid),
           `transaction-${id}`,
@@ -1354,10 +1292,17 @@ export function TransactionDataProvider({
       const snapshot = await getDocs(
         query(transactionCollection(user.uid), ...constraints),
       );
+      const affectedYears = new Set<number>();
       for (const documentChunk of chunkArray(snapshot.docs, 90)) {
         const batch = writeBatch(db);
         const transferIds = new Set<string>();
         for (const documentSnapshot of documentChunk) {
+          const transaction = transactionFromSnapshot(
+            documentSnapshot,
+            reportingTimeZone,
+          );
+          const year = Number(transaction.ledgerDate!.slice(0, 4));
+          if (Number.isFinite(year)) affectedYears.add(year);
           batch.delete(documentSnapshot.ref);
           batch.delete(
             doc(
@@ -1365,7 +1310,6 @@ export function TransactionDataProvider({
               `transaction-${documentSnapshot.id}`,
             ),
           );
-          const transaction = documentSnapshot.data() as Transaction;
           if (transaction.transferId) {
             transferIds.add(transaction.transferId);
           }
@@ -1392,45 +1336,37 @@ export function TransactionDataProvider({
         });
         await batch.commit();
       }
+      return affectedYears;
     },
-    [user],
+    [reportingTimeZone, user],
   );
 
   const clearTransactions = useCallback(async () => {
     if (!user) throw new Error("User not authenticated");
-    await deleteTransactionQuery();
-    const summaries = await getDocs(
-      collection(db, "users", user.uid, "financialSummaries"),
-    );
-    for (const summaryChunk of chunkArray(summaries.docs, 450)) {
-      const batch = writeBatch(db);
-      for (const summary of summaryChunk) batch.delete(summary.ref);
-      await batch.commit();
-    }
-  }, [deleteTransactionQuery, user]);
+    const affectedYears = await deleteTransactionQuery();
+    await rebuildYears(affectedYears);
+  }, [deleteTransactionQuery, rebuildYears, user]);
 
   const clearTransactionsByDateRange = useCallback(
     async (startDate: Date, endDate: Date) => {
       if (!user) throw new Error("User not authenticated");
-      const bounds = rangeToBounds({ from: startDate, to: endDate });
+      const bounds = rangeToLedgerBounds({ from: startDate, to: endDate });
       const transactionsRef = transactionCollection(user.uid);
-      const rangeSnapshot = await getDocs(
-        query(
-          transactionsRef,
-          where("date", ">=", bounds.from),
-          where("date", "<=", bounds.to),
-        ),
-      );
+      const allSnapshot = await getDocs(query(transactionsRef, orderBy("date", "desc")));
+      const rangeDocuments = allSnapshot.docs.filter((documentSnapshot) => {
+        const item = transactionFromSnapshot(documentSnapshot, reportingTimeZone);
+        return item.ledgerDate! >= bounds.from && item.ledgerDate! <= bounds.to;
+      });
 
       const documentsToDelete = new Map(
-        rangeSnapshot.docs.map((documentSnapshot) => [
+        rangeDocuments.map((documentSnapshot) => [
           documentSnapshot.id,
           documentSnapshot,
         ]),
       );
       const linkedIds = [
         ...new Set(
-          rangeSnapshot.docs
+          rangeDocuments
             .map(
               (documentSnapshot) =>
                 (
@@ -1460,9 +1396,8 @@ export function TransactionDataProvider({
 
       const affectedYears = new Set<number>();
       for (const documentSnapshot of documentsToDelete.values()) {
-        const year = new Date(
-          (documentSnapshot.data() as Transaction).date,
-        ).getFullYear();
+        const item = transactionFromSnapshot(documentSnapshot, reportingTimeZone);
+        const year = Number(item.ledgerDate!.slice(0, 4));
         if (Number.isFinite(year)) affectedYears.add(year);
       }
 
@@ -1510,7 +1445,7 @@ export function TransactionDataProvider({
 
       await rebuildYears(affectedYears);
     },
-    [rebuildYears, user],
+    [rebuildYears, reportingTimeZone, user],
   );
 
   const value = useMemo<TransactionDataContextType>(

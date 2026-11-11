@@ -19,6 +19,7 @@ import {
 import {
   calculateEnvelopeSummaries,
   calculatePendingEnvelopeCommitments,
+  financialEnvelopeEvents,
   suggestEnvelopeForTransaction,
   type EnvelopeSummary,
   type EnvelopeSummaryOptions,
@@ -107,6 +108,11 @@ export function EnvelopesProvider({
             left.name.localeCompare(right.name),
         ),
     [envelopes],
+  );
+
+  const effectiveEvents = useMemo(
+    () => financialEnvelopeEvents(events, transactions),
+    [events, transactions],
   );
 
   const addEnvelope = useCallback(
@@ -296,7 +302,7 @@ export function EnvelopesProvider({
 
   const getSummaries = useCallback(
     (options: EnvelopeSummaryOptions = {}) =>
-      calculateEnvelopeSummaries(activeEnvelopes, events, options).map(
+      calculateEnvelopeSummaries(activeEnvelopes, effectiveEvents, options).map(
         (summary) => {
           const pendingCommitted = calculatePendingEnvelopeCommitments(
             transactions,
@@ -310,7 +316,7 @@ export function EnvelopesProvider({
           };
         },
       ),
-    [activeEnvelopes, events, transactions],
+    [activeEnvelopes, effectiveEvents, transactions],
   );
 
   const suggestEnvelope = useCallback(
@@ -329,7 +335,7 @@ export function EnvelopesProvider({
         transaction.type === "expense" &&
         transaction.accountId === primaryAccountId
       ) {
-        return calculateEnvelopeSummaries(activeEnvelopes, events)
+        return calculateEnvelopeSummaries(activeEnvelopes, effectiveEvents)
           .filter((summary) => summary.reservedInOperating > 0)
           .sort(
             (left, right) =>
@@ -338,14 +344,14 @@ export function EnvelopesProvider({
       }
       return undefined;
     },
-    [activeEnvelopes, events, primaryAccountId],
+    [activeEnvelopes, effectiveEvents, primaryAccountId],
   );
 
   const value = useMemo<EnvelopesContextType>(
     () => ({
       envelopes,
       activeEnvelopes,
-      events,
+      events: effectiveEvents,
       loading: envelopesLoading || eventsLoading,
       error: envelopesError ?? eventsError,
       addEnvelope,
@@ -366,7 +372,7 @@ export function EnvelopesProvider({
       envelopes,
       envelopesError,
       envelopesLoading,
-      events,
+      effectiveEvents,
       eventsError,
       eventsLoading,
       getEnvelope,

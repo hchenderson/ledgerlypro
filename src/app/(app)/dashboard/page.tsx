@@ -96,6 +96,7 @@ export default function DashboardPage() {
   } = useCategories();
   const {
     openingBalanceForSelection,
+    allAccountsSelected,
     loading: accountsLoading,
   } = useAccounts();
   const {
@@ -280,7 +281,7 @@ export default function DashboardPage() {
               title={activeYear === new Date().getFullYear() ? "Current Balance" : "Ending Balance"}
               value={analytics.currentBalance}
               icon="Wallet"
-              trendValue={`Recorded balance through ${format(dashboardReferenceDate, "MMM d, yyyy")}`}
+              trendValue={`${allAccountsSelected ? "All-account" : "Selected-account"} ledger balance through ${format(dashboardReferenceDate, "MMM d, yyyy")}`}
             /> : null}
             {isVisible("last-updated") && lastUpdatedDate ? (
               <StatCard

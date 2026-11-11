@@ -3,7 +3,7 @@ import { endOfDay, startOfDay } from "date-fns";
 import {
   parseTransactionDate,
   summarizeTransactions,
-  transactionAmount,
+  financialTransactionAmount,
   type FinancialDateRange,
 } from "@/lib/financial-summary";
 import { expandTransactionsForReporting } from "@/lib/transaction-allocations";
@@ -36,14 +36,14 @@ function movement(
     transaction.categoryId &&
     fund.incomeCategoryIds.includes(transaction.categoryId)
   ) {
-    return transactionAmount(transaction);
+    return financialTransactionAmount(transaction);
   }
   if (
     transaction.type === "expense" &&
     transaction.categoryId &&
     fund.expenseCategoryIds.includes(transaction.categoryId)
   ) {
-    return -transactionAmount(transaction);
+    return -financialTransactionAmount(transaction);
   }
   return 0;
 }

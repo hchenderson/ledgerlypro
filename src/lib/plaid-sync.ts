@@ -30,6 +30,7 @@ import type {
   PlaidItemStatus,
   Transaction,
 } from "@/types";
+import { synchronizeLinkedRecurringActual } from "@/lib/recurring-reconciliation-server";
 
 interface PlaidSyncResponse {
   added: PlaidTransactionPayload[];
@@ -155,8 +156,8 @@ function preserveUserClassification(
     existing.type === "transfer";
   if (!manuallyControlled) return incoming;
   const providerChanged =
-    existing.amount !== incoming.amount ||
-    existing.date !== incoming.date ||
+    (existing.sourceAmountMinor ?? Math.round(existing.amount * 100)) !== incoming.sourceAmountMinor ||
+    (existing.sourceTransactionDate ?? existing.date.slice(0, 10)) !== incoming.sourceTransactionDate ||
     existing.postingStatus !== incoming.postingStatus;
   return {
     ...incoming,
@@ -180,6 +181,8 @@ function preserveUserClassification(
     classificationLocked: existing.classificationLocked,
     categorizedAt: existing.categorizedAt,
     reviewedAt: existing.reviewedAt,
+    refundOfTransactionId: existing.refundOfTransactionId,
+    refundStatus: existing.refundStatus,
   };
 }
 
@@ -196,6 +199,20 @@ function inheritPendingClassification(
     return incoming;
   }
   return preserveUserClassification(incoming, pending);
+}
+
+function preserveRecurringReconciliation(
+  incoming: Transaction,
+  existing?: Transaction | null,
+) {
+  if (!existing?.recurringOccurrenceId) return incoming;
+  return {
+    ...incoming,
+    recurringOccurrenceId: existing.recurringOccurrenceId,
+    recurringOriginalDueDate: existing.recurringOriginalDueDate,
+    recurringExpectedAmount: existing.recurringExpectedAmount,
+    recurringReconciliationStatus: existing.recurringReconciliationStatus,
+  };
 }
 
 export async function rebuildServerAggregates(uid: string, years: Set<number>) {
@@ -255,10 +272,27 @@ export async function removePlaidItemData({
         .get(),
     ]);
   const affectedYears = new Set<number>();
+  for (const document of transactionsSnapshot.docs) {
+    const transaction = {
+      ...document.data(),
+      id: document.id,
+    } as Transaction;
+    if (!transaction.recurringOccurrenceId) continue;
+    await synchronizeLinkedRecurringActual({
+      uid,
+      transaction: {
+        ...transaction,
+        postingStatus: "removed",
+        providerRemovedAt: new Date().toISOString(),
+        recurringReconciliationStatus: "exception",
+      },
+      reason: "linked-bank-connection-disconnected",
+    });
+  }
   const references = [
     ...transactionsSnapshot.docs.flatMap((document) => {
       const transaction = document.data() as Transaction;
-      const year = new Date(transaction.date).getFullYear();
+      const year = Number((transaction.ledgerDate ?? transaction.date.slice(0, 10)).slice(0, 4));
       if (Number.isFinite(year)) affectedYears.add(year);
       return [
         document.ref,
@@ -526,6 +560,9 @@ export async function syncPlaidItem({
         ]),
     );
     const operations: Array<(batch: FirebaseFirestore.WriteBatch) => void> = [];
+    const linkedRecurringUpdates: Transaction[] = [];
+    const refundOriginalsNeedingReview = new Set<string>();
+    const refundCreditsNeedingReview = new Set<string>();
     const affectedYears = new Set<number>();
     const syncedAt = new Date().toISOString();
 
@@ -548,10 +585,24 @@ export async function syncPlaidItem({
         rules,
         now: syncedAt,
       });
+      const existingProviderRecord = existingById.get(documentId);
+      if (
+        existingProviderRecord &&
+        ((existingProviderRecord.sourceAmountMinor ?? Math.round(existingProviderRecord.amount * 100)) !== next.sourceAmountMinor ||
+          (existingProviderRecord.sourceTransactionDate ?? existingProviderRecord.date.slice(0, 10)) !== next.sourceTransactionDate)
+      ) {
+        if (existingProviderRecord.refundOfTransactionId) refundCreditsNeedingReview.add(documentId);
+        else refundOriginalsNeedingReview.add(documentId);
+      }
       next = inheritPendingClassification(
-        preserveUserClassification(next, existingById.get(documentId)),
+        preserveUserClassification(next, existingProviderRecord),
         pendingId ? existingById.get(pendingId) : undefined,
       );
+      next = preserveRecurringReconciliation(
+        next,
+        existingById.get(documentId),
+      );
+      if (next.recurringOccurrenceId) linkedRecurringUpdates.push(next);
       operations.push((batch) => {
         batch.set(
           transactionsRef.doc(documentId),
@@ -570,7 +621,7 @@ export async function syncPlaidItem({
           batch.delete(envelopeEventsRef.doc(`transaction-${pendingId}`));
         }
       });
-      const year = new Date(next.date).getFullYear();
+      const year = Number(next.ledgerDate?.slice(0, 4));
       if (Number.isFinite(year)) affectedYears.add(year);
     }
 
@@ -581,6 +632,16 @@ export async function syncPlaidItem({
       );
       const existing = existingById.get(documentId);
       if (!existing) continue;
+      if (existing.refundOfTransactionId) refundCreditsNeedingReview.add(documentId);
+      else refundOriginalsNeedingReview.add(documentId);
+      if (existing.recurringOccurrenceId) {
+        linkedRecurringUpdates.push({
+          ...existing,
+          postingStatus: "removed",
+          providerRemovedAt: syncedAt,
+          recurringReconciliationStatus: "exception",
+        });
+      }
       operations.push((batch) => {
         if (existing.postingStatus === "pending" && !existing.classificationLocked) {
           batch.delete(transactionsRef.doc(documentId));
@@ -598,7 +659,7 @@ export async function syncPlaidItem({
         }
         batch.delete(envelopeEventsRef.doc(`transaction-${documentId}`));
       });
-      const year = new Date(existing.date).getFullYear();
+      const year = Number((existing.ledgerDate ?? existing.date.slice(0, 10)).slice(0, 4));
       if (Number.isFinite(year)) affectedYears.add(year);
     }
 
@@ -608,6 +669,41 @@ export async function syncPlaidItem({
         .slice(index, index + WRITE_CHUNK_SIZE)
         .forEach((operation) => operation(batch));
       await batch.commit();
+    }
+    for (const originalTransactionId of refundOriginalsNeedingReview) {
+      const linkedRefunds = await transactionsRef
+        .where("refundOfTransactionId", "==", originalTransactionId)
+        .get();
+      if (linkedRefunds.empty) continue;
+      const batch = adminDb.batch();
+      linkedRefunds.docs.forEach((document) => {
+        batch.set(document.ref, {
+          refundStatus: "exception",
+          categorizationStatus: "needs-review",
+        }, { merge: true });
+      });
+      await batch.commit();
+    }
+    if (refundCreditsNeedingReview.size > 0) {
+      const batch = adminDb.batch();
+      refundCreditsNeedingReview.forEach((transactionId) => {
+        batch.set(transactionsRef.doc(transactionId), {
+          refundStatus: "exception",
+          categorizationStatus: "needs-review",
+        }, { merge: true });
+      });
+      await batch.commit();
+    }
+    for (const linkedTransaction of linkedRecurringUpdates) {
+      await synchronizeLinkedRecurringActual({
+        uid,
+        transaction: linkedTransaction,
+        reason:
+          linkedTransaction.postingStatus === "removed"
+            ? "linked-provider-transaction-removed"
+            : "linked-provider-transaction-became-ineligible",
+        now: syncedAt,
+      });
     }
 
     await refreshPlaidBalances({ uid, plaidItemId, realtime: false });

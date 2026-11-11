@@ -95,9 +95,35 @@ describe("calculateQuarterlyReportMetrics", () => {
       variance: 1_800,
       percentUsed: 40,
     });
-    expect(result.goalsProgress[0].progress).toBe(25);
+    expect(result.goalsProgress[0]).toMatchObject({
+      historicalProgressAvailable: false,
+      historicalSavedAmount: null,
+      historicalProgress: null,
+      currentSavedAmount: 500,
+      currentProgress: 25,
+    });
     expect(result.kpis.savingsRate).toBe(76);
     expect(result.kpis.averageMonthlyNet).toBeCloseTo(1_266.67, 2);
+  });
+
+  it("assigns a child expense once while preserving the parent subtree drill-down", () => {
+    const result = calculateQuarterlyReportMetrics({
+      transactions,
+      categories,
+      budgets: [
+        { id: "parent", categoryId: "housing", amount: 2_000, period: "monthly", year: 2025 },
+        { id: "child", categoryId: "rent", amount: 1_000, period: "monthly", year: 2025 },
+      ],
+      goals: [],
+      reportYear: 2025,
+      range: { from: new Date(2025, 0, 1), to: new Date(2025, 2, 31) },
+    });
+
+    const parent = result.budgetComparison.find((row) => row.budgetId === "parent");
+    const child = result.budgetComparison.find((row) => row.budgetId === "child");
+    expect(parent).toMatchObject({ actual: 0, subtreeActual: 1_200 });
+    expect(child).toMatchObject({ actual: 1_200, subtreeActual: 1_200 });
+    expect(result.budgetComparisonTotals.actual).toBe(1_200);
   });
 
   it("reconciles exactly with the shared Reports and Compare summary", () => {

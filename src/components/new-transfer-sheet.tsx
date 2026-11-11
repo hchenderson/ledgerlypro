@@ -30,6 +30,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { calendarDateToLedgerDate } from "@/lib/ledger-date";
 import {
   Sheet,
   SheetContent,
@@ -215,7 +216,7 @@ export function NewTransferSheet({
         sourceAccountId: values.sourceAccountId,
         destinationAccountId: values.destinationAccountId,
         amount: Math.abs(values.amount),
-        date: values.date.toISOString(),
+        date: calendarDateToLedgerDate(values.date),
         description: values.description,
         purpose: values.purpose,
         ...(values.purpose !== "ordinary" && values.envelopeId

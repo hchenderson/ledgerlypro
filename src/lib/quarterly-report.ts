@@ -1,31 +1,38 @@
-import {
-  categorySubtreeIds,
-  categorySubtreeNames,
-  findCategoryPathById,
-  findMainCategoryForTransaction,
-  normalizeCategoryLabel,
-} from "./category-tree";
-import {
-  summarizeTransactions,
-  transactionAmount,
-} from "./financial-summary";
+import { endOfQuarter, startOfQuarter } from "date-fns";
+
+import { computeReportAnalytics, computeReportBudgets } from "@/lib/report-analytics";
+import type { FinancialDateRange } from "@/lib/financial-summary";
 import type { Budget, Category, Goal, Transaction } from "@/types";
-import { isFinancialTransaction } from "./accounts";
-import { expandTransactionsForReporting } from "./transaction-allocations";
+import { ledgerDateToDate, transactionLedgerDate } from "@/lib/ledger-date";
+
+export interface QuarterlyCategorySummary {
+  key: string;
+  categoryId: string | null;
+  name: string;
+  total: number;
+  percentageOfTotal: number;
+  status: "resolved" | "uncategorized" | "unresolved";
+}
 
 export interface QuarterlyReportMetrics {
   totalIncome: number;
   totalExpenses: number;
   transactionCount: number;
+  /** Compatibility fields retained for snapshots created before calculation v4. */
   incomeSummary: Record<string, number>;
   expenseSummary: Record<string, number>;
+  incomeCategories: QuarterlyCategorySummary[];
+  expenseCategories: QuarterlyCategorySummary[];
   netIncome: number;
   budgetComparison: Array<{
+    budgetId: string;
     categoryName: string;
     budget: number;
     actual: number;
+    subtreeActual: number;
     variance: number;
     percentUsed: number;
+    isUnbudgeted?: boolean;
   }>;
   budgetComparisonTotals: {
     budget: number;
@@ -34,10 +41,14 @@ export interface QuarterlyReportMetrics {
     percentUsed: number;
   };
   goalsProgress: Array<{
+    id: string;
     name: string;
     targetAmount: number;
-    savedAmount: number;
-    progress: number;
+    historicalProgressAvailable: false;
+    historicalSavedAmount: null;
+    historicalProgress: null;
+    currentSavedAmount: number;
+    currentProgress: number;
   }>;
   kpis: {
     profitMargin: number;
@@ -47,22 +58,8 @@ export interface QuarterlyReportMetrics {
   };
 }
 
-function summarizeByCategory(
-  transactions: Transaction[],
-  type: Transaction["type"],
-  categories: Category[]
-): Record<string, number> {
-  return transactions
-    .filter(
-      (transaction) =>
-        isFinancialTransaction(transaction) && transaction.type === type,
-    )
-    .reduce<Record<string, number>>((totals, transaction) => {
-      const mainCategory = findMainCategoryForTransaction(transaction, categories);
-      totals[mainCategory] =
-        (totals[mainCategory] ?? 0) + transactionAmount(transaction);
-      return totals;
-    }, {});
+function compatibilitySummary(rows: QuarterlyCategorySummary[]) {
+  return Object.fromEntries(rows.map((row) => [row.name, row.total]));
 }
 
 export function calculateQuarterlyReportMetrics({
@@ -71,102 +68,112 @@ export function calculateQuarterlyReportMetrics({
   budgets,
   goals,
   reportYear,
+  range,
+  accountIds = [],
+  defaultAccountId,
 }: {
   transactions: Transaction[];
   categories: Category[];
   budgets: Budget[];
   goals: Goal[];
   reportYear: number;
+  range?: FinancialDateRange;
+  accountIds?: string[];
+  defaultAccountId?: string | null;
 }): QuarterlyReportMetrics {
-  const reportingTransactions = expandTransactionsForReporting(transactions);
-  const {
-    income: totalIncome,
-    expenses: totalExpenses,
-    net: netIncome,
-    transactionCount,
-  } = summarizeTransactions(transactions);
-
-  const budgetComparison = budgets
-    .filter((budget) => budget.year === reportYear)
-    .flatMap((budget) => {
-      const path = findCategoryPathById(budget.categoryId, categories);
-      const category = path?.at(-1);
-      const mainCategory = path?.[0] as Category | undefined;
-      if (!category || mainCategory?.type !== "expense") return [];
-
-      const budgetAmount =
-        budget.period === "monthly" ? budget.amount * 3 : budget.amount / 4;
-      const categoryIds = new Set(categorySubtreeIds(category));
-      const categoryNames = new Set(
-        categorySubtreeNames(category).map(normalizeCategoryLabel)
-      );
-      const actual = reportingTransactions
-        .filter((transaction) => {
-          if (
-            !isFinancialTransaction(transaction) ||
-            transaction.type !== "expense"
-          ) return false;
-          if (transaction.categoryId) {
-            return categoryIds.has(transaction.categoryId);
-          }
-          return categoryNames.has(
-            normalizeCategoryLabel(transaction.category)
-          );
-        })
-        .reduce(
-          (sum, transaction) => sum + transactionAmount(transaction),
-          0
-        );
-      const variance = budgetAmount - actual;
-
-      return [
-        {
-          categoryName: category.name,
-          budget: budgetAmount,
-          actual,
-          variance,
-          percentUsed: budgetAmount > 0 ? (actual / budgetAmount) * 100 : 0,
-        },
-      ];
-    });
-
-  const budgetComparisonTotals = budgetComparison.reduce(
-    (totals, item) => ({
-      ...totals,
-      budget: totals.budget + item.budget,
-      actual: totals.actual + item.actual,
-    }),
-    { budget: 0, actual: 0, variance: 0, percentUsed: 0 }
+  const firstDate = transactions
+    .map((transaction) => ledgerDateToDate(transactionLedgerDate(transaction)))
+    .find((date) => !Number.isNaN(date.getTime()));
+  const effectiveRange = range ?? {
+    from: startOfQuarter(firstDate ?? new Date(reportYear, 0, 1)),
+    to: endOfQuarter(firstDate ?? new Date(reportYear, 0, 1)),
+  };
+  const reportFilters = {
+    accountIds,
+    transactionTypes: ["income", "expense"] as ("income" | "expense")[],
+    includedCategoryKeys: [],
+    excludedCategoryKeys: [],
+    includePending: false,
+    includeTransfers: false,
+  };
+  const analytics = computeReportAnalytics(
+    transactions,
+    effectiveRange,
+    reportFilters,
+    categories,
+    [],
+    "month",
+    defaultAccountId,
   );
-  budgetComparisonTotals.variance =
-    budgetComparisonTotals.budget - budgetComparisonTotals.actual;
-  budgetComparisonTotals.percentUsed =
-    budgetComparisonTotals.budget > 0
-      ? (budgetComparisonTotals.actual / budgetComparisonTotals.budget) * 100
-      : 0;
+  const budgetSummary = computeReportBudgets(
+    budgets.filter((budget) => budget.year === reportYear),
+    categories,
+    analytics.financialTransactions,
+    effectiveRange,
+    reportFilters,
+  );
+  const incomeCategories = analytics.incomeCategories.map((row) => ({
+    key: row.key ?? `income:${row.category}`,
+    categoryId: row.categoryId ?? null,
+    name: row.category,
+    total: row.amount,
+    percentageOfTotal: row.share,
+    status: row.status ?? "unresolved",
+  }));
+  const expenseCategories = analytics.expenseCategories.map((row) => ({
+    key: row.key ?? `expense:${row.category}`,
+    categoryId: row.categoryId ?? null,
+    name: row.category,
+    total: row.amount,
+    percentageOfTotal: row.share,
+    status: row.status ?? "unresolved",
+  }));
+  const { income: totalIncome, expenses: totalExpenses, net: netIncome } =
+    analytics.summary;
 
   return {
     totalIncome,
     totalExpenses,
-    transactionCount,
-    incomeSummary: summarizeByCategory(reportingTransactions, "income", categories),
-    expenseSummary: summarizeByCategory(reportingTransactions, "expense", categories),
+    transactionCount: analytics.summary.transactionCount,
+    incomeSummary: compatibilitySummary(incomeCategories),
+    expenseSummary: compatibilitySummary(expenseCategories),
+    incomeCategories,
+    expenseCategories,
     netIncome,
-    budgetComparison,
-    budgetComparisonTotals,
+    budgetComparison: budgetSummary.rows.map((row) => ({
+      budgetId: row.budgetId,
+      categoryName: row.categoryName,
+      budget: row.budget,
+      actual: row.actual,
+      subtreeActual: row.subtreeActual ?? row.actual,
+      variance: row.remaining,
+      percentUsed: row.percentUsed,
+      ...(row.isUnbudgeted ? { isUnbudgeted: true } : {}),
+    })),
+    budgetComparisonTotals: {
+      budget: budgetSummary.budget,
+      actual: budgetSummary.actual,
+      variance: budgetSummary.remaining,
+      percentUsed: budgetSummary.percentUsed,
+    },
     goalsProgress: goals.map((goal) => ({
+      id: goal.id,
       name: goal.name,
       targetAmount: goal.targetAmount,
-      savedAmount: goal.savedAmount,
-      progress: goal.targetAmount > 0 ? (goal.savedAmount / goal.targetAmount) * 100 : 0,
+      historicalProgressAvailable: false as const,
+      historicalSavedAmount: null,
+      historicalProgress: null,
+      currentSavedAmount: goal.savedAmount,
+      currentProgress:
+        goal.targetAmount > 0
+          ? (goal.savedAmount / goal.targetAmount) * 100
+          : 0,
     })),
     kpis: {
-      profitMargin:
-        totalIncome > 0 ? (netIncome / totalIncome) * 100 : 0,
+      profitMargin: totalIncome > 0 ? (netIncome / totalIncome) * 100 : 0,
       expenseToIncomeRatio:
         totalIncome > 0 ? (totalExpenses / totalIncome) * 100 : 0,
-      savingsRate:
-        totalIncome > 0 ? (netIncome / totalIncome) * 100 : 0,
+      savingsRate: totalIncome > 0 ? (netIncome / totalIncome) * 100 : 0,
       averageMonthlyNet: netIncome / 3,
     },
   };

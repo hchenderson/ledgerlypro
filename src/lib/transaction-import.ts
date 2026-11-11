@@ -1,4 +1,6 @@
 import type { Transaction } from '@/types';
+import { transactionLedgerDate } from '@/lib/ledger-date';
+import { moneyMinor } from '@/lib/money';
 
 export type TransactionImportSummary = {
   imported: number;
@@ -8,15 +10,17 @@ export type TransactionImportSummary = {
 export function transactionFingerprint(
   transaction: Pick<
     Transaction,
-    'date' | 'description' | 'amount' | 'type' | 'accountId'
+    'date' | 'ledgerDate' | 'description' | 'amount' | 'amountMinor' | 'currency' | 'type' | 'accountId'
   >
 ): string {
-  const date = new Date(transaction.date);
-  const dateKey = Number.isNaN(date.getTime())
-    ? transaction.date.trim()
-    : date.toISOString().slice(0, 10);
+  let dateKey: string;
+  try {
+    dateKey = transactionLedgerDate(transaction);
+  } catch {
+    dateKey = transaction.date.trim();
+  }
   const description = transaction.description.trim().toLocaleLowerCase().replace(/\s+/g, ' ');
-  const amountInCents = Math.round(Math.abs(transaction.amount) * 100);
+  const amountInCents = moneyMinor(transaction);
   return [
     transaction.accountId ?? 'primary-account',
     dateKey,

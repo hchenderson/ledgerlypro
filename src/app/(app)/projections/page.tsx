@@ -1,11 +1,11 @@
 
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useTransactionData } from "@/hooks/use-transactions";
 import { useAuth } from "@/hooks/use-auth";
+import { useForwardForecast } from "@/hooks/use-forward-forecast";
 import { authenticatedFetch } from "@/lib/authenticated-fetch";
 import { Rocket, Sparkles, AlertTriangle, Loader2, ArrowRight } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -14,7 +14,6 @@ import { FeatureGate } from "@/components/feature-gate";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
-import { expandTransactionsForReporting } from "@/lib/transaction-allocations";
 
 function ProjectionsPageContent() {
   const [loading, setLoading] = useState(false);
@@ -22,26 +21,13 @@ function ProjectionsPageContent() {
   const [error, setError] = useState<string | null>(null);
   const [userPrompt, setUserPrompt] = useState("");
   const resultRef = useRef<HTMLDivElement>(null);
-  const {
-    transactions: allTransactions,
-    loading: userDataLoading,
-  } = useTransactionData();
+  const forecast = useForwardForecast(90);
+  const userDataLoading = forecast.loading;
   const { user } = useAuth();
-  const financialTransactions = useMemo(
-    () =>
-      expandTransactionsForReporting(allTransactions)
-        .filter(
-          (transaction) =>
-            transaction.type === "income" ||
-            transaction.type === "expense",
-        )
-        .map((transaction) => ({
-          ...transaction,
-          amount: Math.abs(transaction.amount),
-        })),
-    [allTransactions],
-  );
-  const hasTransactions = financialTransactions.length > 0;
+  const financialTransactions = forecast.historicalActuals;
+  const hasTransactions =
+    financialTransactions.length > 0 ||
+    forecast.recurringFuture.length > 0;
 
   useEffect(() => {
     if (!loading && (projection || error)) {
@@ -68,6 +54,20 @@ function ProjectionsPageContent() {
       if (!user) throw new Error("You must be signed in.");
       const input = {
         historicalData: JSON.stringify(financialTransactions),
+        deterministicForecast: JSON.stringify({
+          period: {
+            start: forecast.contract.start.toISOString(),
+            endInclusive: forecast.contract.endInclusive.toISOString(),
+            horizonDays: forecast.contract.horizonDays,
+            reportingTimeZone: forecast.contract.reportingTimeZone,
+          },
+          accountScope: forecast.accountScope,
+          totals: forecast.totals,
+          openingBalance: forecast.openingBalance,
+          projectedEndingBalance: forecast.projectedEndingBalance,
+          components: forecast.components,
+          diagnostics: forecast.diagnostics,
+        }),
         userPrompt: userPrompt || undefined,
       };
       const response = await authenticatedFetch(user, '/api/ai/projections', {
@@ -98,7 +98,7 @@ function ProjectionsPageContent() {
           AI Financial Analysis
         </h1>
         <p className="mx-auto mt-3 max-w-2xl text-base text-muted-foreground sm:mt-4 sm:text-lg">
-          Leverage AI to forecast your future or ask specific questions about your transaction history.
+          Ask AI to explain Ledgerly&apos;s calculated forecast or analyze the included transaction history.
         </p>
       </div>
       
@@ -113,7 +113,7 @@ function ProjectionsPageContent() {
       <Card className="min-w-0 overflow-hidden">
         <CardHeader className="p-4 sm:p-6">
           <CardTitle>Generate Your Analysis</CardTitle>
-          <CardDescription>Enter a specific question or leave it blank for a general cash flow projection.</CardDescription>
+          <CardDescription>Ledgerly calculates the totals first; AI explains them and can answer follow-up questions.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4 px-4 pb-4 sm:px-6 sm:pb-6">
             <div className="space-y-2">

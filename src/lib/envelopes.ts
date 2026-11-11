@@ -1,6 +1,9 @@
 import { endOfDay, startOfDay } from "date-fns";
 
-import { calculateAccountBalance } from "@/lib/accounts";
+import {
+  calculateAccountBalance,
+  isRecurringExpectationTransaction,
+} from "@/lib/accounts";
 import { isTransactionFinalized } from "@/lib/categorization";
 import type {
   Account,
@@ -9,6 +12,8 @@ import type {
   Transaction,
   TransferPurpose,
 } from "@/types";
+import { canonicalMoneyFields, minorToMajor, moneyMinor, signedMoneyMinor } from "@/lib/money";
+import { ledgerDateToDate, transactionLedgerDate } from "@/lib/ledger-date";
 
 export interface EnvelopeSummary {
   envelope: Envelope;
@@ -30,6 +35,24 @@ export interface EnvelopeSummaryOptions {
   to?: Date;
 }
 
+/** Old recurring processors wrote both an expectation transaction and a
+ * transaction-backed envelope event. Keep those records for traceability but
+ * exclude their event from envelope math; only a confirmed/manual actual may
+ * spend or refund envelope funds. */
+export function financialEnvelopeEvents(
+  events: EnvelopeEvent[],
+  transactions: Transaction[],
+) {
+  const transactionsById = new Map(
+    transactions.map((transaction) => [transaction.id, transaction]),
+  );
+  return events.filter((event) => {
+    if (!event.transactionId) return true;
+    const transaction = transactionsById.get(event.transactionId);
+    return !transaction || !isRecurringExpectationTransaction(transaction);
+  });
+}
+
 const cents = (value: number) => Math.round(value * 100) / 100;
 
 function isWithinPeriod(
@@ -48,7 +71,7 @@ function isWithinPeriod(
 }
 
 export function envelopeAvailabilityDelta(event: EnvelopeEvent): number {
-  const amount = Math.abs(event.amount);
+  const amount = minorToMajor(moneyMinor(event));
   switch (event.type) {
     case "starting-allocation":
     case "fund":
@@ -60,7 +83,7 @@ export function envelopeAvailabilityDelta(event: EnvelopeEvent): number {
     case "reassign-out":
       return -amount;
     case "adjustment":
-      return event.amount;
+      return minorToMajor(signedMoneyMinor(event));
     case "release":
     case "return":
       return 0;
@@ -100,38 +123,38 @@ export function calculateEnvelopeSummary(
   const funded = cents(
     periodEvents
       .filter((event) => event.type === "fund")
-      .reduce((total, event) => total + Math.abs(event.amount), 0),
+      .reduce((total, event) => total + minorToMajor(moneyMinor(event)), 0),
   );
   const spent = cents(
     periodEvents
       .filter((event) => event.type === "expense")
-      .reduce((total, event) => total + Math.abs(event.amount), 0),
+      .reduce((total, event) => total + minorToMajor(moneyMinor(event)), 0),
   );
   const released = cents(
     periodEvents
       .filter((event) => event.type === "release")
-      .reduce((total, event) => total + Math.abs(event.amount), 0),
+      .reduce((total, event) => total + minorToMajor(moneyMinor(event)), 0),
   );
   const returned = cents(
     periodEvents
       .filter((event) => event.type === "return")
-      .reduce((total, event) => total + Math.abs(event.amount), 0),
+      .reduce((total, event) => total + minorToMajor(moneyMinor(event)), 0),
   );
   const reservedInOperating = cents(
     Math.max(
       0,
       availabilityEvents.reduce((total, event) => {
         if (event.type === "release") {
-          return total + Math.abs(event.amount);
+          return total + minorToMajor(moneyMinor(event));
         }
         if (event.type === "return") {
-          return total - Math.abs(event.amount);
+          return total - minorToMajor(moneyMinor(event));
         }
         if (event.type === "expense" && event.usesReleasedFunds) {
-          return total - Math.abs(event.amount);
+          return total - minorToMajor(moneyMinor(event));
         }
         if (event.type === "refund" && event.usesReleasedFunds) {
-          return total + Math.abs(event.amount);
+          return total + minorToMajor(moneyMinor(event));
         }
         return total;
       }, 0),
@@ -176,14 +199,14 @@ export function calculatePendingEnvelopeCommitments(
           transaction.envelopeId === envelopeId &&
           !transaction.providerRemovedAt &&
           (!options.from ||
-            new Date(transaction.date).getTime() >=
+            ledgerDateToDate(transactionLedgerDate(transaction)).getTime() >=
               startOfDay(options.from).getTime()) &&
           (!options.to ||
-            new Date(transaction.date).getTime() <=
+            ledgerDateToDate(transactionLedgerDate(transaction)).getTime() <=
               endOfDay(options.to).getTime()),
       )
       .reduce(
-        (total, transaction) => total + Math.abs(transaction.amount),
+        (total, transaction) => total + minorToMajor(moneyMinor(transaction)),
         0,
       ),
   );
@@ -262,7 +285,8 @@ export function envelopeEventForTransaction(
   if (
     transaction.type === "transfer" ||
     !transaction.envelopeId ||
-    !isTransactionFinalized(transaction)
+    !isTransactionFinalized(transaction) ||
+    isRecurringExpectationTransaction(transaction)
   ) {
     return null;
   }
@@ -270,7 +294,7 @@ export function envelopeEventForTransaction(
     id: `transaction-${transaction.id}`,
     envelopeId: transaction.envelopeId,
     type: transaction.type === "income" ? "refund" : "expense",
-    amount: Math.abs(transaction.amount),
+    ...canonicalMoneyFields(transaction),
     date: transaction.date,
     transactionId: transaction.id,
     usesReleasedFunds:
@@ -300,7 +324,7 @@ export function envelopeEventsForTransfer({
 }): EnvelopeEvent[] {
   if (!envelopeId || !purpose || purpose === "ordinary") return [];
   const common = {
-    amount: Math.abs(amount),
+    ...canonicalMoneyFields(amount),
     date,
     transferId,
     note,

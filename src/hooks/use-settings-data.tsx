@@ -11,17 +11,12 @@ import {
 } from "react";
 import {
   doc,
-  getDocs,
   onSnapshot,
-  query,
   setDoc,
-  writeBatch,
-  type QueryConstraint,
 } from "firebase/firestore";
 
 import { useAuth } from "@/hooks/use-auth";
-import { userCollectionRef } from "@/hooks/use-firestore-user-collection";
-import { chunkArray } from "@/lib/batching";
+import { authenticatedFetch } from "@/lib/authenticated-fetch";
 import { db } from "@/lib/firebase";
 
 export interface SettingsDataContextType {
@@ -94,72 +89,14 @@ export function SettingsDataProvider({
     [user],
   );
 
-  const clearCollection = useCallback(
-    async (
-      collectionName: string,
-      constraints: QueryConstraint[] = [],
-    ) => {
-      if (!user) return;
-      const snapshot = await getDocs(
-        query(
-          userCollectionRef(user.uid, collectionName),
-          ...constraints,
-        ),
-      );
-      for (const documentChunk of chunkArray(snapshot.docs, 450)) {
-        const batch = writeBatch(db);
-        documentChunk.forEach((document) =>
-          batch.delete(document.ref),
-        );
-        await batch.commit();
-      }
-    },
-    [user],
-  );
-
   const clearAllData = useCallback(async () => {
-    await Promise.all(
-      [
-        "transactions",
-        "financialSummaries",
-        "categories",
-        "budgets",
-        "recurringTransactions",
-        "goals",
-        "envelopes",
-        "envelopeEvents",
-        "accountReconciliations",
-        "categorizationRules",
-        "categorizationAudit",
-        "reports",
-        "reportViews",
-        "splitTemplates",
-        "designatedFunds",
-      ].map((collectionName) => clearCollection(collectionName)),
-    );
-    if (!user) return;
-    const accountsSnapshot = await getDocs(
-      query(userCollectionRef(user.uid, "accounts")),
-    );
-    for (const accountChunk of chunkArray(accountsSnapshot.docs, 450)) {
-      const batch = writeBatch(db);
-      accountChunk.forEach((accountDocument) => {
-        const account = accountDocument.data();
-        batch.set(
-          accountDocument.ref,
-          {
-            role: account.isDefault
-              ? "operating"
-              : account.type === "credit"
-                ? "debt"
-                : "standard",
-          },
-          { merge: true },
-        );
-      });
-      await batch.commit();
-    }
-  }, [clearCollection, user]);
+    if (!user) throw new Error("User not authenticated");
+    const response = await authenticatedFetch(user, "/api/account/clear-data", {
+      method: "POST",
+    });
+    const payload = (await response.json().catch(() => ({}))) as { error?: string };
+    if (!response.ok) throw new Error(payload.error ?? "Ledger data could not be cleared.");
+  }, [user]);
 
   const value = useMemo<SettingsDataContextType>(
     () => ({
