@@ -31,6 +31,10 @@ function localDate(year: number, month: number, day: number) {
   return new Date(year, month - 1, day, 12).toISOString();
 }
 
+function forecastInstant(year: number, month: number, day: number) {
+  return new Date(Date.UTC(year, month - 1, day, 12));
+}
+
 function tx(
   id: string,
   date: string,
@@ -62,7 +66,7 @@ function forecast(
     accounts: [checking, savings],
     primaryAccountId: checking.id,
     selectedAccountIds: [],
-    startDate: new Date(2026, 2, 2), // Monday, March 2
+    startDate: forecastInstant(2026, 3, 2), // Monday, March 2
     horizonDays: 7,
     lookbackWeeks: 4,
     minimumActiveWeeks: 4,
@@ -73,7 +77,7 @@ function forecast(
 describe("forward forecast contract", () => {
   it("returns zero projected activity and preserves balance with no inputs", () => {
     const result = forecast([], {
-      startDate: new Date(2026, 11, 15),
+      startDate: forecastInstant(2026, 12, 15),
       horizonDays: 90,
     });
 
@@ -92,6 +96,18 @@ describe("forward forecast contract", () => {
     });
     expect(result.openingBalance).toBe(1_500);
     expect(result.projectedEndingBalance).toBe(1_500);
+  });
+
+  it("resolves the forecast day in the ledger reporting time zone", () => {
+    const result = forecast([], {
+      // This instant is April 5 in New York and April 6 in UTC.
+      startDate: new Date("2026-04-06T02:00:00.000Z"),
+      reportingTimeZone: "America/New_York",
+      horizonDays: 1,
+    });
+
+    expect(format(result.contract.start, "yyyy-MM-dd")).toBe("2026-04-05");
+    expect(format(result.contract.endInclusive, "yyyy-MM-dd")).toBe("2026-04-05");
   });
 
   it("uses one residual fallback rather than multiplying it by unused categories", () => {
@@ -151,7 +167,7 @@ describe("forward forecast contract", () => {
       }),
     ];
     const result = forecast(history, {
-      startDate: new Date(2026, 2, 30),
+      startDate: forecastInstant(2026, 3, 30),
       minimumActiveWeeks: 2,
     });
 
@@ -168,7 +184,7 @@ describe("forward forecast contract", () => {
     });
 
     const shuffled = forecast([...history].reverse(), {
-      startDate: new Date(2026, 2, 30),
+      startDate: forecastInstant(2026, 3, 30),
       minimumActiveWeeks: 2,
     });
     expect(shuffled.totals).toEqual(result.totals);
@@ -180,7 +196,7 @@ describe("forward forecast contract", () => {
           : transaction,
       ),
       {
-        startDate: new Date(2026, 2, 30),
+        startDate: forecastInstant(2026, 3, 30),
         minimumActiveWeeks: 2,
       },
     );
@@ -224,11 +240,11 @@ describe("forward forecast contract", () => {
       }),
     ];
     const allAccounts = forecast(history, {
-      startDate: new Date(2026, 1, 2),
+      startDate: forecastInstant(2026, 2, 2),
       minimumActiveWeeks: 99,
     });
     const checkingOnly = forecast(history, {
-      startDate: new Date(2026, 1, 2),
+      startDate: forecastInstant(2026, 2, 2),
       minimumActiveWeeks: 99,
       selectedAccountIds: [checking.id],
     });
@@ -273,7 +289,7 @@ describe("forward forecast contract", () => {
     };
     const result = forecast([materialized, bankActual], {
       recurringTransactions: [schedule],
-      startDate: new Date(2026, 2, 30),
+      startDate: forecastInstant(2026, 3, 30),
       minimumActiveWeeks: 99,
     });
 
@@ -319,7 +335,7 @@ describe("forward forecast contract", () => {
     const result = forecast([bankActual], {
       recurringTransactions: [schedule],
       recurringOccurrences: [fulfilled],
-      startDate: new Date(2026, 3, 6),
+      startDate: forecastInstant(2026, 4, 6),
       horizonDays: 7,
       minimumActiveWeeks: 99,
     });
@@ -364,13 +380,13 @@ describe("forward forecast contract", () => {
     const partialResult = forecast([], {
       recurringTransactions: [schedule],
       recurringOccurrences: [partial],
-      startDate: new Date(2026, 3, 6),
+      startDate: forecastInstant(2026, 4, 6),
       horizonDays: 7,
     });
     const skippedResult = forecast([], {
       recurringTransactions: [schedule],
       recurringOccurrences: [{ ...base, status: "skipped", skippedAt: localDate(2026, 4, 1) }],
-      startDate: new Date(2026, 3, 6),
+      startDate: forecastInstant(2026, 4, 6),
       horizonDays: 7,
     });
     const exceptionResult = forecast([], {
@@ -380,7 +396,7 @@ describe("forward forecast contract", () => {
         status: "exception",
         exceptionReason: "linked-provider-transaction-removed",
       }],
-      startDate: new Date(2026, 3, 6),
+      startDate: forecastInstant(2026, 4, 6),
       horizonDays: 7,
     });
 
@@ -415,13 +431,13 @@ describe("forward forecast contract", () => {
     const afterEdit = forecast([], {
       recurringTransactions: [edited],
       recurringOccurrences: [persisted],
-      startDate: new Date(2026, 3, 6),
+      startDate: forecastInstant(2026, 4, 6),
       horizonDays: 7,
     });
     const afterDeletion = forecast([], {
       recurringTransactions: [],
       recurringOccurrences: [persisted],
-      startDate: new Date(2026, 3, 6),
+      startDate: forecastInstant(2026, 4, 6),
       horizonDays: 7,
     });
 
@@ -453,13 +469,13 @@ describe("forward forecast contract", () => {
       recurringTransactions: [schedule],
       recurringOccurrences: [persisted],
       selectedAccountIds: [checking.id],
-      startDate: new Date(2026, 3, 6),
+      startDate: forecastInstant(2026, 4, 6),
       horizonDays: 7,
     });
     const endsBeforeDue = forecast([], {
       recurringTransactions: [schedule],
       recurringOccurrences: [persisted],
-      startDate: new Date(2026, 3, 6),
+      startDate: forecastInstant(2026, 4, 6),
       horizonDays: 6,
     });
 
@@ -498,14 +514,14 @@ describe("forward forecast contract", () => {
     };
     const leapResult = forecast([], {
       recurringTransactions: [yearly],
-      startDate: new Date(2029, 1, 28),
+      startDate: forecastInstant(2029, 2, 28),
       horizonDays: 2,
     });
     expect(leapResult.recurringFuture).toHaveLength(1);
     expect(format(new Date(leapResult.recurringFuture[0].date), "yyyy-MM-dd")).toBe("2029-02-28");
 
     const leapHorizon = forecast([], {
-      startDate: new Date(2028, 1, 29),
+      startDate: forecastInstant(2028, 2, 29),
       horizonDays: 90,
     });
     expect(leapHorizon.series).toHaveLength(90);
@@ -530,7 +546,10 @@ describe("forward forecast contract", () => {
       ),
     ]);
 
-    for (const startDate of [new Date(2026, 2, 30), new Date(2026, 3, 6)]) {
+    for (const startDate of [
+      forecastInstant(2026, 3, 30),
+      forecastInstant(2026, 4, 6),
+    ]) {
       const result = forecast(weeklyHistory, {
         startDate,
         horizonDays: 7,

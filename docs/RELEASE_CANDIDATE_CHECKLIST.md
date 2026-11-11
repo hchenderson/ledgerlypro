@@ -17,7 +17,7 @@ The DATA-001 backfill does **not** need to precede the application rollout. Mixe
 
 | Gate | Result | Evidence and boundary |
 |---|---|---|
-| Unit and golden-ledger suite | PASS | `36` files, `172` tests. Deterministic financial totals include the `$1,200` income, `$223` checking expense, `$273` all-account expense, `$977` checking net, and `$927` all-account net cases. |
+| Unit and golden-ledger suite | PASS | `36` files, `173` tests. Deterministic financial totals include the `$1,200` income, `$223` checking expense, `$273` all-account expense, `$977` checking net, and `$927` all-account net cases. Forecast dates and opening balances are also checked across UTC and the ledger reporting time zone. |
 | Firestore rules and Admin route suite | PASS | `2` files, `16` tests against the Firestore emulator. Covers two-user isolation, owner queries/listeners, canonical/legacy writes, protected provider/refund/recurring fields, atomic transfers, recurring retries/competition, refund link/unlink, immutable summaries/reports/audits, and the old-client partial-clear hazard. |
 | New app + proposed rules | PASS | Authenticated Chromium flow against Auth and Firestore emulators. Manual create/edit, denied provider edit with form preservation, transfer, CSV import, receipt save, budget actuals, recurring confirmation, time-zone update, Reports, Q1 Quarterly, EOY, CSV, and PDF download all completed. External Plaid/AI behavior was stubbed; static Google Font requests were blocked and no external data-service request escaped localhost. |
 | New app + captured baseline rules | PASS | The same authenticated flow passed against `tests/release-baseline.rules`, captured from base commit `4b34887`. **Its equivalence to the rules currently deployed in production is unverified.** |
@@ -40,6 +40,7 @@ Receipt extraction and Plaid/provider transitions were simulated. Refund atomici
 4. Receipt-created transactions now await the Firestore write, retain the selected category across rerenders, and preserve date-only receipt dates without a one-day UTC shift.
 5. Next.js and `eslint-config-next` were advanced to `15.5.29`, the smallest `15.5.x` release containing the November 2026 official security fixes.
 6. Isolated browser/Admin configuration fails closed on the wrong project ID, emulator host, or emulator port. Test mode stubs receipt extraction and does not use production Plaid or Gemini credentials.
+7. Forecast start dates and opening-balance cutoffs now resolve through the ledger reporting time zone instead of the server/browser host time zone; the same fixtures pass under UTC and America/New_York.
 
 ## Required production checks before changing anything
 

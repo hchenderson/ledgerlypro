@@ -220,9 +220,11 @@ export function calculateAccountBalanceAsOf(
 export function calculateAccountBalanceBefore(
   account: Account,
   transactions: Transaction[],
-  date: Date,
+  date: Date | string,
 ): number {
-  const cutoff = transactionLedgerDate({ date: date.toISOString() });
+  const cutoff = transactionLedgerDate({
+    date: typeof date === "string" ? date : date.toISOString(),
+  });
   const balanceMinor = transactions
     .filter(
       (transaction) =>

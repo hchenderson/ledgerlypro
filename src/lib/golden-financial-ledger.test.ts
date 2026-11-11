@@ -199,6 +199,10 @@ function transaction(
   };
 }
 
+function forecastInstant(year: number, month: number, day: number) {
+  return new Date(Date.UTC(year, month - 1, day, 12));
+}
+
 const transactions: Transaction[] = [
   // Outside the report period but before the balance cutoff.
   transaction(
@@ -631,7 +635,7 @@ describe("golden financial ledger", () => {
       accounts: [checking, savings],
       primaryAccountId: checking.id,
       selectedAccountIds: [],
-      startDate: new Date(2026, 1, 2),
+      startDate: forecastInstant(2026, 2, 2),
       horizonDays: 7,
       lookbackWeeks: 5,
       minimumActiveWeeks: 99,
@@ -745,7 +749,7 @@ describe("golden financial ledger", () => {
       accounts: [checking],
       primaryAccountId: checking.id,
       selectedAccountIds: [],
-      startDate: new Date(2026, 3, 6),
+      startDate: forecastInstant(2026, 4, 6),
       horizonDays: 7,
       lookbackWeeks: 4,
       minimumActiveWeeks: 99,

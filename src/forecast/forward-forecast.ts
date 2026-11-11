@@ -12,7 +12,12 @@ import {
   financialReportingTransactions,
   financialTransactionAmount,
 } from "@/lib/financial-summary";
-import { DEFAULT_REPORTING_TIME_ZONE, transactionLedgerDate } from "@/lib/ledger-date";
+import {
+  dateInTimeZone,
+  DEFAULT_REPORTING_TIME_ZONE,
+  ledgerDateToDate,
+  transactionLedgerDate,
+} from "@/lib/ledger-date";
 import type {
   Account,
   ForecastSettings,
@@ -345,7 +350,11 @@ export function buildForwardForecast({
     throw new Error("minimumActiveWeeks must be a positive integer");
   }
 
-  const start = startOfDay(startDate);
+  // `startDate` is an instant (normally the injected clock). Resolve the
+  // ledger's calendar day in its reporting zone before doing calendar math.
+  // This keeps browser and UTC server/CI runtimes on the same forecast day.
+  const startLedgerDate = dateInTimeZone(startDate, reportingTimeZone);
+  const start = startOfDay(ledgerDateToDate(startLedgerDate));
   const endInclusive = addDays(start, horizonDays - 1);
   const historyStartInclusive = addWeeks(start, -lookbackWeeks);
   const scopedTransactions = transactions.filter((transaction) =>
@@ -522,7 +531,11 @@ export function buildForwardForecast({
     : accounts.filter((account) => selectedAccountIds.includes(account.id));
   const openingBalance = scopedAccounts.reduce(
     (total, account) =>
-      total + calculateAccountBalanceBefore(account, transactions, start),
+      total + calculateAccountBalanceBefore(
+        account,
+        transactions,
+        startLedgerDate,
+      ),
     0,
   );
 
