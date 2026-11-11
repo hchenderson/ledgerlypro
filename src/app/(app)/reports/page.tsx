@@ -44,7 +44,6 @@ import {
   getQuarter,
   getYear,
   format,
-  parseISO,
 } from 'date-fns';
 import Link from 'next/link';
 
@@ -101,6 +100,11 @@ import { EnvelopeReportView } from '@/components/reports/envelope-report';
 import { isFinancialTransaction } from '@/lib/accounts';
 import { CustomReportWorkspace } from '@/components/reports/custom-report-workspace';
 import { DesignatedFundsReport } from '@/components/reports/designated-funds-report';
+import {
+  dateInTimeZone,
+  DEFAULT_REPORTING_TIME_ZONE,
+  ledgerDateToDate,
+} from '@/lib/ledger-date';
 
 const OverviewChart = dynamic(
   () =>
@@ -168,8 +172,14 @@ const quarterlyPeriodSortValue = (period: string) => {
   return match ? Number(match[2]) * 10 + Number(match[1]) : 0;
 };
 
-const formatStoredReportDate = (value: string) =>
-  format(parseISO(value.slice(0, 10)), 'MMM d, yyyy');
+const formatStoredReportDate = (
+  value: string,
+  reportingTimeZone = DEFAULT_REPORTING_TIME_ZONE,
+) =>
+  format(
+    ledgerDateToDate(dateInTimeZone(new Date(value), reportingTimeZone)),
+    'MMM d, yyyy',
+  );
 
 function LegacyReportView({ period }: { period: 'monthly' | 'yearly' }) {
   const { categories } = useCategories();
@@ -742,6 +752,7 @@ function AdvancedReportView() {
             (a, b) =>
               quarterlyPeriodSortValue(b.period) -
                 quarterlyPeriodSortValue(a.period) ||
+              (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0) ||
               (a.accountLabel ?? "All accounts").localeCompare(
                 b.accountLabel ?? "All accounts",
               )
@@ -865,12 +876,14 @@ function AdvancedReportView() {
       );
     }
 
-    const incomeSummaryTotal = Object.values(
+    const incomeRows = selectedReport.incomeCategories ?? Object.entries(
       selectedReport.incomeSummary
-    ).reduce((sum, amount) => sum + amount, 0);
-    const expenseSummaryTotal = Object.values(
+    ).map(([name, total]) => ({ key: name, name, total }));
+    const expenseRows = selectedReport.expenseCategories ?? Object.entries(
       selectedReport.expenseSummary
-    ).reduce((sum, amount) => sum + amount, 0);
+    ).map(([name, total]) => ({ key: name, name, total }));
+    const incomeSummaryTotal = incomeRows.reduce((sum, row) => sum + row.total, 0);
+    const expenseSummaryTotal = expenseRows.reduce((sum, row) => sum + row.total, 0);
     const totalIncome = selectedReport.totalIncome ?? incomeSummaryTotal;
     const totalExpenses = selectedReport.totalExpenses ?? expenseSummaryTotal;
     const transactionCount = selectedReport.transactionCount;
@@ -888,7 +901,7 @@ function AdvancedReportView() {
       Math.abs(totalExpenses - expenseSummaryTotal) < 0.01 &&
       Math.abs(totalIncome - totalExpenses - selectedReport.netIncome) < 0.01;
     const isCurrentCalculation =
-      (selectedReport.calculationVersion ?? 0) >= 2;
+      (selectedReport.calculationVersion ?? 0) >= 4;
     const reportDomId = `report-${selectedReport.id.replace(
       /[^a-zA-Z0-9_-]/g,
       "-",
@@ -901,17 +914,25 @@ function AdvancedReportView() {
             <CardTitle className="text-xl sm:text-2xl">Financial Report - {selectedReport.period}</CardTitle>
             <CardDescription>
               Generated on {format(new Date(selectedReport.createdAt.seconds * 1000), 'PPP')}
-              {' · '}Covers {formatStoredReportDate(selectedReport.startDate)}–{formatStoredReportDate(selectedReport.endDate)}
+              {' · '}Covers {formatStoredReportDate(selectedReport.startDate, selectedReport.effectiveFilters?.reportingTimeZone)}–{formatStoredReportDate(selectedReport.endDate, selectedReport.effectiveFilters?.reportingTimeZone)}
             </CardDescription>
             <div className="mt-2 flex flex-wrap gap-2">
               <Badge variant="outline">
                 {selectedReport.accountLabel ?? "All accounts"}
+              </Badge>
+              <Badge variant="outline">
+                {selectedReport.effectiveFilters
+                  ? `${selectedReport.effectiveFilters.includedCategoryKeys.length ? `${selectedReport.effectiveFilters.includedCategoryKeys.length} included categories` : "All categories"}${selectedReport.effectiveFilters.excludedCategoryKeys.length ? ` · ${selectedReport.effectiveFilters.excludedCategoryKeys.length} excluded` : ""} · finalized only`
+                  : "Legacy scope metadata unavailable"}
               </Badge>
               <Badge variant={isReconciled ? "secondary" : "destructive"}>
                 {isReconciled ? "Totals reconciled" : "Totals need regeneration"}
               </Badge>
               {!isCurrentCalculation && (
                 <Badge variant="outline">Legacy calculation · regenerate recommended</Badge>
+              )}
+              {selectedReport.revision && (
+                <Badge variant="outline">Revision {selectedReport.revision} · current ledger at generation</Badge>
               )}
             </div>
           </div>
@@ -969,8 +990,8 @@ function AdvancedReportView() {
                   <h4 className="font-medium mb-2">Income</h4>
                   <Table>
                     <TableBody>
-                        {Object.entries(selectedReport.incomeSummary).map(([cat, amt]) => (
-                            <TableRow key={cat}><TableCell>{cat}</TableCell><TableCell className="text-right">{formatCurrency(amt as number)}</TableCell></TableRow>
+                        {incomeRows.map((row) => (
+                            <TableRow key={row.key}><TableCell>{row.name}</TableCell><TableCell className="text-right">{formatCurrency(row.total)}</TableCell></TableRow>
                         ))}
                     </TableBody>
                   </Table>
@@ -979,8 +1000,8 @@ function AdvancedReportView() {
                   <h4 className="font-medium mb-2">Expenses</h4>
                   <Table>
                     <TableBody>
-                        {Object.entries(selectedReport.expenseSummary).map(([cat, amt]) => (
-                            <TableRow key={cat}><TableCell>{cat}</TableCell><TableCell className="text-right">{formatCurrency(amt as number)}</TableCell></TableRow>
+                        {expenseRows.map((row) => (
+                            <TableRow key={row.key}><TableCell>{row.name}</TableCell><TableCell className="text-right">{formatCurrency(row.total)}</TableCell></TableRow>
                         ))}
                     </TableBody>
                   </Table>
@@ -998,13 +1019,16 @@ function AdvancedReportView() {
                 <h3 className="text-lg font-semibold mb-2 border-b pb-2">Budget vs. Actual</h3>
                 <div className="space-y-3 sm:hidden">
                   {selectedReport.budgetComparison.map((item) => (
-                    <div key={item.categoryName} className="rounded-lg border p-4">
+                    <div key={item.budgetId ?? item.categoryName} className="rounded-lg border p-4">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <p className="truncate font-medium">{item.categoryName}</p>
                           <p className="mt-1 text-xs text-muted-foreground">
                             {formatCurrency(item.actual)} of {formatCurrency(item.budget)}
                           </p>
+                          {item.subtreeActual !== undefined && Math.abs(item.subtreeActual - item.actual) > 0.005 && (
+                            <p className="mt-1 text-xs text-muted-foreground">Parent drill-down: {formatCurrency(item.subtreeActual)}; aggregate assigns child activity once.</p>
+                          )}
                         </div>
                         <span
                           className={cn(
@@ -1073,8 +1097,8 @@ function AdvancedReportView() {
                     </TableHeader>
                     <TableBody>
                         {selectedReport.budgetComparison.map(item => (
-                            <TableRow key={item.categoryName}>
-                                <TableCell>{item.categoryName}</TableCell>
+                            <TableRow key={item.budgetId ?? item.categoryName}>
+                                <TableCell>{item.categoryName}{item.subtreeActual !== undefined && Math.abs(item.subtreeActual - item.actual) > 0.005 ? <p className="text-xs text-muted-foreground">Subtree: {formatCurrency(item.subtreeActual)}</p> : null}</TableCell>
                                 <TableCell className="text-right">{formatCurrency(item.budget)}</TableCell>
                                 <TableCell className="text-right">{formatCurrency(item.actual)}</TableCell>
                                 <TableCell className={cn("text-right hidden sm:table-cell", item.variance >= 0 ? 'text-emerald-600' : 'text-destructive')}>
@@ -1126,7 +1150,11 @@ function AdvancedReportView() {
           {selectedReport.goalsProgress && selectedReport.goalsProgress.length > 0 && (
             <div>
                 <h3 className="text-lg font-semibold mb-1 border-b pb-2">Goals Snapshot</h3>
-                <p className="mb-3 text-sm text-muted-foreground">Goal balances as they existed when this report was generated.</p>
+                <p className="mb-3 text-sm text-muted-foreground">
+                  {(selectedReport.calculationVersion ?? 0) >= 4
+                    ? "Historical quarter-end goal progress is unavailable because Ledgerly did not store dated goal snapshots. Progress captured when this report was generated is shown separately."
+                    : "Legacy snapshot values were captured from the current goal state when this report was generated; they may not represent quarter end."}
+                </p>
                 <div className="space-y-3 sm:hidden">
                   {selectedReport.goalsProgress.map((item) => (
                     <div key={item.name} className="rounded-lg border p-4">
@@ -1134,14 +1162,14 @@ function AdvancedReportView() {
                         <div className="min-w-0">
                           <p className="truncate font-medium">{item.name}</p>
                           <p className="mt-1 text-xs text-muted-foreground">
-                            {formatCurrency(item.savedAmount)} saved of {formatCurrency(item.targetAmount)}
+                            {formatCurrency(item.historicalProgressAvailable ? (item.historicalSavedAmount ?? 0) : (item.currentSavedAmount ?? item.savedAmount ?? 0))} {item.historicalProgressAvailable ? "saved at quarter end" : "saved at report generation"} of {formatCurrency(item.targetAmount)}
                           </p>
                         </div>
                         <span className="shrink-0 text-sm font-semibold tabular-nums">
-                          {item.progress.toFixed(0)}%
+                          {(item.historicalProgressAvailable ? (item.historicalProgress ?? 0) : (item.currentProgress ?? item.progress ?? 0)).toFixed(0)}%
                         </span>
                       </div>
-                      <Progress value={item.progress} className="mt-3 h-2 [&>div]:bg-primary"/>
+                      <Progress value={item.historicalProgressAvailable ? (item.historicalProgress ?? 0) : (item.currentProgress ?? item.progress ?? 0)} className="mt-3 h-2 [&>div]:bg-primary"/>
                     </div>
                   ))}
                 </div>
@@ -1159,12 +1187,12 @@ function AdvancedReportView() {
                         {selectedReport.goalsProgress.map(item => (
                             <TableRow key={item.name}>
                                 <TableCell>{item.name}</TableCell>
-                                <TableCell className="text-right">{formatCurrency(item.savedAmount)}</TableCell>
+                                <TableCell className="text-right">{formatCurrency(item.historicalProgressAvailable ? (item.historicalSavedAmount ?? 0) : (item.currentSavedAmount ?? item.savedAmount ?? 0))}</TableCell>
                                 <TableCell className="text-right">{formatCurrency(item.targetAmount)}</TableCell>
                                 <TableCell className="text-right">
                                     <div className="flex items-center justify-end gap-2">
-                                        <span>{item.progress.toFixed(0)}%</span>
-                                        <Progress value={item.progress} className="w-12 sm:w-20 h-2 [&>div]:bg-primary"/>
+                                        <span>{(item.historicalProgressAvailable ? (item.historicalProgress ?? 0) : (item.currentProgress ?? item.progress ?? 0)).toFixed(0)}%</span>
+                                        <Progress value={item.historicalProgressAvailable ? (item.historicalProgress ?? 0) : (item.currentProgress ?? item.progress ?? 0)} className="w-12 sm:w-20 h-2 [&>div]:bg-primary"/>
                                     </div>
                                 </TableCell>
                             </TableRow>

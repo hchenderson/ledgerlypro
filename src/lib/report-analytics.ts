@@ -26,6 +26,7 @@ import {
 import {
   calculateAccountBalanceAsOf,
   calculateAccountBalanceBefore,
+  isRecurringExpectationTransaction,
   transactionBalanceDelta,
 } from "@/lib/accounts";
 import {
@@ -33,13 +34,11 @@ import {
   getCategorySubtreeIdsAndNames,
   normalizeCategoryName,
 } from "@/lib/category-tree";
-import {
-  financialCategoryPathKeys,
-  financialCategoryLabel,
-} from "@/lib/financial-category";
+import { financialCategoryPathKeys } from "@/lib/financial-category";
+import { buildFinancialCategoryBreakdown } from "@/lib/financial-category-breakdown";
 import {
   parseTransactionDate,
-  transactionAmount,
+  financialTransactionAmount,
   type FinancialDateRange,
 } from "@/lib/financial-summary";
 import type { Account, Budget, Category, Transaction } from "@/types";
@@ -127,7 +126,10 @@ export interface ReportPeriodPoint {
 }
 
 export interface ReportCategoryTotal {
+  key?: string;
   category: string;
+  categoryId?: string | null;
+  status?: "resolved" | "uncategorized" | "unresolved";
   amount: number;
   share: number;
 }
@@ -193,6 +195,8 @@ export interface ReportBudgetRow {
   categoryName: string;
   budget: number;
   actual: number;
+  /** Full subtree spend for drill-down. Aggregate totals use `actual` only. */
+  subtreeActual?: number;
   remaining: number;
   percentUsed: number;
   projected: number;
@@ -251,6 +255,7 @@ export function filterReportTransactions(
     if (!isIncludedPostingStatus(transaction, filters.includePending)) {
       return false;
     }
+    if (isRecurringExpectationTransaction(transaction)) return false;
     if (transaction.possibleTransfer) return false;
     const accountId = transaction.accountId ?? defaultAccountId ?? "";
     if (accounts.size > 0 && !accounts.has(accountId)) return false;
@@ -290,20 +295,19 @@ function categoryTotals(
   type: "income" | "expense",
   categories: Category[],
 ): ReportCategoryTotal[] {
-  const totals = new Map<string, number>();
-  for (const transaction of transactions) {
-    if (transaction.type !== type) continue;
-    const category = financialCategoryLabel(transaction, categories);
-    totals.set(category, (totals.get(category) ?? 0) + transactionAmount(transaction));
-  }
-  const overall = [...totals.values()].reduce((sum, amount) => sum + amount, 0);
-  return [...totals.entries()]
-    .map(([category, amount]) => ({
-      category,
-      amount,
-      share: overall > 0 ? (amount / overall) * 100 : 0,
-    }))
-    .sort((a, b) => b.amount - a.amount);
+  return buildFinancialCategoryBreakdown(
+    transactions,
+    type,
+    categories,
+    "root",
+  ).map((row) => ({
+    key: row.key,
+    category: row.label,
+    categoryId: row.categoryId,
+    status: row.status,
+    amount: row.amount,
+    share: row.share,
+  }));
 }
 
 function summarizeReportTransactions(
@@ -315,15 +319,15 @@ function summarizeReportTransactions(
   let largestExpense: Transaction | null = null;
   let largestIncome: Transaction | null = null;
   for (const transaction of financialTransactions) {
-    const amount = transactionAmount(transaction);
+    const amount = financialTransactionAmount(transaction);
     if (transaction.type === "income") {
       income += amount;
-      if (!largestIncome || amount > transactionAmount(largestIncome)) {
+      if (!largestIncome || amount > financialTransactionAmount(largestIncome)) {
         largestIncome = transaction;
       }
     } else if (transaction.type === "expense") {
       expenses += amount;
-      if (!largestExpense || amount > transactionAmount(largestExpense)) {
+      if (!largestExpense || amount > financialTransactionAmount(largestExpense)) {
         largestExpense = transaction;
       }
     }
@@ -386,7 +390,7 @@ export function computeReportAnalytics(
       expense: 0,
       net: 0,
     };
-    const amount = transactionAmount(transaction);
+    const amount = financialTransactionAmount(transaction);
     if (transaction.type === "income") point.income += amount;
     else point.expense += amount;
     point.net = point.income - point.expense;
@@ -399,7 +403,7 @@ export function computeReportAnalytics(
   const transferGroups = new Map<string, number>();
   for (const transaction of filtered) {
     if (transaction.type !== "transfer") continue;
-    const amount = transactionAmount(transaction);
+    const amount = financialTransactionAmount(transaction);
     const accountId = transaction.accountId ?? defaultAccountId ?? "";
     const accountName =
       accounts.find((account) => account.id === accountId)?.name ??
@@ -482,16 +486,18 @@ export function computeCategoryMovement(
   current: ReportCategoryTotal[],
   comparison: ReportCategoryTotal[],
 ): ReportCategoryMovement[] {
-  const currentMap = new Map(current.map((item) => [item.category, item.amount]));
+  const currentMap = new Map(current.map((item) => [item.key ?? item.category, item]));
   const comparisonMap = new Map(
-    comparison.map((item) => [item.category, item.amount]),
+    comparison.map((item) => [item.key ?? item.category, item]),
   );
   return [...new Set([...currentMap.keys(), ...comparisonMap.keys()])]
-    .map((category) => {
-      const currentAmount = currentMap.get(category) ?? 0;
-      const comparisonAmount = comparisonMap.get(category) ?? 0;
+    .map((key) => {
+      const currentItem = currentMap.get(key);
+      const comparisonItem = comparisonMap.get(key);
+      const currentAmount = currentItem?.amount ?? 0;
+      const comparisonAmount = comparisonItem?.amount ?? 0;
       return {
-        category,
+        category: currentItem?.category ?? comparisonItem?.category ?? key,
         current: currentAmount,
         comparison: comparisonAmount,
         change: currentAmount - comparisonAmount,
@@ -716,7 +722,7 @@ export function computeReportBudgets(
             ),
       )
       .sort((a, b) => b.categoryDepth - a.categoryDepth)[0];
-    const amount = transactionAmount(transaction);
+    const amount = financialTransactionAmount(transaction);
     if (!matchingBudget) {
       unbudgetedActual += amount;
       continue;
@@ -728,13 +734,22 @@ export function computeReportBudgets(
   }
 
   const rows: ReportBudgetRow[] = applicableBudgets
-    .map(({ budget, budgetAmount, categoryName }) => {
+    .map(({ budget, budgetAmount, categoryName, subtreeIds, subtreeNames }) => {
       const actual = actualByBudgetId.get(budget.id) ?? 0;
+      const subtreeActual = expenseTransactions.reduce((sum, transaction) => {
+        const matches = transaction.categoryId
+          ? subtreeIds.has(transaction.categoryId)
+          : subtreeNames.has(
+              normalizeCategoryName(transaction.category).toLocaleLowerCase(),
+            );
+        return matches ? sum + financialTransactionAmount(transaction) : sum;
+      }, 0);
       return {
         budgetId: budget.id,
         categoryName,
         budget: budgetAmount,
         actual,
+        subtreeActual,
         remaining: budgetAmount - actual,
         percentUsed: budgetAmount > 0 ? (actual / budgetAmount) * 100 : 0,
         projected:
@@ -761,7 +776,7 @@ export function computeReportBudgets(
   rows.sort((a, b) => b.percentUsed - a.percentUsed);
   const budget = rows.reduce((sum, row) => sum + row.budget, 0);
   const actual = expenseTransactions.reduce(
-    (sum, transaction) => sum + transactionAmount(transaction),
+    (sum, transaction) => sum + financialTransactionAmount(transaction),
     0,
   );
   return {

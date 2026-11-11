@@ -64,8 +64,8 @@ describe("computeYearComparison", () => {
     const result = computeYearComparison(transactions, 2025, 2024, ranges);
 
     expect(result.expenseCategories.map((item) => item.category)).toEqual([
-      "Food",
-      "Travel",
+      "Unresolved · Food",
+      "Unresolved · Travel",
     ]);
     expect(result.expenseCategories[0].delta).toBe(-100);
     expect(result.expenseCategories[1].comparison).toBe(0);
@@ -233,7 +233,7 @@ describe("computeYearComparison", () => {
     expect(result.primary.transactionCount).toBe(2);
     expect(result.monthly[0].primaryExpenses).toBe(200);
     expect(result.expenseCategories.map((item) => item.category)).toEqual([
-      "Uncategorized",
+      "Unresolved · Food",
     ]);
     expect(result.primary.largestExpense?.id).toBe("food");
   });

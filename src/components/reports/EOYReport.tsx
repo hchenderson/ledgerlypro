@@ -198,6 +198,7 @@ export const EOYReport: React.FC<EOYReportProps> = ({
   const categoryPieData = useMemo(
     () =>
       data.mainCategories.map((c) => ({
+        key: c.key,
         name: c.name,
         value: c.total,
       })),
@@ -373,7 +374,7 @@ export const EOYReport: React.FC<EOYReportProps> = ({
           across the past year.
         </p>
         <p className="-mt-2 mb-4 text-sm font-medium">
-          Account scope: {accountScopeLabel}
+          Account scope: {accountScopeLabel} · finalized activity · transfers excluded from income and expenses
         </p>
 
         {/* Executive summary */}
@@ -547,7 +548,7 @@ export const EOYReport: React.FC<EOYReportProps> = ({
                     >
                       {categoryPieData.map((entry, index) => (
                         <Cell
-                          key={entry.name}
+                          key={entry.key}
                           fill={pieColors[index % pieColors.length]}
                         />
                       ))}
@@ -558,7 +559,7 @@ export const EOYReport: React.FC<EOYReportProps> = ({
                 </div>
                 <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border p-3 sm:hidden">
                   {categoryPieData.map((category, index) => (
-                    <div key={category.name} className="flex items-center justify-between gap-3 text-xs">
+                    <div key={category.key} className="flex items-center justify-between gap-3 text-xs">
                       <span className="flex min-w-0 items-center gap-2">
                         <span
                           className="h-2.5 w-2.5 shrink-0 rounded-sm"
@@ -592,7 +593,7 @@ export const EOYReport: React.FC<EOYReportProps> = ({
             >
               {data.categories.map((c) => (
                 <div
-                  key={c.name}
+                  key={c.key}
                   className="flex items-start justify-between gap-3 rounded-lg border-b py-2 text-sm last:border-b-0"
                 >
                   <div className="flex min-w-0 flex-col">
@@ -613,10 +614,11 @@ export const EOYReport: React.FC<EOYReportProps> = ({
           </Card>
         </div>
 
-        {/* Goals snapshot */}
+        {/* Current goal status; historical goal snapshots are not stored. */}
         <Card>
           <CardHeader>
-            <CardTitle>Goals Snapshot</CardTitle>
+            <CardTitle>Current Goal Status</CardTitle>
+            <p className="text-sm text-muted-foreground">These values are current, not reconstructed as of year end.</p>
           </CardHeader>
           <CardContent className="grid grid-cols-1 gap-3 min-[430px]:grid-cols-3 sm:gap-6">
             <div className="rounded-lg bg-muted/30 p-3">

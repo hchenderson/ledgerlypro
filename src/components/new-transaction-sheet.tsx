@@ -61,6 +61,7 @@ import {
   allocationDifference,
   allocationsAreComplete,
 } from "@/lib/transaction-allocations"
+import { ledgerDateToDate } from "@/lib/ledger-date"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -266,7 +267,11 @@ export function NewTransactionSheet({
   useEffect(() => {
     if (isOpen) {
       if (transaction) {
-        const transactionDate = transaction.date ? new Date(transaction.date) : new Date();
+        const transactionDate = transaction.date
+          ? /^\d{4}-\d{2}-\d{2}$/.test(transaction.date)
+            ? ledgerDateToDate(transaction.date)
+            : new Date(transaction.date)
+          : new Date();
         form.reset({
           ...transaction,
           type:

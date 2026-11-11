@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { planRecurringOccurrences, recurringOccurrenceId } from "./recurring";
+import {
+  planRecurringOccurrences,
+  recurringOccurrenceDatesBetween,
+  recurringOccurrenceId,
+} from "./recurring";
 import type { RecurringTransaction } from "@/types";
 
 const recurring: RecurringTransaction = {
@@ -35,7 +39,7 @@ describe("planRecurringOccurrences", () => {
       new Date("2025-03-15T12:00:00.000Z")
     );
 
-    expect(result.occurrences.map(({ date }) => date.slice(0, 10))).toEqual([
+    expect(result.occurrences.map(({ originalDueDate }) => originalDueDate.slice(0, 10))).toEqual([
       "2025-03-01",
     ]);
   });
@@ -49,5 +53,28 @@ describe("planRecurringOccurrences", () => {
 
     expect(result.occurrences).toHaveLength(10);
     expect(result.hasMore).toBe(true);
+  });
+
+  it("shares month-end and leap-year calendar identities with forecasts", () => {
+    const monthEnd = recurringOccurrenceDatesBetween(
+      { startDate: "2026-01-31T00:00:00.000Z", frequency: "monthly" },
+      new Date(2026, 0, 1),
+      new Date(2026, 2, 31),
+    );
+    expect(monthEnd.map((date) => date.toISOString().slice(0, 10))).toEqual([
+      "2026-01-31",
+      "2026-02-28",
+      "2026-03-31",
+    ]);
+
+    const leap = recurringOccurrenceDatesBetween(
+      { startDate: "2028-02-29T00:00:00.000Z", frequency: "yearly" },
+      new Date(2028, 0, 1),
+      new Date(2029, 11, 31),
+    );
+    expect(leap.map((date) => date.toISOString().slice(0, 10))).toEqual([
+      "2028-02-29",
+      "2029-02-28",
+    ]);
   });
 });

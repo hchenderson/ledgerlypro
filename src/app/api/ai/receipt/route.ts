@@ -50,7 +50,18 @@ export async function POST(req: Request) {
       });
     }
 
-    const result = await scanReceipt(parsed.data);
+    const result = process.env.LEDGERLY_EXTERNAL_SERVICES_MODE === "stub"
+      ? (() => {
+          if (process.env.LEDGERLY_ISOLATED_TEST !== "true") {
+            throw new Error("External-service stubs require isolated Firebase mode.");
+          }
+          return {
+            date: "2026-02-20",
+            amount: 12.34,
+            description: "Synthetic Receipt Vendor",
+          };
+        })()
+      : await scanReceipt(parsed.data);
     logServerEvent('info', 'ai.receipt.completed', { ...context, uid });
     return NextResponse.json(result, { headers: { 'x-request-id': context.requestId } });
   } catch (error) {

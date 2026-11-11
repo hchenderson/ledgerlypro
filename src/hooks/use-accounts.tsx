@@ -32,6 +32,7 @@ import {
 import { chunkArray } from "@/lib/batching";
 import { db } from "@/lib/firebase";
 import type { Account, Transaction } from "@/types";
+import { canonicalSignedMoneyFields, minorToMajor, signedMoneyMinor } from "@/lib/money";
 
 type NewAccount = Omit<
   Account,
@@ -356,7 +357,7 @@ export function AccountsProvider({
             validSelectedAccountIds.includes(account.id),
           );
     return included.reduce(
-      (total, account) => total + account.openingBalance,
+      (total, account) => total + minorToMajor(signedMoneyMinor({ amount: account.openingBalance, amountMinor: account.openingBalanceMinor, currency: account.currency })),
       0,
     );
   }, [accounts, validSelectedAccountIds]);
@@ -365,8 +366,11 @@ export function AccountsProvider({
     async (account: NewAccount): Promise<Account> => {
       if (!collectionRef) throw new Error("User not authenticated");
       const newDocumentRef = doc(collectionRef);
+      const openingMoney = canonicalSignedMoneyFields(account.openingBalance);
       const newAccount: Account = {
         ...account,
+        openingBalance: openingMoney.amount,
+        openingBalanceMinor: openingMoney.amountMinor,
         id: newDocumentRef.id,
         classification: accountClassificationForType(account.type),
         role: account.role ?? defaultAccountRoleForType(account.type),
@@ -383,15 +387,19 @@ export function AccountsProvider({
   const updateAccount = useCallback(
     async (id: string, values: AccountUpdates) => {
       if (!collectionRef) throw new Error("User not authenticated");
+      const moneyValues = values.openingBalance !== undefined
+        ? { openingBalance: canonicalSignedMoneyFields(values.openingBalance).amount, openingBalanceMinor: canonicalSignedMoneyFields(values.openingBalance).amountMinor }
+        : {};
       const nextValues = values.type
         ? {
             ...values,
+            ...moneyValues,
             classification: accountClassificationForType(values.type),
             ...(values.role
               ? {}
               : { role: defaultAccountRoleForType(values.type) }),
           }
-        : values;
+        : { ...values, ...moneyValues };
       await setDoc(doc(collectionRef, id), nextValues, {
         merge: true,
       });

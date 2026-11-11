@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
+import { addDays, startOfDay } from "date-fns";
 
 import { adminDb } from "@/lib/firebaseAdmin";
 import { AuthenticationError, requireUid } from "@/lib/requireUid";
 import { planRecurringOccurrences } from "@/lib/recurring";
 import type { RecurringTransaction } from "@/types";
 import { logServerEvent, requestLogContext } from "@/lib/server-logger";
-import { envelopeEventForTransaction } from "@/lib/envelopes";
 
 const MAX_OCCURRENCES_PER_REQUEST = 400;
 
@@ -16,61 +16,48 @@ export async function POST(req: Request) {
     if (!adminDb) throw new Error("Firebase Admin SDK is not initialized.");
 
     const userRef = adminDb.collection("users").doc(uid);
-    const settingsSnapshot = await userRef.collection("settings").doc("main").get();
-    const operatingAccountId = settingsSnapshot.data()?.primaryAccountId as
-      | string
-      | undefined;
     const recurringSnapshot = await userRef.collection("recurringTransactions").get();
-    const batch = adminDb.batch();
-    let remainingWrites = MAX_OCCURRENCES_PER_REQUEST;
     let upserted = 0;
     let hasMore = false;
+    const throughDate = addDays(startOfDay(new Date()), 89);
 
     for (const recurringDoc of recurringSnapshot.docs) {
-      // Reserve one write for advancing lastAddedDate after the occurrence writes.
-      if (remainingWrites <= 1) {
-        hasMore = true;
-        break;
-      }
-
-      const recurring = {
-        ...recurringDoc.data(),
-        id: recurringDoc.id,
-      } as RecurringTransaction;
-      const plan = planRecurringOccurrences(
-        recurring,
-        new Date(),
-        Math.floor((remainingWrites - 1) / 2)
-      );
-
-      for (const occurrence of plan.occurrences) {
-        const occurrenceRef = userRef.collection("transactions").doc(occurrence.id);
-        batch.set(occurrenceRef, occurrence, { merge: true });
-        remainingWrites -= 1;
-        const envelopeEvent = envelopeEventForTransaction(
-          occurrence,
-          operatingAccountId,
+      const result = await adminDb.runTransaction(async (transaction) => {
+        const currentScheduleSnapshot = await transaction.get(recurringDoc.ref);
+        if (!currentScheduleSnapshot.exists) return { created: 0, hasMore: false };
+        const recurring = {
+          ...currentScheduleSnapshot.data(),
+          id: recurringDoc.id,
+        } as RecurringTransaction;
+        const plan = planRecurringOccurrences(
+          recurring,
+          throughDate,
+          MAX_OCCURRENCES_PER_REQUEST - 1,
         );
-        if (envelopeEvent) {
-          batch.set(
-            userRef.collection("envelopeEvents").doc(envelopeEvent.id),
-            envelopeEvent,
-            { merge: true },
-          );
-          remainingWrites -= 1;
+        const occurrenceRefs = plan.occurrences.map((occurrence) =>
+          userRef.collection("recurringOccurrences").doc(occurrence.id),
+        );
+        const existing = occurrenceRefs.length > 0
+          ? await transaction.getAll(...occurrenceRefs)
+          : [];
+        let created = 0;
+        plan.occurrences.forEach((occurrence, index) => {
+          // Never merge schedule edits into an existing occurrence. Its due
+          // identity and snapshot survive edits, deletion, matches, and retries.
+          if (existing[index]?.exists) return;
+          transaction.create(occurrenceRefs[index], occurrence);
+          created += 1;
+        });
+        if (plan.lastAddedDate) {
+          transaction.update(recurringDoc.ref, {
+            lastAddedDate: plan.lastAddedDate,
+          });
         }
-      }
-
-      if (plan.lastAddedDate) {
-        batch.update(recurringDoc.ref, { lastAddedDate: plan.lastAddedDate });
-        remainingWrites -= 1;
-      }
-
-      upserted += plan.occurrences.length;
-      hasMore ||= plan.hasMore;
+        return { created, hasMore: plan.hasMore };
+      });
+      upserted += result.created;
+      hasMore ||= result.hasMore;
     }
-
-    if (upserted > 0) await batch.commit();
 
     logServerEvent('info', 'recurring.process.completed', { ...context, uid, upserted, hasMore });
     return NextResponse.json({ upserted, hasMore }, {

@@ -115,7 +115,7 @@ export function ForecastNetChart({
               stroke="none"
               fill="url(#bandGradient)"
               isAnimationActive={false}
-              name="Confidence Band (p25-p75)"
+            name="Historical variability range"
             />
           )}
           <Line
@@ -125,7 +125,7 @@ export function ForecastNetChart({
             dot={false}
             activeDot={{ r: 6 }}
             strokeWidth={2}
-            name={hasBand ? "Median Forecast (p50)" : "Forecast"}
+            name="Projected net"
           />
         </LineChart>
       </ResponsiveContainer>

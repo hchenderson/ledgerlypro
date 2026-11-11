@@ -13,6 +13,19 @@ receipt extraction and narrative projections.
 - A Google AI API key for the AI features
 - A Plaid account for automatic bank connections (optional; Sandbox works for development)
 
+## Financial data conventions
+
+Ledgerly is currently a USD-only ledger. New financial writes store authoritative
+integer cents alongside a legacy-compatible dollar field, and new transaction
+dates use a date-only ledger day. The owner-selected reporting time zone controls
+legacy timestamp conversion and report/forecast boundaries. Confirmed linked
+refunds are account credits that reduce expense in the original category on the
+refund date; they are never counted as ordinary income.
+
+See [`docs/DATA_CONVENTIONS.md`](docs/DATA_CONVENTIONS.md) for field ownership,
+rounding, refund, dry-run migration, rollout, and rollback rules. The DATA-001
+production migration is deliberately not run by application startup or deployment.
+
 ## Local setup
 
 1. Install dependencies:
@@ -33,7 +46,8 @@ receipt extraction and narrative projections.
    NEXT_PUBLIC_FIREBASE_APP_ID=
    NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=
    NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY=
-   FIREBASE_APP_CHECK_ENFORCED=false
+   NEXT_PUBLIC_FIREBASE_APPCHECK_DEBUG=false
+   FIREBASE_APP_CHECK_MODE=off
    NEXT_PUBLIC_ADSENSE_ENABLED=false
    GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/ledgerly-pro-service-account.json
    GEMINI_API_KEY=
@@ -84,6 +98,7 @@ receipt extraction and narrative projections.
 npm run lint
 npm run typecheck
 npm test
+npm run test:rules
 npm run build
 ```
 
@@ -102,6 +117,12 @@ npm run genkit:watch
 
 AI endpoints validate request sizes and schemas, use Firestore-backed rate limits
 that work across App Hosting instances, and can require Firebase App Check tokens.
+Collection permissions, protected fields, emulator coverage, and the staged App
+Check release procedure are documented in
+[`docs/SECURITY_FIRESTORE_APPCHECK.md`](docs/SECURITY_FIRESTORE_APPCHECK.md).
+The current controlled-rollout decision, validation evidence, production gates,
+and rollback sequence are in
+[`docs/RELEASE_CANDIDATE_CHECKLIST.md`](docs/RELEASE_CANDIDATE_CHECKLIST.md).
 
 ## Architecture
 
@@ -113,10 +134,41 @@ that work across App Hosting instances, and can require Firebase App Check token
 - `src/ai` — Genkit configuration and model-backed flows
 - `firestore.rules` — per-user Firestore access boundary
 
-Recurring occurrences are materialized by the authenticated
-`/api/recurring/process` endpoint. Occurrence document IDs are deterministic, so a
-retry or a second browser session updates the same occurrence instead of creating a
-duplicate.
+Recurring schedules are expanded by the authenticated `/api/recurring/process`
+endpoint into server-managed expectations under
+`users/{uid}/recurringOccurrences`; they are not ledger transactions. Each
+occurrence has a stable schedule-plus-original-due-date ID and snapshots its
+expected amount, category, account, and due date. Schedule edits or deletion do
+not rewrite an already-created occurrence or its reconciliation history.
+
+The Recurring page reviews possible actual matches. Candidates must have the same
+account and direction, post from five days early through seven days late, and have
+an amount within the larger of $5 or 10%; a normalized merchant match also permits
+a changed amount or partial payment. Every suggestion, even an unambiguous one,
+requires confirmation. Confirm, dismiss, undo-link, skip, and provider-invalidation
+decisions are handled by `/api/recurring/reconcile` in Firestore transactions and
+record a small audit event. One actual cannot fulfill multiple occurrences. A
+partial payment leaves the unpaid expectation in the forecast; a skipped occurrence
+is omitted. If a linked provider transaction is removed or becomes ineligible, the
+occurrence becomes an exception, its remaining expectation returns to the forecast,
+and Ledgerly never silently chooses another actual.
+
+The finalized actual amount and posting date are authoritative for balances,
+budgets, and reports. The expected amount and original due date remain visible for
+variance review. Confirmed recurring actuals remain in the ledger but are excluded
+from the forecast's historical merchant/category estimates because the schedule owns
+that future projection. Older generated records with explicit `source: recurring`
+and a schedule ID are compatibility candidates; description-prefix-only records are
+reported for manual review and are never reclassified automatically. Legacy
+transaction-backed envelope events from explicit generated expectations are also
+ignored by envelope calculations; the records remain stored for traceability.
+Confirming a legacy pair marks the generated entry as expectation-only and keeps the
+bank/manual actual authoritative. Undoing the link restores the occurrence's
+remaining forecast amount but does not turn the old generated entry back into a
+financial actual. Category, description, and notes on a linked manual actual remain
+editable, but match-defining fields such as amount, date, direction, account, and
+posting state require undoing the link first. Plaid provider updates use the server
+path to refresh the confirmed amount/date or surface an exception.
 
 Multi-account data lives in `users/{uid}/accounts`, with each transaction and
 recurring entry assigned to an account. Transfers are stored as an atomically linked
@@ -143,6 +195,52 @@ number. Named report configurations live in `users/{uid}/reportViews` and includ
 dates, account/category/status filters, comparison settings, visible metrics, and
 section order. Compare accepts an exact-date handoff from Reports and uses the shared
 category-key resolver in `src/lib/financial-category.ts`.
+
+Quarterly and End-of-Year reports compose that same finalized-financial contract:
+date range, account scope, category scope, and posting status are explicit, and
+pending, removed, possible-transfer, transfer, and forecast-only recurring records
+stay outside income and expense totals. Stable category IDs survive renames;
+duplicate display names remain separate; deleted/unknown IDs and records without a
+resolvable category appear as explicit unresolved or uncategorized rows. Category
+rows and CSV/PDF source data reconcile to the displayed financial totals.
+
+Quarterly snapshots created with calculation version 4 are immutable revisions.
+They store their effective filters and saved results. Running the same report again
+creates a new revision instead of overwriting the original. Older snapshots remain
+readable with their original values and are labeled as legacy. Because Ledgerly did
+not historically store dated goal events, new historical reports say quarter-end
+goal progress is unavailable and show progress captured at report generation
+separately; they do not present current goal state as historical.
+
+Budget and Dashboard cards use the account-filtered transaction set supplied by
+their page and the canonical finalized-financial predicate. Pending, removed,
+possible-transfer, and transfer records contribute zero; split expenses contribute
+their reporting allocations once. A parent budget card intentionally shows spending
+for its entire category subtree, so parent and child cards can overlap and must not
+be added together. The Reports budget aggregate instead assigns each expense to the
+most-specific matching budget so its overall Actual total reconciles to report
+expenses for the same dates and account filters.
+
+The Dashboard forward forecast uses the pure calculation kernel in
+`src/forecast/forward-forecast.ts`. “Next 90 Days” means 90 local calendar days,
+including today and ending 89 days later. Observed history ends immediately before
+today and uses the preceding 26 weeks of posted, non-transfer financial activity.
+Split allocations are expanded once; pending, removed, possible-transfer, and
+transfer records contribute zero to projected income and expenses. The selected
+account scope applies to history, schedules, opening balance, and projections; an
+empty account selection means all accounts. Projected net is projected income minus
+projected expenses, and projected ending balance is the opening account balance plus
+projected net.
+
+Historical estimates partition each reporting line once: repeat merchant patterns
+are modeled first, repeat category activity is modeled from the remainder, and all
+sparse activity shares one residual fallback per direction. Unused categories cannot
+multiply the fallback. Explicit recurring expectations contribute zero to financial
+results. A confirmed actual fulfills its occurrence, removes that occurrence from
+scheduled projections, and is not reused as a history-based projection. Unmatched
+expectations remain forecast-only. The
+shaded chart range is a historical-variability guide, not a statistical confidence
+interval; the displayed line and totals always use the deterministic calculation.
 
 Combined bank deposits and payments can carry `allocations` on the original
 transaction. The account ledger and reconciliation always use that source transaction
@@ -233,8 +331,9 @@ Before allowing public signups:
 2. Create a score-based reCAPTCHA Enterprise website key for the production
    domain. Register it under **Firebase Console → App Check**, then add its public
    site key as `NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY` in App Hosting. Roll out
-   with `FIREBASE_APP_CHECK_ENFORCED=false`, verify valid App Check traffic, and
-   only then change it to `true` and roll out again.
+   with `FIREBASE_APP_CHECK_MODE=monitor`, verify valid App Check traffic, and
+   only then change it to `enforce` in a separately reviewed rollout. Firebase
+   service enforcement is enabled independently in **Security → App Check**.
 3. In Firebase Authentication, verify the Google and Email/Password providers,
    authorized domains, support email, sender name, verification-email template,
    password-reset template, and action URL. Password signups must verify their

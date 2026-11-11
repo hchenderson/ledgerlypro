@@ -34,6 +34,7 @@ export type CategorizationSource =
 export type TransactionAllocation = {
   id: string;
   amount: number;
+  amountMinor?: number;
   category: string;
   categoryId?: string;
   envelopeId?: string | null;
@@ -44,6 +45,11 @@ export type Transaction = {
   date: string;
   description: string;
   amount: number;
+  /** Authoritative when present. `amount` remains as a rollout compatibility field. */
+  amountMinor?: number;
+  currency?: "USD";
+  /** Date-only ledger date. Source timestamps remain in their provider fields. */
+  ledgerDate?: string;
   type: "income" | "expense" | "transfer";
   category: string;
   categoryId?: string;
@@ -69,6 +75,11 @@ export type Transaction = {
   providerCategoryDetailed?: string;
   providerCategoryConfidence?: string;
   providerLastSyncedAt?: string;
+  sourceAmountMinor?: number;
+  sourceCurrency?: string;
+  sourceTransactionDate?: string;
+  sourcePostedAt?: string;
+  sourceAuthorizedAt?: string;
   providerRemovedAt?: string;
   categorizationStatus?: CategorizationStatus;
   categorizationSource?: CategorizationSource;
@@ -82,6 +93,14 @@ export type Transaction = {
   allocationStatus?: "complete" | "incomplete";
   allocationParentId?: string;
   allocationId?: string;
+  recurringTransactionId?: string;
+  recurringOccurrenceId?: string;
+  recurringExpectationOnly?: boolean;
+  recurringOriginalDueDate?: string;
+  recurringExpectedAmount?: number;
+  recurringReconciliationStatus?: "confirmed" | "exception";
+  refundOfTransactionId?: string;
+  refundStatus?: "confirmed" | "exception";
 };
 
 export type SplitTemplate = {
@@ -131,6 +150,7 @@ export type Account = {
   type: AccountType;
   classification: AccountClassification;
   openingBalance: number;
+  openingBalanceMinor?: number;
   institution?: string;
   lastFour?: string;
   currency: "USD";
@@ -305,6 +325,8 @@ export type Budget = {
   id: string;
   categoryId: string;
   amount: number;
+  amountMinor?: number;
+  currency?: "USD";
   period: "monthly" | "yearly";
   year: number;
   isFavorite?: boolean;
@@ -362,6 +384,8 @@ export type EnvelopeEvent = {
   envelopeId: string;
   type: EnvelopeEventType;
   amount: number;
+  amountMinor?: number;
+  currency?: "USD";
   date: string;
   transactionId?: string;
   transferId?: string;
@@ -375,6 +399,8 @@ export type RecurringTransaction = {
   id: string;
   description: string;
   amount: number;
+  amountMinor?: number;
+  currency?: "USD";
   type: "income" | "expense";
   category: string;
   categoryId?: string;
@@ -383,6 +409,62 @@ export type RecurringTransaction = {
   frequency: "daily" | "weekly" | "monthly" | "yearly";
   startDate: string;
   lastAddedDate?: string;
+};
+
+export type RecurringOccurrenceStatus =
+  | "expected"
+  | "partially-fulfilled"
+  | "fulfilled"
+  | "skipped"
+  | "exception";
+
+export type RecurringOccurrenceMatch = {
+  transactionId: string;
+  amount: number;
+  amountMinor?: number;
+  postingDate: string;
+  confirmedAt: string;
+  status: "confirmed" | "invalidated";
+  invalidatedAt?: string;
+  invalidationReason?: string;
+};
+
+export type RecurringOccurrence = {
+  id: string;
+  recurringTransactionId: string;
+  originalDueDate: string;
+  expectedAmount: number;
+  expectedAmountMinor?: number;
+  remainingAmount: number;
+  remainingAmountMinor?: number;
+  matchedAmount: number;
+  matchedAmountMinor?: number;
+  varianceAmount: number;
+  varianceAmountMinor?: number;
+  type: "income" | "expense";
+  category: string;
+  categoryId?: string;
+  accountId?: string;
+  envelopeId?: string;
+  description: string;
+  status: RecurringOccurrenceStatus;
+  matches: RecurringOccurrenceMatch[];
+  dismissedTransactionIds?: string[];
+  skippedAt?: string;
+  exceptionReason?: string;
+  legacyTransactionId?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RecurringReconciliationEvent = {
+  id: string;
+  operationId: string;
+  occurrenceId: string;
+  transactionId?: string;
+  action: "confirm" | "unlink" | "dismiss" | "undo-dismiss" | "skip" | "invalidate";
+  createdAt: string;
+  details?: Record<string, string | number | boolean | null>;
 };
 
 export type Goal = {
@@ -448,16 +530,50 @@ export interface QuarterlyReport {
   endDate: string;
   createdAt: Timestamp;
   calculationVersion?: number;
+  snapshotKey?: string;
+  revision?: number;
+  revisionOf?: string;
+  sourceDataMode?: "current-ledger-at-generation";
+  effectiveFilters?: {
+    dateFrom: string;
+    dateTo: string;
+    accountIds: string[];
+    includedCategoryKeys: string[];
+    excludedCategoryKeys: string[];
+    transactionTypes: ("income" | "expense")[];
+    includePending: boolean;
+    includeTransfers: boolean;
+    budgetIds: string[];
+    reportingTimeZone?: string;
+  };
   totalIncome?: number;
   totalExpenses?: number;
   transactionCount?: number;
   incomeSummary: Record<string, number>;
   expenseSummary: Record<string, number>;
+  incomeCategories?: {
+    key: string;
+    categoryId: string | null;
+    name: string;
+    total: number;
+    percentageOfTotal: number;
+    status: "resolved" | "uncategorized" | "unresolved";
+  }[];
+  expenseCategories?: {
+    key: string;
+    categoryId: string | null;
+    name: string;
+    total: number;
+    percentageOfTotal: number;
+    status: "resolved" | "uncategorized" | "unresolved";
+  }[];
   netIncome: number;
   budgetComparison: {
+    budgetId?: string;
     categoryName: string;
     budget: number;
     actual: number;
+    subtreeActual?: number;
     variance: number;
     percentUsed: number;
   }[];
@@ -468,10 +584,16 @@ export interface QuarterlyReport {
     percentUsed: number;
   };
   goalsProgress: {
+    id?: string;
     name: string;
     targetAmount: number;
-    savedAmount: number;
-    progress: number;
+    savedAmount?: number;
+    progress?: number;
+    historicalProgressAvailable?: boolean;
+    historicalSavedAmount?: number | null;
+    historicalProgress?: number | null;
+    currentSavedAmount?: number;
+    currentProgress?: number;
   }[];
   kpis: {
     profitMargin: number;

@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { Camera, Loader2, Sparkles, Upload, CheckCircle, AlertTriangle, Video, Power } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,7 @@ import { FeatureGate } from '@/components/feature-gate';
 import { useAuth } from '@/hooks/use-auth';
 import { authenticatedFetch } from '@/lib/authenticated-fetch';
 import Image from 'next/image';
+import { calendarDateToLedgerDate, toLedgerDate } from '@/lib/ledger-date';
 
 function ReceiptScannerPageContent() {
     const [preview, setPreview] = useState<string | null>(null);
@@ -34,6 +35,15 @@ function ReceiptScannerPageContent() {
     const { addTransaction } = useTransactionData();
     const { user } = useAuth();
     const { toast } = useToast();
+    const receiptTransaction = useMemo(() => extractedData ? {
+        id: '', // This ID is ignored for new transactions, but keeps the type correct
+        amount: extractedData.amount,
+        date: toLedgerDate(extractedData.date),
+        ledgerDate: toLedgerDate(extractedData.date),
+        description: extractedData.description,
+        type: 'expense' as const,
+        category: '',
+    } : null, [extractedData]);
 
     useEffect(() => {
         const videoElement = videoRef.current;
@@ -143,10 +153,11 @@ function ReceiptScannerPageContent() {
         }
     };
     
-    const handleTransactionCreated = (values: SubmittedTransactionValues) => {
-        addTransaction({
+    const handleTransactionCreated = async (values: SubmittedTransactionValues) => {
+       await addTransaction({
          ...values,
-         date: values.date.toISOString()
+         date: calendarDateToLedgerDate(values.date),
+         ledgerDate: calendarDateToLedgerDate(values.date),
        });
        resetState();
      }
@@ -301,14 +312,7 @@ function ReceiptScannerPageContent() {
         <NewTransactionSheet 
             isOpen={isSheetOpen}
             onOpenChange={setIsSheetOpen}
-            transaction={extractedData ? {
-                id: '', // This ID is ignored for new transactions, but keeps the type correct
-                amount: extractedData.amount,
-                date: new Date(extractedData.date).toISOString(),
-                description: extractedData.description,
-                type: 'expense',
-                category: ''
-            } : null}
+            transaction={receiptTransaction}
             onTransactionCreated={handleTransactionCreated}
             categories={categories}
         />

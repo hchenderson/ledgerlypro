@@ -52,7 +52,7 @@ import {
 export default function SettingsPage() {
     const router = useRouter();
     const { toast } = useToast();
-    const { user, showInstructions, setShowInstructions, budgetingMode, setBudgetingMode, envelopeSettings, setEnvelopeSettings, forecastSettings, setForecastSettings, dashboardPreferences, setDashboardPreferences } = useAuth();
+    const { user, showInstructions, setShowInstructions, budgetingMode, setBudgetingMode, envelopeSettings, setEnvelopeSettings, forecastSettings, setForecastSettings, dashboardPreferences, setDashboardPreferences, reportingTimeZone, setReportingTimeZone } = useAuth();
     const { categories } = useCategories();
     const { clearAllData } = useSettingsData();
     const {
@@ -92,6 +92,7 @@ export default function SettingsPage() {
         dashboardPreferences.excludedCategoryKeys,
     );
     const [savingDashboard, setSavingDashboard] = useState(false);
+    const [timeZone, setTimeZone] = useState(reportingTimeZone);
     const isMobile = useIsMobile();
 
     useEffect(() => {
@@ -114,6 +115,8 @@ export default function SettingsPage() {
         setDashboardIncludedCategories(dashboardPreferences.includedCategoryKeys);
         setDashboardExcludedCategories(dashboardPreferences.excludedCategoryKeys);
     }, [dashboardPreferences]);
+
+    useEffect(() => setTimeZone(reportingTimeZone), [reportingTimeZone]);
 
     const handleSaveProfile = async () => {
         if (user) {
@@ -328,8 +331,44 @@ export default function SettingsPage() {
                     </div>
                      <Button onClick={handleSaveProfile} className="w-full sm:w-auto">Save Profile</Button>
                 </CardContent>
-                </Card>
-                <Card>
+            </Card>
+            <Card>
+                <CardHeader className="p-4 sm:p-6">
+                    <CardTitle>Reporting time zone</CardTitle>
+                    <CardDescription>
+                        Controls transaction-day boundaries, reports, and forecasts on every device. Existing saved report results are not rewritten.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-3 px-4 pb-4 sm:flex-row sm:px-6 sm:pb-6">
+                    <select
+                        aria-label="Reporting time zone"
+                        className="h-10 flex-1 rounded-md border border-input bg-background px-3 text-sm"
+                        value={timeZone}
+                        onChange={(event) => setTimeZone(event.target.value)}
+                    >
+                        {[
+                            "America/New_York",
+                            "America/Chicago",
+                            "America/Denver",
+                            "America/Los_Angeles",
+                            "America/Phoenix",
+                            "America/Anchorage",
+                            "Pacific/Honolulu",
+                            "UTC",
+                        ].map((zone) => <option key={zone} value={zone}>{zone}</option>)}
+                    </select>
+                    <Button
+                        variant="outline"
+                        onClick={() => void setReportingTimeZone(timeZone).then(
+                            () => toast({ title: "Reporting time zone saved" }),
+                            (error) => toast({ variant: "destructive", title: "Time zone was not saved", description: error instanceof Error ? error.message : "Please try again." }),
+                        )}
+                    >
+                        Save time zone
+                    </Button>
+                </CardContent>
+            </Card>
+            <Card>
                 <CardHeader className="p-4 sm:p-6">
                     <CardTitle>Primary Account</CardTitle>
                     <CardDescription>

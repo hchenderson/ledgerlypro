@@ -6,17 +6,588 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid == userId;
     }
 
-    // Bank connection status and balance snapshots are server-managed. Users
-    // can read their own safe metadata, but access tokens never live here.
-    match /users/{userId}/{collectionName}/{document=**} {
-      allow read: if isOwner(userId);
-      allow write: if isOwner(userId)
-        && collectionName != "plaidItems"
-        && collectionName != "balanceSnapshots";
+    function validDocumentId(data, documentId) {
+      return data.id is string && data.id == documentId;
     }
 
-    // Firebase Admin bypasses rules. Explicit denies prevent any client from
-    // reading encrypted Plaid tokens, item ownership, or webhook jobs.
+    function validText(value, maximumLength) {
+      return value is string && value.size() > 0 && value.size() <= maximumLength;
+    }
+
+    function validLedgerDate(value) {
+      return value is string
+        && value.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+    }
+
+    function validLegacyDate(value) {
+      return value is string && value.size() >= 10 && value.size() <= 64;
+    }
+
+    function validUnsignedMoney(data) {
+      return data.amount is number
+        && data.amount >= 0
+        && data.amount <= 90000000000
+        && (!data.keys().hasAny(['amountMinor'])
+          || (data.amountMinor is int
+            && data.amountMinor >= 0
+            && data.amountMinor <= 9000000000000
+            && data.amountMinor == int(data.amount * 100)))
+        && (!data.keys().hasAny(['currency']) || data.currency == 'USD');
+    }
+
+    function validSignedMoney(data) {
+      return data.amount is number
+        && data.amount >= -90000000000
+        && data.amount <= 90000000000
+        && (!data.keys().hasAny(['amountMinor'])
+          || (data.amountMinor is int
+            && data.amountMinor >= -9000000000000
+            && data.amountMinor <= 9000000000000
+            && data.amountMinor == int(data.amount * 100)))
+        && (!data.keys().hasAny(['currency']) || data.currency == 'USD');
+    }
+
+    function validCanonicalLedgerFields(data) {
+      return (!data.keys().hasAny(['ledgerDate'])
+          || validLedgerDate(data.ledgerDate))
+        && validLegacyDate(data.date);
+    }
+
+    function validManualLedgerConsistency(data) {
+      return !data.keys().hasAny(['ledgerDate']) || data.ledgerDate == data.date;
+    }
+
+    function transactionAllowedKeys() {
+      return [
+        'id', 'date', 'ledgerDate', 'description', 'amount', 'amountMinor',
+        'currency', 'type', 'category', 'categoryId', 'accountId', 'envelopeId',
+        'transferId', 'transferDirection', 'transferPurpose',
+        'relatedEnvelopeId', 'linkedTransactionId', 'source', 'postingStatus',
+        'provider', 'providerItemId', 'providerAccountId',
+        'providerTransactionId', 'pendingProviderTransactionId',
+        'providerDescription', 'merchantName', 'merchantLogoUrl',
+        'authorizedDate', 'providerCategoryPrimary',
+        'providerCategoryDetailed', 'providerCategoryConfidence',
+        'providerLastSyncedAt', 'sourceAmountMinor', 'sourceCurrency',
+        'sourceTransactionDate', 'sourcePostedAt', 'sourceAuthorizedAt',
+        'providerRemovedAt', 'categorizationStatus', 'categorizationSource',
+        'categorizationRuleId', 'categorizationConflictRuleIds',
+        'classificationLocked', 'categorizedAt', 'reviewedAt',
+        'possibleTransfer', 'allocations', 'allocationStatus',
+        'allocationParentId', 'allocationId', 'recurringTransactionId',
+        'recurringOccurrenceId', 'recurringExpectationOnly',
+        'recurringOriginalDueDate', 'recurringExpectedAmount',
+        'recurringReconciliationStatus', 'refundOfTransactionId',
+        'refundStatus'
+      ];
+    }
+
+    function transactionServerFields() {
+      return [
+        'provider', 'providerItemId', 'providerAccountId',
+        'providerTransactionId', 'pendingProviderTransactionId',
+        'providerDescription', 'merchantName', 'merchantLogoUrl',
+        'authorizedDate', 'providerCategoryPrimary',
+        'providerCategoryDetailed', 'providerCategoryConfidence',
+        'providerLastSyncedAt', 'sourceAmountMinor', 'sourceCurrency',
+        'sourceTransactionDate', 'sourcePostedAt', 'sourceAuthorizedAt',
+        'providerRemovedAt', 'postingStatus', 'possibleTransfer',
+        'recurringTransactionId', 'recurringOccurrenceId',
+        'recurringExpectationOnly', 'recurringOriginalDueDate',
+        'recurringExpectedAmount', 'recurringReconciliationStatus',
+        'refundOfTransactionId', 'refundStatus'
+      ];
+    }
+
+    function validTransaction(data, documentId) {
+      return data.keys().hasOnly(transactionAllowedKeys())
+        && data.keys().hasAll([
+          'id', 'date', 'description', 'amount', 'type', 'category'
+        ])
+        && validDocumentId(data, documentId)
+        && validCanonicalLedgerFields(data)
+        && validText(data.description, 500)
+        && data.category is string && data.category.size() <= 500
+        && validUnsignedMoney(data)
+        && data.type in ['income', 'expense', 'transfer']
+        && (!data.keys().hasAny(['accountId'])
+          || validText(data.accountId, 200))
+        && (!data.keys().hasAny(['categoryId'])
+          || validText(data.categoryId, 500))
+        && (!data.keys().hasAny(['allocations'])
+          || (data.allocations is list && data.allocations.size() <= 100))
+        && (!data.keys().hasAny(['allocationStatus'])
+          || data.allocationStatus in ['complete', 'incomplete'])
+        && (!data.keys().hasAny(['categorizationStatus'])
+          || data.categorizationStatus in [
+            'needs-categorization', 'auto-categorized',
+            'manually-categorized', 'needs-review'
+          ])
+        && (!data.keys().hasAny(['categorizationSource'])
+          || data.categorizationSource in [
+            'manual', 'rule', 'plaid', 'uncategorized'
+          ]);
+    }
+
+    function isValidClientTransactionCreate(data, documentId) {
+      return validTransaction(data, documentId)
+        && !data.keys().hasAny(transactionServerFields())
+        && validManualLedgerConsistency(data)
+        && (!data.keys().hasAny(['source']) || data.source == 'actual');
+    }
+
+    function preservesTransactionServerFields() {
+      return !request.resource.data.diff(resource.data).affectedKeys()
+        .hasAny(transactionServerFields())
+        && !request.resource.data.diff(resource.data).affectedKeys()
+          .hasAny(['source']);
+    }
+
+    function preservesLinkedActualIdentity() {
+      return !resource.data.keys().hasAny(['recurringOccurrenceId'])
+        || !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'amount', 'amountMinor', 'date', 'ledgerDate', 'type', 'accountId'
+        ]);
+    }
+
+    function preservesProviderDerivedFields() {
+      return !(resource.data.keys().hasAny(['provider'])
+          || (resource.data.keys().hasAny(['source'])
+            && resource.data.source == 'plaid'))
+        || !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'amount', 'amountMinor', 'date', 'ledgerDate'
+        ]);
+    }
+
+    function validClientLedgerConsistency() {
+      return resource.data.keys().hasAny(['provider'])
+        || (resource.data.keys().hasAny(['source'])
+          && resource.data.source == 'plaid')
+        || validManualLedgerConsistency(request.resource.data);
+    }
+
+    function validTransferPair(userId, documentId, data) {
+      return data.type != 'transfer'
+        || (data.keys().hasAll([
+            'transferId', 'transferDirection', 'linkedTransactionId', 'accountId'
+          ])
+          && data.linkedTransactionId is string
+          && data.linkedTransactionId != documentId
+          && data.transferDirection in ['in', 'out']
+          && existsAfter(/databases/$(database)/documents/users/$(userId)/transactions/$(data.linkedTransactionId))
+          && getAfter(/databases/$(database)/documents/users/$(userId)/transactions/$(data.linkedTransactionId)).data.type == 'transfer'
+          && getAfter(/databases/$(database)/documents/users/$(userId)/transactions/$(data.linkedTransactionId)).data.transferId == data.transferId
+          && getAfter(/databases/$(database)/documents/users/$(userId)/transactions/$(data.linkedTransactionId)).data.linkedTransactionId == documentId
+          && getAfter(/databases/$(database)/documents/users/$(userId)/transactions/$(data.linkedTransactionId)).data.transferDirection != data.transferDirection
+          && getAfter(/databases/$(database)/documents/users/$(userId)/transactions/$(data.linkedTransactionId)).data.accountId != data.accountId
+          && getAfter(/databases/$(database)/documents/users/$(userId)/transactions/$(data.linkedTransactionId)).data.amount == data.amount
+          && (!data.keys().hasAny(['amountMinor'])
+            || getAfter(/databases/$(database)/documents/users/$(userId)/transactions/$(data.linkedTransactionId)).data.amountMinor == data.amountMinor));
+    }
+
+    function validTransactionDelete(userId) {
+      return !resource.data.keys().hasAny([
+          'provider', 'providerTransactionId', 'recurringOccurrenceId',
+          'refundOfTransactionId'
+        ])
+        && (resource.data.type != 'transfer'
+          || !existsAfter(/databases/$(database)/documents/users/$(userId)/transactions/$(resource.data.linkedTransactionId)));
+    }
+
+    match /users/{userId}/transactions/{transactionId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId)
+        && isValidClientTransactionCreate(request.resource.data, transactionId)
+        && validTransferPair(userId, transactionId, request.resource.data);
+      allow update: if isOwner(userId)
+        && validTransaction(request.resource.data, transactionId)
+        && resource.data.id == request.resource.data.id
+        && preservesTransactionServerFields()
+        && preservesProviderDerivedFields()
+        && validClientLedgerConsistency()
+        && preservesLinkedActualIdentity()
+        && validTransferPair(userId, transactionId, request.resource.data);
+      allow delete: if isOwner(userId) && validTransactionDelete(userId);
+    }
+
+    function accountAllowedKeys() {
+      return [
+        'id', 'name', 'type', 'classification', 'openingBalance',
+        'openingBalanceMinor', 'institution', 'lastFour', 'currency', 'role',
+        'isArchived', 'isDefault', 'createdAt', 'plaidItemId',
+        'plaidAccountId', 'institutionId', 'institutionName',
+        'institutionCurrentBalance', 'institutionAvailableBalance',
+        'institutionCreditLimit', 'institutionBalanceUpdatedAt',
+        'institutionBalanceIsRealtime', 'plaidConnectionStatus',
+        'openingBalanceEstimated'
+      ];
+    }
+
+    function accountServerFields() {
+      return [
+        'plaidItemId', 'plaidAccountId', 'institutionId', 'institutionName',
+        'institutionCurrentBalance', 'institutionAvailableBalance',
+        'institutionCreditLimit', 'institutionBalanceUpdatedAt',
+        'institutionBalanceIsRealtime', 'plaidConnectionStatus',
+        'openingBalanceEstimated'
+      ];
+    }
+
+    function validAccount(data, accountId) {
+      return data.keys().hasOnly(accountAllowedKeys())
+        && data.keys().hasAll([
+          'id', 'name', 'type', 'classification', 'openingBalance',
+          'currency', 'createdAt'
+        ])
+        && validDocumentId(data, accountId)
+        && validText(data.name, 120)
+        && data.type in ['checking', 'savings', 'credit', 'cash', 'other']
+        && data.classification in ['asset', 'liability']
+        && data.currency == 'USD'
+        && data.openingBalance is number
+        && data.openingBalance >= -90000000000
+        && data.openingBalance <= 90000000000
+        && (!data.keys().hasAny(['openingBalanceMinor'])
+          || (data.openingBalanceMinor is int
+            && data.openingBalanceMinor == int(data.openingBalance * 100)))
+        && (!data.keys().hasAny(['role'])
+          || data.role in ['operating', 'envelope', 'debt', 'standard']);
+    }
+
+    match /users/{userId}/accounts/{accountId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId)
+        && validAccount(request.resource.data, accountId)
+        && !request.resource.data.keys().hasAny(accountServerFields());
+      allow update: if isOwner(userId)
+        && validAccount(request.resource.data, accountId)
+        && resource.data.id == request.resource.data.id
+        && !request.resource.data.diff(resource.data).affectedKeys()
+          .hasAny(accountServerFields());
+      allow delete: if isOwner(userId)
+        && !resource.data.keys().hasAny(['plaidItemId', 'plaidAccountId']);
+    }
+
+    function validCategory(data, categoryId) {
+      return data.keys().hasOnly(['id', 'name', 'type', 'icon', 'subCategories'])
+        && data.keys().hasAll(['id', 'name', 'type'])
+        && validDocumentId(data, categoryId)
+        && validText(data.name, 160)
+        && data.type in ['income', 'expense']
+        && (!data.keys().hasAny(['subCategories'])
+          || (data.subCategories is list && data.subCategories.size() <= 300));
+    }
+
+    match /users/{userId}/categories/{categoryId} {
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId)
+        && validCategory(request.resource.data, categoryId);
+      allow delete: if isOwner(userId);
+    }
+
+    function validBudget(data, budgetId) {
+      return data.keys().hasOnly([
+          'id', 'categoryId', 'amount', 'amountMinor', 'currency',
+          'period', 'year', 'isFavorite'
+        ])
+        && data.keys().hasAll(['id', 'categoryId', 'amount', 'period', 'year'])
+        && validDocumentId(data, budgetId)
+        && validText(data.categoryId, 500)
+        && validUnsignedMoney(data)
+        && data.period in ['monthly', 'yearly']
+        && data.year is int && data.year >= 1900 && data.year <= 2200;
+    }
+
+    match /users/{userId}/budgets/{budgetId} {
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId)
+        && validBudget(request.resource.data, budgetId);
+      allow delete: if isOwner(userId);
+    }
+
+    function validGoal(data, goalId) {
+      return data.keys().hasOnly([
+          'id', 'name', 'targetAmount', 'savedAmount', 'targetDate',
+          'linkedCategoryId', 'linkedEnvelopeId', 'contributionStartDate'
+        ])
+        && data.keys().hasAll(['id', 'name', 'targetAmount', 'savedAmount'])
+        && validDocumentId(data, goalId)
+        && validText(data.name, 160)
+        && data.targetAmount is number && data.targetAmount >= 0
+        && data.savedAmount is number && data.savedAmount >= 0;
+    }
+
+    match /users/{userId}/goals/{goalId} {
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId)
+        && validGoal(request.resource.data, goalId);
+      allow delete: if isOwner(userId);
+    }
+
+    function validRecurring(data, recurringId) {
+      return data.keys().hasOnly([
+          'id', 'description', 'amount', 'amountMinor', 'currency', 'type',
+          'category', 'categoryId', 'accountId', 'envelopeId', 'frequency',
+          'startDate', 'lastAddedDate'
+        ])
+        && data.keys().hasAll([
+          'id', 'description', 'amount', 'type', 'category', 'frequency',
+          'startDate'
+        ])
+        && validDocumentId(data, recurringId)
+        && validText(data.description, 500)
+        && data.category is string && data.category.size() <= 500
+        && validUnsignedMoney(data)
+        && data.type in ['income', 'expense']
+        && data.frequency in ['daily', 'weekly', 'monthly', 'yearly']
+        && validLegacyDate(data.startDate)
+        && (!data.keys().hasAny(['lastAddedDate'])
+          || data.lastAddedDate == null
+          || validLegacyDate(data.lastAddedDate));
+    }
+
+    match /users/{userId}/recurringTransactions/{recurringId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId)
+        && validRecurring(request.resource.data, recurringId)
+        && (!request.resource.data.keys().hasAny(['lastAddedDate'])
+          || request.resource.data.lastAddedDate == null);
+      allow update: if isOwner(userId)
+        && validRecurring(request.resource.data, recurringId)
+        && resource.data.id == request.resource.data.id
+        && !request.resource.data.diff(resource.data).affectedKeys()
+          .hasAny(['lastAddedDate']);
+      allow delete: if isOwner(userId);
+    }
+
+    function validEnvelope(data, envelopeId) {
+      return data.keys().hasOnly([
+          'id', 'name', 'type', 'backingAccountId', 'categoryIds',
+          'targetAmount', 'targetDate', 'dueDay', 'fundingFrequency',
+          'fundingAmount', 'paycheckPercentage', 'priority', 'rollover',
+          'color', 'icon', 'isArchived', 'createdAt'
+        ])
+        && data.keys().hasAll([
+          'id', 'name', 'type', 'categoryIds', 'fundingFrequency',
+          'priority', 'rollover', 'color', 'icon', 'createdAt'
+        ])
+        && validDocumentId(data, envelopeId)
+        && validText(data.name, 160)
+        && data.type in [
+          'monthly-spending', 'bills', 'sinking-fund', 'savings', 'buffer'
+        ]
+        && data.categoryIds is list && data.categoryIds.size() <= 300
+        && data.fundingFrequency in ['manual', 'monthly', 'paycheck', 'target-date']
+        && data.rollover in ['rollover', 'reset', 'sweep']
+        && data.priority is int;
+    }
+
+    match /users/{userId}/envelopes/{envelopeId} {
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId)
+        && validEnvelope(request.resource.data, envelopeId);
+      allow delete: if isOwner(userId);
+    }
+
+    function validEnvelopeEvent(data, eventId) {
+      return data.keys().hasOnly([
+          'id', 'envelopeId', 'type', 'amount', 'amountMinor', 'currency',
+          'date', 'transactionId', 'transferId', 'relatedEnvelopeId',
+          'usesReleasedFunds', 'note', 'createdAt'
+        ])
+        && data.keys().hasAll([
+          'id', 'envelopeId', 'type', 'amount', 'date', 'createdAt'
+        ])
+        && validDocumentId(data, eventId)
+        && validText(data.envelopeId, 200)
+        && data.type in [
+          'starting-allocation', 'fund', 'release', 'return', 'expense',
+          'refund', 'unassign', 'reassign-in', 'reassign-out', 'adjustment'
+        ]
+        && validSignedMoney(data)
+        && validLegacyDate(data.date);
+    }
+
+    match /users/{userId}/envelopeEvents/{eventId} {
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId)
+        && validEnvelopeEvent(request.resource.data, eventId);
+      allow delete: if isOwner(userId);
+    }
+
+    function validAccountReconciliation(data, reconciliationId) {
+      return data.keys().hasOnly([
+          'id', 'accountId', 'statementDate', 'statementBalance',
+          'ledgerBalance', 'difference', 'transactionCount', 'status',
+          'note', 'createdAt'
+        ])
+        && data.keys().hasAll([
+          'id', 'accountId', 'statementDate', 'statementBalance',
+          'ledgerBalance', 'difference', 'transactionCount', 'status',
+          'createdAt'
+        ])
+        && validDocumentId(data, reconciliationId)
+        && validText(data.accountId, 200)
+        && validLegacyDate(data.statementDate)
+        && data.statementBalance is number
+        && data.ledgerBalance is number
+        && data.difference is number
+        && data.transactionCount is int && data.transactionCount >= 0
+        && data.status in ['reconciled', 'needs-review'];
+    }
+
+    match /users/{userId}/accountReconciliations/{reconciliationId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId)
+        && validAccountReconciliation(request.resource.data, reconciliationId);
+      allow update: if false;
+      allow delete: if isOwner(userId);
+    }
+
+    function validSplitTemplate(data, templateId) {
+      return data.keys().hasOnly([
+          'id', 'name', 'type', 'lines', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasAll([
+          'id', 'name', 'type', 'lines', 'createdAt', 'updatedAt'
+        ])
+        && validDocumentId(data, templateId)
+        && validText(data.name, 160)
+        && data.type in ['income', 'expense']
+        && data.lines is list && data.lines.size() > 0 && data.lines.size() <= 100;
+    }
+
+    match /users/{userId}/splitTemplates/{templateId} {
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId)
+        && validSplitTemplate(request.resource.data, templateId);
+      allow delete: if isOwner(userId);
+    }
+
+    function validDesignatedFund(data, fundId) {
+      return data.keys().hasOnly([
+          'id', 'name', 'incomeCategoryIds', 'expenseCategoryIds',
+          'openingBalance', 'openingBalanceDate', 'isArchived',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasAll([
+          'id', 'name', 'incomeCategoryIds', 'expenseCategoryIds',
+          'openingBalance', 'openingBalanceDate', 'createdAt', 'updatedAt'
+        ])
+        && validDocumentId(data, fundId)
+        && validText(data.name, 160)
+        && data.incomeCategoryIds is list && data.incomeCategoryIds.size() <= 300
+        && data.expenseCategoryIds is list && data.expenseCategoryIds.size() <= 300
+        && data.openingBalance is number
+        && validLegacyDate(data.openingBalanceDate);
+    }
+
+    match /users/{userId}/designatedFunds/{fundId} {
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId)
+        && validDesignatedFund(request.resource.data, fundId);
+      allow delete: if isOwner(userId);
+    }
+
+    function validReportView(data, viewId) {
+      return data.keys().hasOnly([
+          'id', 'name', 'configuration', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasAll([
+          'id', 'name', 'configuration', 'createdAt', 'updatedAt'
+        ])
+        && validDocumentId(data, viewId)
+        && validText(data.name, 160)
+        && data.configuration is map;
+    }
+
+    match /users/{userId}/reportViews/{viewId} {
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId)
+        && validReportView(request.resource.data, viewId);
+      allow delete: if isOwner(userId);
+    }
+
+    match /users/{userId}/financialSummaries/{summaryId} {
+      allow read: if isOwner(userId);
+      allow write: if false;
+    }
+
+    function validSettings(data) {
+      return data.keys().hasOnly([
+          'onboardingComplete', 'showInstructions', 'activeYear', 'firstYear',
+          'budgetingMode', 'envelopeSettings', 'forecastSettings',
+          'dashboardPreferences', 'reportingTimeZone', 'startingBalance',
+          'accountSchemaVersion', 'categorySchemaVersion',
+          'dataSchemaVersion', 'primaryAccountId'
+        ])
+        && (!data.keys().hasAny(['activeYear'])
+          || (data.activeYear is int && data.activeYear >= 1900 && data.activeYear <= 2200))
+        && (!data.keys().hasAny(['firstYear'])
+          || (data.firstYear is int && data.firstYear >= 1900 && data.firstYear <= 2200))
+        && (!data.keys().hasAny(['budgetingMode'])
+          || data.budgetingMode in ['tracking', 'envelope', 'hybrid'])
+        && (!data.keys().hasAny(['startingBalance'])
+          || (data.startingBalance is number
+            && data.startingBalance >= -90000000000
+            && data.startingBalance <= 90000000000))
+        && (!data.keys().hasAny(['reportingTimeZone'])
+          || validText(data.reportingTimeZone, 100));
+    }
+
+    match /users/{userId}/settings/{settingId} {
+      allow read: if isOwner(userId) && settingId == 'main';
+      allow create, update: if isOwner(userId)
+        && settingId == 'main'
+        && validSettings(request.resource.data);
+      allow delete: if false;
+    }
+
+    match /users/{userId}/categorizationRules/{ruleId} {
+      allow read: if isOwner(userId);
+      // Rule mutations use /api/categorization/rules so each change has an
+      // immutable server-generated audit event.
+      allow write: if false;
+    }
+
+    // Server-owned user data. Firebase Admin writes bypass these rules; the
+    // corresponding routes authenticate the owner independently.
+    match /users/{userId}/plaidItems/{documentId} {
+      allow read: if isOwner(userId);
+      allow write: if false;
+    }
+    match /users/{userId}/balanceSnapshots/{documentId} {
+      allow read: if isOwner(userId);
+      allow write: if false;
+    }
+    match /users/{userId}/recurringOccurrences/{documentId} {
+      allow read: if isOwner(userId);
+      allow write: if false;
+    }
+    match /users/{userId}/recurringReconciliationEvents/{documentId} {
+      allow read: if isOwner(userId);
+      allow write: if false;
+    }
+    match /users/{userId}/refundAuditEvents/{documentId} {
+      allow read: if isOwner(userId);
+      allow write: if false;
+    }
+    match /users/{userId}/categorizationAudit/{documentId} {
+      allow read: if isOwner(userId);
+      allow write: if false;
+    }
+    match /users/{userId}/reports/{documentId} {
+      allow read: if isOwner(userId);
+      allow write: if false;
+    }
+
+    // No fallback grant exists below /users/{uid}. Unknown collections are
+    // denied until their schema and ownership contract are reviewed.
+    match /users/{userId}/{document=**} {
+      allow read, write: if false;
+    }
+
+    // Operational and secret collections never use client SDK access.
     match /plaidSecrets/{document=**} {
       allow read, write: if false;
     }

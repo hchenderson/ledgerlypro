@@ -1,9 +1,10 @@
 import type { Transaction } from "@/types";
 import {
   summarizeTransactions,
-  transactionAmount,
+  financialTransactionAmount,
 } from "@/lib/financial-summary";
 import { transferBalanceDelta } from "@/lib/accounts";
+import { ledgerDateToDate, transactionLedgerDate } from "@/lib/ledger-date";
 
 export const FINANCIAL_AGGREGATE_VERSION = 3;
 
@@ -44,13 +45,13 @@ function fingerprintTransactions(transactions: Transaction[]): string {
   for (const transaction of sorted) {
     const value = [
       transaction.id,
-      transaction.date,
+      transactionLedgerDate(transaction),
       transaction.type,
       transaction.accountId ?? "",
       transaction.transferDirection ?? "",
       transaction.postingStatus ?? "posted",
       transaction.providerRemovedAt ?? "",
-      transactionAmount(transaction).toFixed(2),
+      financialTransactionAmount(transaction).toFixed(2),
       transaction.categoryId ?? transaction.category,
       JSON.stringify(transaction.allocations ?? []),
     ].join("|");
@@ -99,7 +100,7 @@ export function buildFinancialAggregateDocuments(
   accountId?: string,
 ): FinancialAggregateDocument[] {
   const transactionsForYear = transactions.filter((transaction) => {
-    const date = new Date(transaction.date);
+    const date = ledgerDateToDate(transactionLedgerDate(transaction));
     return (
       !Number.isNaN(date.getTime()) &&
       date.getFullYear() === year &&
@@ -113,7 +114,7 @@ export function buildFinancialAggregateDocuments(
   );
 
   for (const transaction of transactionsForYear) {
-    const month = new Date(transaction.date).getMonth();
+    const month = ledgerDateToDate(transactionLedgerDate(transaction)).getMonth();
     if (month >= 0 && month <= 11) {
       monthlyTransactions[month].push(transaction);
     }

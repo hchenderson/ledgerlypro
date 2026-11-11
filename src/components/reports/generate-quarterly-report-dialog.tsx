@@ -145,6 +145,7 @@ export function GenerateQuarterlyReportDialog({
               >
                 <Calendar
                   mode="single"
+                  defaultMonth={referenceDate}
                   selected={referenceDate}
                   onSelect={(date) => {
                     setReferenceDate(date);

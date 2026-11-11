@@ -12,12 +12,13 @@ import {
   findMainCategoryForTransaction,
   normalizeCategoryLabel,
 } from '@/lib/category-tree';
-import { transactionAmount } from '@/lib/financial-summary';
+import { financialTransactionAmount } from '@/lib/financial-summary';
 import { isFinancialTransaction } from '@/lib/accounts';
 import {
   expandTransactionsForReporting,
   sourceTransactionId,
 } from '@/lib/transaction-allocations';
+import { DEFAULT_REPORTING_TIME_ZONE, ledgerDateToDate, todayLedgerDate, transactionLedgerDate } from '@/lib/ledger-date';
 
 export type FinancialAssistantContext = {
   year: number;
@@ -67,6 +68,7 @@ export function buildFinancialAssistantContext({
   recurringTransactions,
   question,
   year = new Date().getFullYear(),
+  reportingTimeZone = DEFAULT_REPORTING_TIME_ZONE,
 }: {
   transactions: Transaction[];
   categories: Category[];
@@ -75,33 +77,29 @@ export function buildFinancialAssistantContext({
   recurringTransactions: RecurringTransaction[];
   question: string;
   year?: number;
+  reportingTimeZone?: string;
 }): FinancialAssistantContext {
   const yearlyTransactions = expandTransactionsForReporting(transactions).filter((transaction) => {
     if (!isFinancialTransaction(transaction)) return false;
-    const date = new Date(transaction.date);
-    return (
-      !Number.isNaN(date.getTime()) &&
-      date.getUTCFullYear() === year &&
-      transaction.type !== "transfer"
-    );
+    return Number(transactionLedgerDate(transaction, reportingTimeZone).slice(0, 4)) === year && transaction.type !== "transfer";
   });
   const income = yearlyTransactions
     .filter((transaction) => transaction.type === 'income')
-    .reduce((sum, transaction) => sum + transactionAmount(transaction), 0);
+    .reduce((sum, transaction) => sum + financialTransactionAmount(transaction), 0);
   const expenses = yearlyTransactions
     .filter((transaction) => transaction.type === 'expense')
-    .reduce((sum, transaction) => sum + transactionAmount(transaction), 0);
+    .reduce((sum, transaction) => sum + financialTransactionAmount(transaction), 0);
 
   const categoryTotals = yearlyTransactions
     .filter((transaction) => transaction.type === 'expense')
     .reduce<Record<string, number>>((totals, transaction) => {
       const category = findMainCategoryForTransaction(transaction, categories);
       totals[category] =
-        (totals[category] ?? 0) + transactionAmount(transaction);
+        (totals[category] ?? 0) + financialTransactionAmount(transaction);
       return totals;
     }, {});
 
-  const currentMonth = new Date().getUTCMonth();
+  const currentMonth = Number(todayLedgerDate(new Date(), reportingTimeZone).slice(5, 7)) - 1;
   const budgetContext = budgets
     .filter((budget) => budget.year === year)
     .flatMap((budget) => {
@@ -113,7 +111,7 @@ export function buildFinancialAssistantContext({
       const spent = yearlyTransactions
         .filter((transaction) => {
           if (transaction.type !== 'expense') return false;
-          if (budget.period === 'monthly' && new Date(transaction.date).getUTCMonth() !== currentMonth) {
+          if (budget.period === 'monthly' && ledgerDateToDate(transactionLedgerDate(transaction, reportingTimeZone)).getMonth() !== currentMonth) {
             return false;
           }
           return transaction.categoryId
@@ -121,7 +119,7 @@ export function buildFinancialAssistantContext({
             : names.has(normalizeCategoryLabel(transaction.category));
         })
         .reduce(
-          (sum, transaction) => sum + transactionAmount(transaction),
+          (sum, transaction) => sum + financialTransactionAmount(transaction),
           0,
         );
 

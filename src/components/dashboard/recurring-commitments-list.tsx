@@ -19,24 +19,26 @@ type Row = {
 
 export function RecurringCommitmentsList({
   recurringFuture,
+  start = new Date(),
 }: {
   recurringFuture: ForecastTx[];
+  start?: Date;
 }) {
   const rows = useMemo(() => {
-    const start = startOfDay(new Date());
-    const end = addDays(start, 30);
-    const startKey = start.toISOString().slice(0, 10);
-    const endKey = end.toISOString().slice(0, 10);
+    const startDay = startOfDay(start);
+    const end = addDays(startDay, 29);
+    const startKey = format(startDay, "yyyy-MM-dd");
+    const endKey = format(end, "yyyy-MM-dd");
 
     const inRange = recurringFuture.filter((t) => {
-      const k = t.date.slice(0, 10);
+      const k = format(parseISO(t.date), "yyyy-MM-dd");
       return k >= startKey && k <= endKey;
     });
 
     const map = new Map<string, Row>();
 
     for (const t of inRange) {
-      const dateKey = t.date.slice(0, 10);
+      const dateKey = format(parseISO(t.date), "yyyy-MM-dd");
       const dateLabel = format(parseISO(t.date), "EEE, MMM d");
       const prev =
         map.get(dateKey) ??
@@ -50,7 +52,7 @@ export function RecurringCommitmentsList({
     }
 
     return Array.from(map.values()).sort((a, b) => a.dateKey.localeCompare(b.dateKey));
-  }, [recurringFuture]);
+  }, [recurringFuture, start]);
 
   if (!rows.length) {
     return (

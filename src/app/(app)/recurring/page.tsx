@@ -38,6 +38,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { CalendarIcon } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
+import { RecurringReconciliationReview } from '@/components/recurring/reconciliation-review';
 import { format, addDays, addWeeks, addMonths, addYears, parseISO, isBefore, startOfToday } from 'date-fns';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Badge } from '@/components/ui/badge';
@@ -470,6 +471,7 @@ function RecurringPageContent() {
           )}
         </div>
       )}
+      <RecurringReconciliationReview />
       <Card>
         <CardContent className="p-0">
           <div className="divide-y md:hidden">

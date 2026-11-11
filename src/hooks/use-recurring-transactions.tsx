@@ -16,7 +16,8 @@ import { format } from "date-fns";
 import { useAuth } from "@/hooks/use-auth";
 import { authenticatedFetch } from "@/lib/authenticated-fetch";
 import { useFirestoreUserCollection } from "@/hooks/use-firestore-user-collection";
-import type { RecurringTransaction } from "@/types";
+import type { RecurringOccurrence, RecurringTransaction } from "@/types";
+import { canonicalMoneyFields } from "@/lib/money";
 
 export interface RecurringSyncState {
   status: "idle" | "syncing" | "success" | "error";
@@ -26,6 +27,7 @@ export interface RecurringSyncState {
 
 export interface RecurringTransactionsContextType {
   recurringTransactions: RecurringTransaction[];
+  recurringOccurrences: RecurringOccurrence[];
   loading: boolean;
   error: Error | null;
   recurringSync: RecurringSyncState;
@@ -78,6 +80,14 @@ export function RecurringTransactionsProvider({
       "recurringTransactions",
       { enabled },
     );
+  const {
+    items: recurringOccurrences,
+    loading: occurrencesLoading,
+    error: occurrencesError,
+  } = useFirestoreUserCollection<RecurringOccurrence>(
+    "recurringOccurrences",
+    { enabled },
+  );
   const [recurringSync, setRecurringSync] =
     useState<RecurringSyncState>({ status: "idle" });
   const processingRef = useRef(false);
@@ -134,10 +144,10 @@ export function RecurringTransactionsProvider({
       setRecurringSync({
         status: "success",
         message: hasMore
-          ? `${totalUpserted} scheduled transactions added. More remain; select Sync now again.`
+          ? `${totalUpserted} recurring expectations prepared. More remain; select Sync now again.`
           : totalUpserted > 0
-            ? `${totalUpserted} scheduled transaction${totalUpserted === 1 ? "" : "s"} added.`
-            : "Recurring transactions are up to date.",
+            ? `${totalUpserted} recurring expectation${totalUpserted === 1 ? "" : "s"} prepared.`
+            : "Recurring expectations are up to date.",
         lastSyncedAt: new Date(),
       });
     } catch (syncError) {
@@ -192,6 +202,7 @@ export function RecurringTransactionsProvider({
       const newDocumentRef = doc(collectionRef);
       await setDoc(newDocumentRef, {
         ...withoutUndefinedValues(transaction),
+        ...canonicalMoneyFields(transaction.amount),
         id: newDocumentRef.id,
         lastAddedDate: null,
       });
@@ -207,7 +218,10 @@ export function RecurringTransactionsProvider({
       if (!collectionRef) return;
       await setDoc(
         doc(collectionRef, id),
-        withDeletedUndefinedValues(values),
+        withDeletedUndefinedValues({
+          ...values,
+          ...(values.amount !== undefined ? canonicalMoneyFields(values.amount) : {}),
+        }),
         { merge: true },
       );
     },
@@ -225,8 +239,9 @@ export function RecurringTransactionsProvider({
   const value = useMemo<RecurringTransactionsContextType>(
     () => ({
       recurringTransactions,
-      loading,
-      error,
+      recurringOccurrences,
+      loading: loading || occurrencesLoading,
+      error: error ?? occurrencesError,
       recurringSync,
       syncRecurringTransactions,
       addRecurringTransaction,
@@ -238,6 +253,9 @@ export function RecurringTransactionsProvider({
       deleteRecurringTransaction,
       error,
       loading,
+      occurrencesError,
+      occurrencesLoading,
+      recurringOccurrences,
       recurringSync,
       recurringTransactions,
       syncRecurringTransactions,

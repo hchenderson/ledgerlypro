@@ -16,9 +16,9 @@ vi.mock('@/lib/server-logger', () => ({
   requestLogContext: vi.fn(() => ({ operation: 'test', requestId: 'request-123' })),
 }));
 
-import { POST } from './route';
+import { DELETE, POST } from './route';
 import { AuthenticationError, requireUid } from '@/lib/requireUid';
-import { generateQuarterlyReport } from '@/lib/quarterly-reports-server';
+import { deleteQuarterlyReport, generateQuarterlyReport } from '@/lib/quarterly-reports-server';
 
 describe('quarterly report API security', () => {
   beforeEach(() => vi.clearAllMocks());
@@ -67,5 +67,22 @@ describe('quarterly report API security', () => {
 
     expect(response.status).toBe(401);
     expect(generateQuarterlyReport).not.toHaveBeenCalled();
+  });
+
+  it('accepts a safe auto-generated snapshot ID for deletion', async () => {
+    vi.mocked(requireUid).mockResolvedValue('verified-user');
+    vi.mocked(deleteQuarterlyReport).mockResolvedValue();
+
+    const response = await DELETE(new Request('https://example.test/api/reports/quarterly', {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ reportId: 'n4Wv1Jr3_revision-4' }),
+    }));
+
+    expect(response.status).toBe(200);
+    expect(deleteQuarterlyReport).toHaveBeenCalledWith(
+      'verified-user',
+      'n4Wv1Jr3_revision-4',
+    );
   });
 });

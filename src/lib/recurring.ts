@@ -1,8 +1,11 @@
-import type { RecurringTransaction, Transaction } from "@/types";
+import type {
+  RecurringOccurrence,
+  RecurringTransaction,
+  Transaction,
+} from "@/types";
+import { minorToMajor, moneyMinor } from "@/lib/money";
 
-export interface PlannedRecurringOccurrence extends Transaction {
-  recurringTransactionId: string;
-}
+export type PlannedRecurringOccurrence = RecurringOccurrence;
 
 export interface RecurringOccurrencePlan {
   occurrences: PlannedRecurringOccurrence[];
@@ -60,8 +63,127 @@ function toUtcCalendarDay(value: string | Date): Date {
   );
 }
 
+function localBoundaryAsUtcCalendarDay(value: Date): Date {
+  return new Date(
+    Date.UTC(value.getFullYear(), value.getMonth(), value.getDate()),
+  );
+}
+
 export function recurringOccurrenceId(recurringId: string, date: Date): string {
   return `${recurringId}_${date.toISOString().slice(0, 10)}`;
+}
+
+/** Enumerates schedule calendar dates without consulting lastAddedDate. The
+ * process route uses lastAddedDate for write batching; forecasts need the full
+ * schedule in their requested window. Both paths share the same month-end and
+ * leap-year anchoring rules so occurrence identities remain identical. */
+export function recurringOccurrenceDatesBetween(
+  recurring: Pick<RecurringTransaction, "startDate" | "frequency">,
+  from: Date,
+  through: Date,
+): Date[] {
+  const startDate = toUtcCalendarDay(recurring.startDate);
+  const fromDate = localBoundaryAsUtcCalendarDay(from);
+  const throughDate = localBoundaryAsUtcCalendarDay(through);
+  if (
+    Number.isNaN(startDate.getTime()) ||
+    Number.isNaN(fromDate.getTime()) ||
+    Number.isNaN(throughDate.getTime())
+  ) return [];
+
+  const anchorDay = startDate.getUTCDate();
+  const anchorMonth = startDate.getUTCMonth();
+  let cursor = startDate;
+  while (cursor < fromDate) {
+    cursor = nextOccurrence(
+      cursor,
+      recurring.frequency,
+      anchorDay,
+      anchorMonth,
+    );
+  }
+  const dates: Date[] = [];
+  while (cursor <= throughDate) {
+    dates.push(cursor);
+    cursor = nextOccurrence(
+      cursor,
+      recurring.frequency,
+      anchorDay,
+      anchorMonth,
+    );
+  }
+  return dates;
+}
+
+export function recurringOccurrenceFromSchedule(
+  recurring: RecurringTransaction,
+  dueDate: Date,
+  now = new Date().toISOString(),
+): RecurringOccurrence {
+  const originalDueDate = toUtcCalendarDay(dueDate).toISOString();
+  const expectedAmountMinor = moneyMinor(recurring);
+  const expectedAmount = minorToMajor(expectedAmountMinor);
+  return {
+    id: recurringOccurrenceId(recurring.id, dueDate),
+    recurringTransactionId: recurring.id,
+    originalDueDate,
+    expectedAmount,
+    expectedAmountMinor,
+    remainingAmount: expectedAmount,
+    remainingAmountMinor: expectedAmountMinor,
+    matchedAmount: 0,
+    matchedAmountMinor: 0,
+    varianceAmount: 0,
+    varianceAmountMinor: 0,
+    type: recurring.type,
+    category: recurring.category,
+    ...(recurring.categoryId ? { categoryId: recurring.categoryId } : {}),
+    ...(recurring.accountId ? { accountId: recurring.accountId } : {}),
+    ...(recurring.envelopeId ? { envelopeId: recurring.envelopeId } : {}),
+    description: recurring.description,
+    status: "expected",
+    matches: [],
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+export function recurringOccurrenceFromLegacyTransaction(
+  transaction: Transaction,
+  now = new Date().toISOString(),
+): RecurringOccurrence | null {
+  if (
+    transaction.source !== "recurring" ||
+    !transaction.recurringTransactionId
+  ) return null;
+  const dueDate = toUtcCalendarDay(transaction.date);
+  if (Number.isNaN(dueDate.getTime())) return null;
+  const expectedAmountMinor = moneyMinor(transaction);
+  const expectedAmount = minorToMajor(expectedAmountMinor);
+  return {
+    id: recurringOccurrenceId(transaction.recurringTransactionId, dueDate),
+    recurringTransactionId: transaction.recurringTransactionId,
+    originalDueDate: dueDate.toISOString(),
+    expectedAmount,
+    expectedAmountMinor,
+    remainingAmount: expectedAmount,
+    remainingAmountMinor: expectedAmountMinor,
+    matchedAmount: 0,
+    matchedAmountMinor: 0,
+    varianceAmount: 0,
+    varianceAmountMinor: 0,
+    type: transaction.type === "income" ? "income" : "expense",
+    category: transaction.category,
+    ...(transaction.categoryId ? { categoryId: transaction.categoryId } : {}),
+    ...(transaction.accountId ? { accountId: transaction.accountId } : {}),
+    ...(transaction.envelopeId ? { envelopeId: transaction.envelopeId } : {}),
+    description: transaction.description.replace(/^\(Recurring\)\s*/, ""),
+    status: "expected",
+    matches: [],
+    legacyTransactionId: transaction.id,
+    createdAt: now,
+    updatedAt: now,
+  };
 }
 
 export function planRecurringOccurrences(
@@ -92,27 +214,13 @@ export function planRecurringOccurrences(
   const occurrences: PlannedRecurringOccurrence[] = [];
 
   while (cursor.getTime() <= through.getTime() && occurrences.length < limit) {
-    const date = cursor.toISOString();
-    occurrences.push({
-      id: recurringOccurrenceId(recurring.id, cursor),
-      recurringTransactionId: recurring.id,
-      date,
-      description: `(Recurring) ${recurring.description}`,
-      amount: Math.abs(recurring.amount),
-      type: recurring.type,
-      category: recurring.category,
-      ...(recurring.categoryId ? { categoryId: recurring.categoryId } : {}),
-      ...(recurring.accountId
-        ? { accountId: recurring.accountId }
-        : {}),
-      source: "recurring",
-    });
+    occurrences.push(recurringOccurrenceFromSchedule(recurring, cursor));
     cursor = nextOccurrence(cursor, recurring.frequency, anchorDay, anchorMonth);
   }
 
   return {
     occurrences,
     hasMore: cursor.getTime() <= through.getTime(),
-    lastAddedDate: occurrences.at(-1)?.date,
+    lastAddedDate: occurrences.at(-1)?.originalDueDate,
   };
 }

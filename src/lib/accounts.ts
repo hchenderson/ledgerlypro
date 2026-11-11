@@ -7,6 +7,8 @@ import type {
   TransferPurpose,
 } from "@/types";
 import { isTransactionFinalized } from "@/lib/categorization";
+import { canonicalMoneyFields, minorToMajor, moneyMinor, signedMoneyMinor } from "@/lib/money";
+import { transactionLedgerDate } from "@/lib/ledger-date";
 
 export const PRIMARY_ACCOUNT_ID = "primary-account";
 
@@ -50,14 +52,32 @@ export function displayAccountBalance(
 export function isFinancialTransaction(
   transaction: Pick<
     Transaction,
-    "type" | "postingStatus" | "providerRemovedAt" | "possibleTransfer"
+    | "type"
+    | "postingStatus"
+    | "providerRemovedAt"
+    | "possibleTransfer"
+    | "source"
+    | "recurringExpectationOnly"
   >,
 ): boolean {
   return (
     isTransactionFinalized(transaction) &&
     !transaction.possibleTransfer &&
+    !isRecurringExpectationTransaction(transaction) &&
     (transaction.type === "income" ||
       transaction.type === "expense")
+  );
+}
+
+/** Explicit recurring provenance identifies a schedule expectation, not an
+ * observed ledger event. Description prefixes alone are intentionally ignored
+ * so a manually entered transaction is never reclassified by text. */
+export function isRecurringExpectationTransaction(
+  transaction: Pick<Transaction, "source" | "recurringExpectationOnly">,
+): boolean {
+  return (
+    transaction.recurringExpectationOnly === true ||
+    transaction.source === "recurring"
   );
 }
 
@@ -67,15 +87,23 @@ export function transferBalanceDelta(
     | "type"
     | "transferDirection"
     | "amount"
+    | "amountMinor"
+    | "currency"
     | "postingStatus"
     | "providerRemovedAt"
   >,
+): number {
+  return minorToMajor(transferBalanceDeltaMinor(transaction));
+}
+
+export function transferBalanceDeltaMinor(
+  transaction: Pick<Transaction, "type" | "transferDirection" | "amount" | "amountMinor" | "currency" | "postingStatus" | "providerRemovedAt">,
 ): number {
   if (
     transaction.type !== "transfer" ||
     !isTransactionFinalized(transaction)
   ) return 0;
-  const amount = Math.abs(transaction.amount);
+  const amount = moneyMinor(transaction);
   if (transaction.transferDirection === "in") return amount;
   if (transaction.transferDirection === "out") return -amount;
   return 0;
@@ -87,32 +115,49 @@ export function transactionBalanceDelta(
     | "type"
     | "transferDirection"
     | "amount"
+    | "amountMinor"
+    | "currency"
     | "postingStatus"
     | "providerRemovedAt"
+    | "source"
+    | "recurringExpectationOnly"
   >,
 ): number {
-  if (!isTransactionFinalized(transaction)) return 0;
-  const amount = Math.abs(transaction.amount);
+  return minorToMajor(transactionBalanceDeltaMinor(transaction));
+}
+
+export function transactionBalanceDeltaMinor(
+  transaction: Pick<Transaction, "type" | "transferDirection" | "amount" | "amountMinor" | "currency" | "postingStatus" | "providerRemovedAt" | "source" | "recurringExpectationOnly">,
+): number {
+  if (
+    !isTransactionFinalized(transaction) ||
+    isRecurringExpectationTransaction(transaction)
+  ) return 0;
+  const amount = moneyMinor(transaction);
   if (transaction.type === "income") return amount;
   if (transaction.type === "expense") return -amount;
-  return transferBalanceDelta(transaction);
+  return transferBalanceDeltaMinor(transaction);
+}
+
+export function accountOpeningBalance(account: Pick<Account, "openingBalance" | "openingBalanceMinor" | "currency">): number {
+  return minorToMajor(signedMoneyMinor({ amount: account.openingBalance, amountMinor: account.openingBalanceMinor, currency: account.currency }));
 }
 
 export function calculateAccountBalance(
   account: Account,
   transactions: Transaction[],
 ): number {
-  return transactions
+  const balanceMinor = transactions
     .filter(
       (transaction) =>
         transaction.accountId === account.id ||
         (!transaction.accountId && account.isDefault),
     )
     .reduce(
-      (balance, transaction) =>
-        balance + transactionBalanceDelta(transaction),
-      account.openingBalance,
+      (balance, transaction) => balance + transactionBalanceDeltaMinor(transaction),
+      signedMoneyMinor({ amount: account.openingBalance, amountMinor: account.openingBalanceMinor, currency: account.currency }),
     );
+  return minorToMajor(balanceMinor);
 }
 
 function belongsToAccount(
@@ -125,8 +170,8 @@ function belongsToAccount(
   );
 }
 
-function transactionTime(transaction: Pick<Transaction, "date">) {
-  return new Date(transaction.date).getTime();
+function transactionDateKey(transaction: Pick<Transaction, "date" | "ledgerDate">) {
+  return transactionLedgerDate(transaction);
 }
 
 function endOfStatementDay(date: Date | string): number {
@@ -156,37 +201,41 @@ export function calculateAccountBalanceAsOf(
   transactions: Transaction[],
   statementDate: Date | string,
 ): number {
-  const cutoff = endOfStatementDay(statementDate);
-  return transactions
+  const cutoff = typeof statementDate === "string"
+    ? transactionLedgerDate({ date: statementDate })
+    : transactionLedgerDate({ date: statementDate.toISOString() });
+  const balanceMinor = transactions
     .filter(
       (transaction) =>
         belongsToAccount(account, transaction) &&
-        transactionTime(transaction) <= cutoff,
+        transactionDateKey(transaction) <= cutoff,
     )
     .reduce(
-      (balance, transaction) =>
-        balance + transactionBalanceDelta(transaction),
-      account.openingBalance,
+      (balance, transaction) => balance + transactionBalanceDeltaMinor(transaction),
+      signedMoneyMinor({ amount: account.openingBalance, amountMinor: account.openingBalanceMinor, currency: account.currency }),
     );
+  return minorToMajor(balanceMinor);
 }
 
 export function calculateAccountBalanceBefore(
   account: Account,
   transactions: Transaction[],
-  date: Date,
+  date: Date | string,
 ): number {
-  const cutoff = date.getTime();
-  return transactions
+  const cutoff = transactionLedgerDate({
+    date: typeof date === "string" ? date : date.toISOString(),
+  });
+  const balanceMinor = transactions
     .filter(
       (transaction) =>
         belongsToAccount(account, transaction) &&
-        transactionTime(transaction) < cutoff,
+        transactionDateKey(transaction) < cutoff,
     )
     .reduce(
-      (balance, transaction) =>
-        balance + transactionBalanceDelta(transaction),
-      account.openingBalance,
+      (balance, transaction) => balance + transactionBalanceDeltaMinor(transaction),
+      signedMoneyMinor({ amount: account.openingBalance, amountMinor: account.openingBalanceMinor, currency: account.currency }),
     );
+  return minorToMajor(balanceMinor);
 }
 
 export interface AccountLedgerEntry {
@@ -198,7 +247,7 @@ export function buildAccountLedger(
   account: Account,
   transactions: Transaction[],
 ): AccountLedgerEntry[] {
-  let runningBalance = account.openingBalance;
+  let runningBalance = accountOpeningBalance(account);
   return transactions
     .filter(
       (transaction) =>
@@ -208,7 +257,7 @@ export function buildAccountLedger(
     )
     .sort(
       (left, right) =>
-        transactionTime(left) - transactionTime(right) ||
+        transactionDateKey(left).localeCompare(transactionDateKey(right)) ||
         left.id.localeCompare(right.id),
     )
     .map((transaction) => {
@@ -252,12 +301,11 @@ export function buildAccountBalanceTimeline(
   transactions
     .filter((transaction) => {
       if (!belongsToAccount(account, transaction)) return false;
-      const time = transactionTime(transaction);
-      return time >= fromTime && time <= toTime;
+      const key = transactionDateKey(transaction);
+      return key >= localDateKey(new Date(fromTime)) && key <= localDateKey(new Date(toTime));
     })
     .forEach((transaction) => {
-      const date = new Date(transaction.date);
-      const key = localDateKey(date);
+      const key = transactionDateKey(transaction);
       deltasByDay.set(
         key,
         (deltasByDay.get(key) ?? 0) +
@@ -344,7 +392,8 @@ export function buildTransferTransactions({
   const common = {
     date: input.date,
     description,
-    amount: Math.abs(input.amount),
+    ...canonicalMoneyFields(input.amount),
+    ledgerDate: transactionLedgerDate({ date: input.date }),
     type: "transfer" as const,
     category: "Transfer",
     transferId,

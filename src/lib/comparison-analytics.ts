@@ -1,15 +1,15 @@
 import { endOfMonth, getDaysInMonth, getMonth } from "date-fns";
 
-import { findMainCategoryForTransaction } from "@/lib/category-tree";
 import {
   financialCategoryKey,
   financialCategoryPathKeys,
 } from "@/lib/financial-category";
+import { buildFinancialCategoryBreakdown } from "@/lib/financial-category-breakdown";
 import {
   filterTransactionsByDateRange,
   parseTransactionDate,
   summarizeTransactions,
-  transactionAmount,
+  financialTransactionAmount,
   type FinancialDateRange,
 } from "@/lib/financial-summary";
 import type { Category, Transaction } from "@/types";
@@ -68,6 +68,7 @@ export interface MonthlyComparisonPoint {
 }
 
 export interface CategoryComparison {
+  key: string;
   category: string;
   primary: number;
   comparison: number;
@@ -243,9 +244,9 @@ const computeSnapshot = (
 
   for (const transaction of transactions) {
     if (!isFinancialTransaction(transaction)) continue;
-    const amount = transactionAmount(transaction);
+    const amount = financialTransactionAmount(transaction);
     if (transaction.type === "expense") {
-      if (!largestExpense || amount > transactionAmount(largestExpense)) {
+      if (!largestExpense || amount > financialTransactionAmount(largestExpense)) {
         largestExpense = transaction;
       }
     }
@@ -275,43 +276,36 @@ const computeCategoryComparison = (
   type: Transaction["type"],
   categories: Category[]
 ): CategoryComparison[] => {
-  const primaryMap = new Map<string, number>();
-  const comparisonMap = new Map<string, number>();
-  const categoryFor = (transaction: Transaction) =>
-    categories.length > 0
-      ? findMainCategoryForTransaction(transaction, categories)
-      : transaction.category?.trim() || "Uncategorized";
+  const primaryRows = buildFinancialCategoryBreakdown(
+    primaryTransactions,
+    type as "income" | "expense",
+    categories,
+    "root",
+  );
+  const comparisonRows = buildFinancialCategoryBreakdown(
+    comparisonTransactions,
+    type as "income" | "expense",
+    categories,
+    "root",
+  );
+  const primaryMap = new Map(primaryRows.map((row) => [row.key, row]));
+  const comparisonMap = new Map(comparisonRows.map((row) => [row.key, row]));
 
-  for (const transaction of primaryTransactions) {
-    if (transaction.type !== type) continue;
-    const category = categoryFor(transaction);
-    primaryMap.set(
-      category,
-      (primaryMap.get(category) ?? 0) + transactionAmount(transaction)
-    );
-  }
-
-  for (const transaction of comparisonTransactions) {
-    if (transaction.type !== type) continue;
-    const category = categoryFor(transaction);
-    comparisonMap.set(
-      category,
-      (comparisonMap.get(category) ?? 0) + transactionAmount(transaction)
-    );
-  }
-
-  const totalPrimary = [...primaryMap.values()].reduce((sum, value) => sum + value, 0);
+  const totalPrimary = [...primaryMap.values()].reduce((sum, value) => sum + value.amount, 0);
   const totalComparison = [...comparisonMap.values()].reduce(
-    (sum, value) => sum + value,
+    (sum, value) => sum + value.amount,
     0
   );
 
   return [...new Set([...primaryMap.keys(), ...comparisonMap.keys()])]
-    .map((category) => {
-      const primary = primaryMap.get(category) ?? 0;
-      const comparison = comparisonMap.get(category) ?? 0;
+    .map((key) => {
+      const primaryRow = primaryMap.get(key);
+      const comparisonRow = comparisonMap.get(key);
+      const primary = primaryRow?.amount ?? 0;
+      const comparison = comparisonRow?.amount ?? 0;
       return {
-        category,
+        key,
+        category: primaryRow?.label ?? comparisonRow?.label ?? key,
         primary,
         comparison,
         delta: primary - comparison,
@@ -375,7 +369,7 @@ export function computeYearComparison(
       for (const transaction of yearTransactions) {
         if (transactionDateParts(transaction)?.month !== monthIndex) continue;
         if (!isFinancialTransaction(transaction)) continue;
-        const amount = transactionAmount(transaction);
+        const amount = financialTransactionAmount(transaction);
         if (transaction.type === "income") income += amount;
         else if (transaction.type === "expense") expenses += amount;
       }

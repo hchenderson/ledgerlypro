@@ -72,12 +72,13 @@ export async function POST(req: Request) {
     }
 
     const userRef = adminDb.collection('users').doc(uid);
-    const [transactionsSnapshot, categoriesSnapshot, budgetsSnapshot, goalsSnapshot, recurringSnapshot] = await Promise.all([
+    const [transactionsSnapshot, categoriesSnapshot, budgetsSnapshot, goalsSnapshot, recurringSnapshot, settingsSnapshot] = await Promise.all([
       userRef.collection('transactions').orderBy('date', 'desc').get(),
       userRef.collection('categories').get(),
       userRef.collection('budgets').get(),
       userRef.collection('goals').get(),
       userRef.collection('recurringTransactions').get(),
+      userRef.collection('settings').doc('main').get(),
     ]);
 
     const context = buildFinancialAssistantContext({
@@ -87,6 +88,7 @@ export async function POST(req: Request) {
       goals: snapshotData<Goal>(goalsSnapshot),
       recurringTransactions: snapshotData<RecurringTransaction>(recurringSnapshot),
       question: lastUserMessage.content,
+      reportingTimeZone: settingsSnapshot.data()?.reportingTimeZone,
     });
     const conversation = parsed.data.messages
       .slice(0, -1)

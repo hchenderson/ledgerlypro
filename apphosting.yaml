@@ -16,8 +16,10 @@ cors:
 env:
   - variable: NEXT_PUBLIC_ADSENSE_ENABLED
     value: "false"
-  - variable: FIREBASE_APP_CHECK_ENFORCED
-    value: "false"
+  # SEC-002 starts custom route verification in monitoring mode. Change this
+  # to "enforce" only after valid production traffic has been observed.
+  - variable: FIREBASE_APP_CHECK_MODE
+    value: monitor
   - variable: PLAID_CLIENT_ID
     secret: PLAID_CLIENT_ID
   - variable: PLAID_SECRET

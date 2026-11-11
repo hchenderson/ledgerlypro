@@ -5,6 +5,7 @@ import {
   calculateEnvelopeSummary,
   calculateUnassignedCash,
   envelopeEventsForTransfer,
+  financialEnvelopeEvents,
   suggestEnvelopeForTransaction,
 } from "@/lib/envelopes";
 import type { Account, Envelope, EnvelopeEvent, Transaction } from "@/types";
@@ -43,6 +44,43 @@ function event(
 }
 
 describe("envelope accounting", () => {
+  it("keeps legacy recurring expectation events out of envelope math", () => {
+    const events: EnvelopeEvent[] = [
+      event("transaction-old-recurring", "expense", 100, {
+        transactionId: "old-recurring",
+      }),
+      event("transaction-actual", "expense", 103, {
+        transactionId: "actual",
+      }),
+    ];
+    const transactions: Transaction[] = [
+      {
+        id: "old-recurring",
+        date: "2026-08-01T12:00:00.000Z",
+        amount: 100,
+        type: "expense",
+        category: "Travel",
+        description: "(Recurring) Travel",
+        source: "recurring",
+      },
+      {
+        id: "actual",
+        date: "2026-08-01T12:00:00.000Z",
+        amount: 103,
+        type: "expense",
+        category: "Travel",
+        description: "Actual travel",
+        source: "plaid",
+      },
+    ];
+
+    const financialEvents = financialEnvelopeEvents(events, transactions);
+    expect(financialEvents.map((item) => item.id)).toEqual([
+      "transaction-actual",
+    ]);
+    expect(calculateEnvelopeSummary(travel, financialEvents).spent).toBe(103);
+  });
+
   it("keeps released money available until it is spent", () => {
     const summary = calculateEnvelopeSummary(travel, [
       event("start", "starting-allocation", 1_000),

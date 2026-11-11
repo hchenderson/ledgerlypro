@@ -24,6 +24,7 @@ import { useEnvelopes } from "@/hooks/use-envelopes";
 import { isTransactionReviewable } from "@/lib/categorization";
 import { cn } from "@/lib/utils";
 import type { Category, SubCategory, Transaction } from "@/types";
+import { calendarDateToLedgerDate } from "@/lib/ledger-date";
 
 const NewTransactionSheet = dynamic(
   () => import("@/components/new-transaction-sheet").then((module) => module.NewTransactionSheet),
@@ -349,7 +350,8 @@ export default function NeedsCategorizationPage() {
             const now = new Date().toISOString();
             await updateTransaction(id, {
               ...values,
-              date: values.date.toISOString(),
+              date: calendarDateToLedgerDate(values.date),
+              ledgerDate: calendarDateToLedgerDate(values.date),
               classificationLocked: true,
               categorizationStatus: "manually-categorized",
               categorizationSource: "manual",

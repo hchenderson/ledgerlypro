@@ -6,6 +6,8 @@ import type {
   CategorizationRule,
   Transaction,
 } from "@/types";
+import { canonicalMoneyFields, parseMoneyToMinor, LEDGER_CURRENCY } from "@/lib/money";
+import { toLedgerDate } from "@/lib/ledger-date";
 
 export interface PlaidAccountPayload {
   account_id: string;
@@ -28,6 +30,8 @@ export interface PlaidTransactionPayload {
   pending_transaction_id?: string | null;
   account_id: string;
   amount: number;
+  iso_currency_code?: string | null;
+  unofficial_currency_code?: string | null;
   date: string;
   authorized_date?: string | null;
   datetime?: string | null;
@@ -83,12 +87,18 @@ export function normalizePlaidTransaction({
   const possibleTransfer =
     Boolean(primary?.startsWith("TRANSFER")) ||
     Boolean(detailed?.startsWith("TRANSFER"));
+  const sourceCurrency = transaction.iso_currency_code ?? LEDGER_CURRENCY;
+  if (sourceCurrency !== LEDGER_CURRENCY || transaction.unofficial_currency_code) {
+    throw new Error("Ledgerly currently imports USD Plaid transactions only.");
+  }
+  const sourceAmountMinor = Math.abs(parseMoneyToMinor(transaction.amount));
   const normalized: Transaction = {
     id: stablePlaidTransactionDocumentId(
       plaidItemId,
       transaction.transaction_id,
     ),
     date: transaction.datetime ?? `${transaction.date}T12:00:00.000Z`,
+    ledgerDate: toLedgerDate(transaction.date),
     authorizedDate:
       transaction.authorized_datetime ??
       (transaction.authorized_date
@@ -100,7 +110,7 @@ export function normalizePlaidTransaction({
       transaction.original_description?.trim() || transaction.name.trim(),
     merchantName: transaction.merchant_name?.trim() || undefined,
     merchantLogoUrl: transaction.logo_url ?? undefined,
-    amount: Math.abs(transaction.amount),
+    ...canonicalMoneyFields(sourceAmountMinor / 100),
     type,
     category: "Uncategorized",
     accountId,
@@ -117,6 +127,11 @@ export function normalizePlaidTransaction({
     providerCategoryConfidence:
       transaction.personal_finance_category?.confidence_level ?? undefined,
     providerLastSyncedAt: now,
+    sourceAmountMinor,
+    sourceCurrency,
+    sourceTransactionDate: transaction.date,
+    sourcePostedAt: transaction.datetime ?? undefined,
+    sourceAuthorizedAt: transaction.authorized_datetime ?? undefined,
     possibleTransfer,
   };
   const categorization = categorizeTransaction(normalized, rules);

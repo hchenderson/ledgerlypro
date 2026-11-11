@@ -43,6 +43,7 @@ import { AppProviders } from "@/app/providers";
 import { AccountSwitcher } from "@/components/account-switcher";
 import { useToast } from "@/hooks/use-toast";
 import { EnvelopesProvider } from "@/hooks/use-envelopes";
+import { calendarDateToLedgerDate } from "@/lib/ledger-date";
 
 const NewTransactionSheet = dynamic(
     () =>
@@ -255,7 +256,8 @@ function MainAppShell({ children }: { children: React.ReactNode }) {
                             isOpen={isNewTxSheetOpen}
                             onOpenChange={setIsNewTxSheetOpen}
                             onTransactionCreated={async (values) => {
-                                await addTransaction({...values, date: values.date.toISOString()});
+                                const ledgerDate = calendarDateToLedgerDate(values.date);
+                                await addTransaction({...values, date: ledgerDate, ledgerDate});
                             }}
                             categories={categories}
                         />

@@ -4,6 +4,8 @@ import { Timestamp } from "firebase-admin/firestore";
 
 import { adminDb } from "@/lib/firebaseAdmin";
 import { calculateQuarterlyReportMetrics } from "@/lib/quarterly-report";
+import { nextQuarterlySnapshotRevision } from "@/lib/quarterly-snapshots";
+import { DEFAULT_REPORTING_TIME_ZONE, isValidReportingTimeZone, transactionLedgerDate } from "@/lib/ledger-date";
 import type {
   Account,
   Budget,
@@ -48,16 +50,18 @@ export async function generateQuarterlyReport({
   const period = `Q${quarter} ${reportYear}`;
   const userRef = adminDb.collection("users").doc(uid);
 
-  const [transactionSnapshot, categories, allBudgets, goals, accounts] = await Promise.all([
-    userRef.collection("transactions")
-      .where("date", ">=", startDate.toISOString())
-      .where("date", "<=", endDate.toISOString())
-      .get(),
+  const [transactionSnapshot, categories, allBudgets, goals, accounts, settingsSnapshot] = await Promise.all([
+    userRef.collection("transactions").get(),
     getUserData<Category>(uid, "categories"),
     getUserData<Budget>(uid, "budgets"),
     getUserData<Goal>(uid, "goals"),
     getUserData<Account>(uid, "accounts"),
+    userRef.collection("settings").doc("main").get(),
   ]);
+  const configuredZone = settingsSnapshot.data()?.reportingTimeZone;
+  const reportingTimeZone = typeof configuredZone === "string" && isValidReportingTimeZone(configuredZone)
+    ? configuredZone
+    : DEFAULT_REPORTING_TIME_ZONE;
 
   const normalizedAccountIds = accountIds?.length
     ? [...new Set(accountIds)].sort()
@@ -79,7 +83,11 @@ export async function generateQuarterlyReport({
     accounts.find((account) => account.isDefault)?.id ??
     accounts.find((account) => !account.isArchived)?.id;
   const transactions = transactionSnapshot.docs
-    .map((document) => document.data() as Transaction)
+    .map((document) => {
+      const transaction = ({ ...document.data(), id: document.id }) as Transaction;
+      const ledgerDate = transactionLedgerDate(transaction, reportingTimeZone);
+      return { ...transaction, date: ledgerDate, ledgerDate };
+    })
     .filter(
       (transaction) =>
         !accountSet ||
@@ -96,6 +104,9 @@ export async function generateQuarterlyReport({
     budgets,
     goals,
     reportYear,
+    range: { from: startDate, to: endDate },
+    accountIds: normalizedAccountIds ?? [],
+    defaultAccountId: primaryAccountId,
   });
   const createdAt = Timestamp.now();
   const accountLabel = normalizedAccountIds
@@ -106,13 +117,15 @@ export async function generateQuarterlyReport({
         )
         .join(", ")
     : "All accounts";
-  const scopeHash = normalizedAccountIds
-    ? hashReportScope(normalizedAccountIds)
-    : null;
-  const reportId = scopeHash
-    ? `${period}--accounts-${scopeHash}`
-    : period;
-  const reportDocument = {
+  const normalizedBudgetIds = budgets.map((budget) => budget.id).sort();
+  const snapshotKey = `${period}--${hashReportScope([
+    ...(normalizedAccountIds ?? ["all-accounts"]),
+    "budgets",
+    ...normalizedBudgetIds,
+  ])}`;
+  const reportRef = userRef.collection("reports").doc();
+  const reportId = reportRef.id;
+  const makeReportDocument = (revision: number, revisionOf?: string) => ({
     id: reportId,
     period,
     ...(normalizedAccountIds
@@ -122,17 +135,49 @@ export async function generateQuarterlyReport({
     startDate: startDate.toISOString(),
     endDate: endDate.toISOString(),
     createdAt,
-    calculationVersion: 3,
+    calculationVersion: 5,
+    snapshotKey,
+    revision,
+    ...(revisionOf ? { revisionOf } : {}),
+    sourceDataMode: "current-ledger-at-generation" as const,
+    effectiveFilters: {
+      dateFrom: startDate.toISOString(),
+      dateTo: endDate.toISOString(),
+      accountIds: normalizedAccountIds ?? [],
+      includedCategoryKeys: [],
+      excludedCategoryKeys: [],
+      transactionTypes: ["income", "expense"] as ("income" | "expense")[],
+      includePending: false,
+      includeTransfers: false,
+      budgetIds: normalizedBudgetIds,
+      reportingTimeZone,
+    },
     ...metrics,
     ...(notes ? { notes } : {}),
-  };
-
-  await userRef.collection("reports").doc(reportId).set(reportDocument);
+  });
+  let reportDocument = makeReportDocument(1);
+  await adminDb.runTransaction(async (transaction) => {
+    const priorSnapshot = await transaction.get(
+      userRef.collection("reports").where("snapshotKey", "==", snapshotKey),
+    );
+    const existingReports = priorSnapshot.docs.map(
+      (document) => ({ ...document.data(), id: document.id }) as QuarterlyReport,
+    );
+    const revisionMetadata = nextQuarterlySnapshotRevision(
+      existingReports,
+      snapshotKey,
+    );
+    reportDocument = makeReportDocument(
+      revisionMetadata.revision,
+      revisionMetadata.revisionOf,
+    );
+    transaction.create(reportRef, reportDocument);
+  });
 
   return {
     ...reportDocument,
     createdAt: { seconds: createdAt.seconds, nanoseconds: createdAt.nanoseconds },
-  } as QuarterlyReport;
+  } as unknown as QuarterlyReport;
 }
 
 function hashReportScope(accountIds: string[]): string {

@@ -204,8 +204,10 @@ export function projectCategoryWeekdayBaseline(
 
       // Income
       const inc = catProf?.income ?? null;
-      const incBase = inc?.weeklyAvg ?? profile.global.income.weeklyAvg;
-      const incW = inc?.weekdayWeights ?? profile.global.income.weekdayWeights;
+      // Sparse history is handled once by the forward forecast's residual
+      // component. Never reuse the entire global profile for each category.
+      const incBase = inc?.weeklyAvg ?? 0;
+      const incW = inc?.weekdayWeights ?? emptyWeights();
       const incAmt = incBase * (incW[wd] ?? (1 / 7));
       if (incAmt > 0) {
         out.push({
@@ -221,8 +223,8 @@ export function projectCategoryWeekdayBaseline(
 
       // Expense
       const exp = catProf?.expense ?? null;
-      const expBase = exp?.weeklyAvg ?? profile.global.expense.weeklyAvg;
-      const expW = exp?.weekdayWeights ?? profile.global.expense.weekdayWeights;
+      const expBase = exp?.weeklyAvg ?? 0;
+      const expW = exp?.weekdayWeights ?? emptyWeights();
       const expAmt = expBase * (expW[wd] ?? (1 / 7));
       if (expAmt > 0) {
         out.push({
