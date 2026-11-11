@@ -5,11 +5,11 @@ Prepared: 2026-11-10
 ## Candidate identity and decision
 
 - Branch: `codex/priority-batch-sec-test-fin`
-- Base and current committed `HEAD`: `4b34887bbafe6ee39c65bbe8af4b78634f18b17b`
-- Candidate: the complete, uncommitted working-tree diff on that commit. It contains SEC-001, TEST-001, FIN-001 through FIN-004, DATA-001, SEC-002, and the release-preparation fixes listed below.
-- Production data, Firebase settings, published rules, App Check enforcement, commits, pushes, merges, and deployments were not changed.
+- Base: `4b34887bbafe6ee39c65bbe8af4b78634f18b17b`; release-candidate head: `cfdc935`.
+- Candidate: the two reviewed commits on `codex/priority-batch-sec-test-fin`. They contain SEC-001, TEST-001, FIN-001 through FIN-004, DATA-001, SEC-002, and the release-preparation fixes listed below.
+- Production data, Firebase settings, published rules, App Check enforcement, merges, and deployments were not changed during preparation. The candidate is committed and pushed in pull request #11.
 
-**Decision: NO-GO for the complete production rollout today.** The code candidate passes the isolated release gates and is suitable for review, but production-only gates remain: verify the rules currently deployed in Firebase, register/configure the production App Check web provider and build-time public site key, and confirm the production backup/PITR state. After those are recorded, the first authorized action should be an **application-only rollout**. Stricter rules and every App Check enforcement switch remain separate later decisions.
+**Decision: GO for the explicitly authorized application-only rollout; NO-GO for the complete security/data rollout.** The code candidate passes the isolated release gates. A read-only production check confirmed that the active rules retain the broad per-user baseline needed by the new client, while unmatched operational collections remain denied. Firestore currently has no PITR, delete protection, or backups. The reCAPTCHA Enterprise API is disabled and no production App Check key can be present yet, so this application rollout must remain non-enforcing and will initially report missing tokens. Stricter rules, App Check enforcement, and every DATA-001 production write remain separate later decisions.
 
 The DATA-001 backfill does **not** need to precede the application rollout. Mixed legacy/canonical reads passed the calculation, rules, browser, and synthetic analyzer checks. Production analysis, backup verification, and a restore rehearsal are mandatory before a later backfill.
 
@@ -20,7 +20,7 @@ The DATA-001 backfill does **not** need to precede the application rollout. Mixe
 | Unit and golden-ledger suite | PASS | `36` files, `173` tests. Deterministic financial totals include the `$1,200` income, `$223` checking expense, `$273` all-account expense, `$977` checking net, and `$927` all-account net cases. Forecast dates and opening balances are also checked across UTC and the ledger reporting time zone. |
 | Firestore rules and Admin route suite | PASS | `2` files, `16` tests against the Firestore emulator. Covers two-user isolation, owner queries/listeners, canonical/legacy writes, protected provider/refund/recurring fields, atomic transfers, recurring retries/competition, refund link/unlink, immutable summaries/reports/audits, and the old-client partial-clear hazard. |
 | New app + proposed rules | PASS | Authenticated Chromium flow against Auth and Firestore emulators. Manual create/edit, denied provider edit with form preservation, transfer, CSV import, receipt save, budget actuals, recurring confirmation, time-zone update, Reports, Q1 Quarterly, EOY, CSV, and PDF download all completed. External Plaid/AI behavior was stubbed; static Google Font requests were blocked and no external data-service request escaped localhost. |
-| New app + captured baseline rules | PASS | The same authenticated flow passed against `tests/release-baseline.rules`, captured from base commit `4b34887`. **Its equivalence to the rules currently deployed in production is unverified.** |
+| New app + captured baseline rules | PASS | The same authenticated flow passed against `tests/release-baseline.rules`, captured from base commit `4b34887`. The deployed ruleset (`36723dbf-b087-40b5-a0a3-91db78295e3e`, released 2025-09-03) was read through the Firebase Rules API. Its source omits two explicit top-level deny blocks present in the captured file, but unmatched top-level paths are denied by default; its user-collection permissions are the same broad owner baseline exercised by this test. |
 | Previous/open old client + proposed rules | PARTIAL / INCOMPATIBLE | Rule-level reproduction proves the old client cannot directly write categorization rules/audits and that its sequential clear-data workflow can delete ordinary collections before an immutable-report deletion is denied. An exact previous-version browser run was not performed because that code has no isolated browser-emulator wiring. Users must refresh to the new app before proposed rules are published. |
 | TypeScript | PASS | `npm run typecheck`. |
 | Lint | PASS with warning | No errors; one existing `no-page-custom-font` warning in `src/app/layout.tsx`. |
@@ -42,13 +42,13 @@ Receipt extraction and Plaid/provider transitions were simulated. Refund atomici
 6. Isolated browser/Admin configuration fails closed on the wrong project ID, emulator host, or emulator port. Test mode stubs receipt extraction and does not use production Plaid or Gemini credentials.
 7. Forecast start dates and opening-balance cutoffs now resolve through the ledger reporting time zone instead of the server/browser host time zone; the same fixtures pass under UTC and America/New_York.
 
-## Required production checks before changing anything
+## Verified production state and remaining console work
 
-1. In Firebase Console, open **Firestore Database → Rules**. Export/copy the active rules and compare them with the verified production release reference. Do not assume `tests/release-baseline.rules` is deployed. Record the rules version/time.
-2. In **Firestore Database → Backups** and Google Cloud Firestore settings, record PITR/backup status and the most recent usable recovery point. Do not run DATA-001 backfill until a separate isolated restore rehearsal succeeds.
-3. In Google Cloud **reCAPTCHA Enterprise / Fraud Defense**, create a score-based Web key for every real Ledgerly domain. Do not add `localhost` to the production key.
-4. In **Firebase Console → Security → App Check → Apps**, register the Ledgerly Web app with that reCAPTCHA Enterprise key. Leave Firestore and Authentication enforcement off.
-5. In **App Hosting → Backend → Settings → Environment**, add the public `NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY` value with build and runtime availability. This is a public browser key, not a secret. Keep `FIREBASE_APP_CHECK_MODE=monitor`.
+1. **Verified:** the active Firestore rules were fetched read-only and compared with the captured baseline as described above. The proposed hardened rules are not deployed by the application rollout.
+2. **Verified:** PITR is disabled, delete protection is disabled, and no Firestore backups were listed. Do not run DATA-001 backfill until protection is enabled and a separate isolated restore rehearsal succeeds.
+3. **Pending:** enable the reCAPTCHA Enterprise API, then create a score-based Web key for every real Ledgerly domain. Do not add `localhost` to the production key.
+4. **Pending:** in **Firebase Console → Security → App Check → Apps**, register the Ledgerly Web app with that key. Leave Firestore and Authentication enforcement off.
+5. **Pending:** in **App Hosting → Backend → Settings → Environment**, add the public `NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY` value with build and runtime availability. This is a public browser key, not a secret. Keep `FIREBASE_APP_CHECK_MODE=monitor`, then create a later rollout so the browser bundle contains the key.
 6. Verify the App Hosting service identity still has access to the existing Plaid secrets referenced by `apphosting.yaml`. Do not rotate secrets as part of this release.
 
 ## Exact rollout order and rollback triggers
@@ -57,7 +57,7 @@ Receipt extraction and Plaid/provider transitions were simulated. Refund atomici
 
 Commit the exact reviewed diff, push the branch, and run CI with Node 20. CI must rerun install, lint, typecheck, unit tests, Firestore emulator tests, and the production build. Re-run both isolated browser commands if the committed diff differs from this candidate.
 
-**Stop/rollback trigger:** any changed lockfile resolution, failed gate, missing build-time App Check site key, or unexpected production configuration diff.
+**Stop/rollback trigger:** any changed lockfile resolution, failed gate, or unexpected production configuration diff. The absent App Check key is a recorded limitation of this non-enforcing app-only rollout and blocks every enforcement step.
 
 ### 2. Roll out application code only
 
@@ -69,7 +69,7 @@ Check immediately:
 - Create/edit one controlled test transaction in an authorized test ledger, then remove it.
 - Open Reports, Quarterly, EOY, Accounts, Budgets, Recurring, and Needs Categorization.
 - Download one CSV and PDF and compare the visible totals.
-- Confirm custom-route logs show `FIREBASE_APP_CHECK_MODE=monitor` diagnostics and no rise in 401/403/5xx responses.
+- Confirm custom-route logs show the expected `FIREBASE_APP_CHECK_MODE=monitor` missing-token diagnostics and no rise in 401/403/5xx responses. After the production site key is configured and rolled out, those diagnostics should transition to verified-token traffic.
 - Confirm Plaid webhook/job health and that no Sandbox calls occur in production unexpectedly.
 
 **Rollback trigger:** authentication loop, financial mismatch, write loss, route error spike, missing App Check tokens from the new app, or provider sync regression. Roll back the App Hosting application to the prior rollout. Current rules remain unchanged, so application rollback is independent at this stage.
@@ -78,7 +78,7 @@ Check immediately:
 
 Keep the app-only release live long enough to cover representative desktop/mobile users and cached tabs. Tell users to refresh/reopen Ledgerly before the rules change. Specifically warn against using categorization-rule edits or **Clear all data** from an already-open old tab.
 
-**Proceed evidence:** no unexplained client errors, normal write/query traffic, valid App Check tokens from supported domains, and confirmation that the active production rules baseline was recorded.
+**Proceed evidence:** no unexplained client errors, normal write/query traffic, and confirmation that the active production rules baseline was recorded. Do not publish hardened rules until old clients have drained. Do not enable App Check enforcement until a later key-enabled rollout produces valid tokens from supported domains.
 
 ### 4. Publish proposed Firestore rules as a separate change
 
