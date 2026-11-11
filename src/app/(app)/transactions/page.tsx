@@ -11,7 +11,7 @@ import { MoreHorizontal, Upload, Calendar as CalendarIcon, X, Loader2, Edit, Tra
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import type { Transaction, Category, SubCategory } from "@/types";
+import type { Transaction } from "@/types";
 import { useToast } from "@/hooks/use-toast";
 import { useCategories } from "@/hooks/use-categories";
 import { useTransactionData } from "@/hooks/use-transactions";
@@ -31,8 +31,13 @@ import { useEnvelopes } from "@/hooks/use-envelopes";
 import { isTransactionReviewable } from "@/lib/categorization";
 import {
   allocationsAreComplete,
-  expandTransactionAllocations,
 } from "@/lib/transaction-allocations";
+import {
+  ALL_TRANSACTION_CATEGORIES,
+  TRANSFER_TRANSACTION_CATEGORY,
+  buildTransactionCategoryOptions,
+  filterTransactionsByCategory,
+} from "@/lib/transaction-category-filter";
 import {
   canEditTransaction,
   historicalTransactionYear,
@@ -99,7 +104,7 @@ export default function TransactionsPage() {
   const { toast } = useToast();
 
   const [descriptionFilter, setDescriptionFilter] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [categoryFilter, setCategoryFilter] = useState(ALL_TRANSACTION_CATEGORIES);
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [minAmount, setMinAmount] = useState('');
   const [maxAmount, setMaxAmount] = useState('');
@@ -116,13 +121,11 @@ export default function TransactionsPage() {
       );
     }
     
-    if (categoryFilter !== 'all') {
-      transactions = transactions.filter((transaction) =>
-        expandTransactionAllocations(transaction).some(
-          (entry) => entry.category === categoryFilter,
-        ),
-      );
-    }
+    transactions = filterTransactionsByCategory(
+      transactions,
+      categoryFilter,
+      categories,
+    );
 
     if (dateRange?.from) {
       transactions = transactions.filter(t => new Date(t.date) >= dateRange.from!);
@@ -140,7 +143,7 @@ export default function TransactionsPage() {
     }
 
     return transactions;
-  }, [allTransactions, descriptionFilter, categoryFilter, dateRange, minAmount, maxAmount]);
+  }, [allTransactions, categories, descriptionFilter, categoryFilter, dateRange, minAmount, maxAmount]);
   
    useEffect(() => {
     setPage(1);
@@ -155,23 +158,16 @@ export default function TransactionsPage() {
   const totalPages = Math.ceil(filteredTransactions.length / TRANSACTIONS_PAGE_SIZE);
 
   const allCategoryOptions = useMemo(() => {
-    const options: { value: string; label: string }[] = [];
-    const recurse = (cats: (Category | SubCategory)[]) => {
-      cats.forEach(c => {
-        options.push({ value: c.name, label: c.name });
-        if(c.subCategories) recurse(c.subCategories);
-      });
-    };
-    recurse(categories);
+    const options = buildTransactionCategoryOptions(categories);
     if (allTransactions.some((transaction) => transaction.type === "transfer")) {
-      options.push({ value: "Transfer", label: "Transfer" });
+      options.push({ value: TRANSFER_TRANSACTION_CATEGORY, label: "Transfer" });
     }
-    return options;
+    return options.sort((left, right) => left.label.localeCompare(right.label));
   }, [allTransactions, categories]);
 
   const resetFilters = useCallback(() => {
     setDescriptionFilter('');
-    setCategoryFilter('all');
+    setCategoryFilter(ALL_TRANSACTION_CATEGORIES);
     setDateRange(undefined);
     setMinAmount('');
     setMaxAmount('');
@@ -256,7 +252,7 @@ export default function TransactionsPage() {
     return format(new Date(dateString), "MMMM d, yyyy");
   }, []);
   
-  const isFiltering = descriptionFilter || categoryFilter !== 'all' || dateRange || minAmount || maxAmount;
+  const isFiltering = descriptionFilter || categoryFilter !== ALL_TRANSACTION_CATEGORIES || dateRange || minAmount || maxAmount;
   const reviewCount = allTransactions.filter(isTransactionReviewable).length;
 
   if (userDataLoading && allTransactions.length === 0) {
@@ -299,8 +295,8 @@ export default function TransactionsPage() {
               <SelectValue placeholder="Filter by category" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Categories</SelectItem>
-              {allCategoryOptions.sort((a,b) => a.label.localeCompare(b.label)).map(cat => (
+              <SelectItem value={ALL_TRANSACTION_CATEGORIES}>All Categories</SelectItem>
+              {allCategoryOptions.map(cat => (
                 <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
               ))}
             </SelectContent>
