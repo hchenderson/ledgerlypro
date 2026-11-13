@@ -121,6 +121,7 @@ interface NewTransactionSheetProps {
     children?: React.ReactNode;
     categories: Category[];
     historicalEditYear?: number;
+    prioritizeCategory?: boolean;
 }
 
 const AddCategoryDialog = ({ 
@@ -228,6 +229,7 @@ export function NewTransactionSheet({
     children,
     categories,
     historicalEditYear,
+    prioritizeCategory = false,
 }: NewTransactionSheetProps) {
   const { toast } = useToast()
   const {
@@ -540,7 +542,7 @@ export function NewTransactionSheet({
           <SheetDescription>{sheetDescription}</SheetDescription>
         </SheetHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-4 py-4">
             <FormField
               control={form.control}
               name="accountId"
@@ -761,7 +763,7 @@ export function NewTransactionSheet({
               control={form.control}
               name="categoryId"
               render={({ field }) => (
-                <FormItem>
+                <FormItem className={prioritizeCategory ? "-order-1 rounded-lg border border-primary/25 bg-secondary/20 p-3" : undefined}>
                   <FormLabel>Category</FormLabel>
                   <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
                     <FormControl>

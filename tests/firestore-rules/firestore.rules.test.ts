@@ -304,9 +304,12 @@ describe("collection-specific contracts", () => {
       activeYear: 2026,
       budgetingMode: "hybrid",
       reportingTimeZone: "America/New_York",
+      uiLayout: "financial-brief",
       envelopeSettings: { minimumOperatingBalance: 500, fundingSuggestions: true },
     }));
     await assertFails(setDoc(doc(alice, `users/${ALICE}/settings/main`), { activeYear: "2026" }));
+    await assertFails(setDoc(doc(alice, `users/${ALICE}/settings/main`), { uiLayout: "compact" }));
+    await assertFails(setDoc(doc(alice, `users/${ALICE}/settings/main`), { uiLayout: 1 }));
     await assertFails(setDoc(doc(alice, `users/${ALICE}/accounts/bad`), manualAccount("bad", {
       openingBalance: 100,
       openingBalanceMinor: 9999,

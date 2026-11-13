@@ -13,6 +13,11 @@ import {
   type DashboardPreferences,
 } from '@/lib/dashboard-preferences';
 import { DEFAULT_REPORTING_TIME_ZONE, isValidReportingTimeZone } from '@/lib/ledger-date';
+import {
+  DEFAULT_LEDGERLY_LAYOUT,
+  normalizeLedgerlyLayout,
+  type LedgerlyLayout,
+} from '@/lib/ui-layout';
 
 interface AuthContextType {
   user: User | null;
@@ -34,6 +39,8 @@ interface AuthContextType {
   setDashboardPreferences: (settings: Partial<DashboardPreferences>) => Promise<void>;
   reportingTimeZone: string;
   setReportingTimeZone: (timeZone: string) => Promise<void>;
+  uiLayout: LedgerlyLayout;
+  setUiLayout: (layout: LedgerlyLayout) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({ 
@@ -56,6 +63,8 @@ const AuthContext = createContext<AuthContextType>({
   setDashboardPreferences: async () => {},
   reportingTimeZone: DEFAULT_REPORTING_TIME_ZONE,
   setReportingTimeZone: async () => {},
+  uiLayout: DEFAULT_LEDGERLY_LAYOUT,
+  setUiLayout: async () => {},
 });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -76,6 +85,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [dashboardPreferences, setDashboardPreferencesState] =
     useState<DashboardPreferences>(DEFAULT_DASHBOARD_PREFERENCES);
   const [reportingTimeZone, setReportingTimeZoneState] = useState(DEFAULT_REPORTING_TIME_ZONE);
+  const [uiLayout, setUiLayoutState] = useState<LedgerlyLayout>(
+    DEFAULT_LEDGERLY_LAYOUT,
+  );
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -97,6 +109,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           forecastSettings: {},
           dashboardPreferences: DEFAULT_DASHBOARD_PREFERENCES,
           reportingTimeZone: DEFAULT_REPORTING_TIME_ZONE,
+          uiLayout: DEFAULT_LEDGERLY_LAYOUT,
         };
 
         if (userDoc.exists()) {
@@ -127,6 +140,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             ? settingsData.reportingTimeZone
             : DEFAULT_REPORTING_TIME_ZONE,
         );
+        setUiLayoutState(normalizeLedgerlyLayout(settingsData.uiLayout));
 
       } else {
         // No user, reset to defaults
@@ -142,6 +156,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setForecastSettingsState({});
         setDashboardPreferencesState(DEFAULT_DASHBOARD_PREFERENCES);
         setReportingTimeZoneState(DEFAULT_REPORTING_TIME_ZONE);
+        setUiLayoutState(DEFAULT_LEDGERLY_LAYOUT);
       }
       setLoading(false);
     });
@@ -215,6 +230,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await setDoc(doc(db, 'users', user.uid, 'settings', 'main'), { reportingTimeZone: timeZone }, { merge: true });
     }
   }, [user]);
+
+  const setUiLayout = useCallback(async (layout: LedgerlyLayout) => {
+    const normalizedLayout = normalizeLedgerlyLayout(layout);
+    const previousLayout = uiLayout;
+    setUiLayoutState(normalizedLayout);
+    try {
+      if (user) {
+        await setDoc(
+          doc(db, 'users', user.uid, 'settings', 'main'),
+          { uiLayout: normalizedLayout },
+          { merge: true },
+        );
+      }
+    } catch (error) {
+      setUiLayoutState((current) =>
+        current === normalizedLayout ? previousLayout : current,
+      );
+      throw error;
+    }
+  }, [uiLayout, user]);
   
    const setForecastSettings = useCallback(async (settings: Partial<ForecastSettings>) => {
     if (user) {
@@ -239,7 +274,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [user, forecastSettings]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, onboardingComplete, setOnboardingComplete, showInstructions, setShowInstructions, activeYear, setActiveYear, firstYear, budgetingMode, setBudgetingMode, envelopeSettings, setEnvelopeSettings, forecastSettings, setForecastSettings, dashboardPreferences, setDashboardPreferences, reportingTimeZone, setReportingTimeZone }}>
+    <AuthContext.Provider value={{ user, loading, onboardingComplete, setOnboardingComplete, showInstructions, setShowInstructions, activeYear, setActiveYear, firstYear, budgetingMode, setBudgetingMode, envelopeSettings, setEnvelopeSettings, forecastSettings, setForecastSettings, dashboardPreferences, setDashboardPreferences, reportingTimeZone, setReportingTimeZone, uiLayout, setUiLayout }}>
       {children}
     </AuthContext.Provider>
   );

@@ -153,13 +153,15 @@ function MainAppShell({ children }: { children: React.ReactNode }) {
                     <MainNav />
                 </SidebarContent>
                 <SidebarFooter>
-                    {/* Optional Footer Content */}
+                    <div className="px-2 py-2 md:hidden">
+                        <UserNav />
+                    </div>
                 </SidebarFooter>
             </Sidebar>
 
-            <SidebarInset className="flex flex-col">
+            <SidebarInset className="flex min-w-0 flex-col">
                  <header className="sticky top-0 z-20 flex h-[calc(3.75rem+env(safe-area-inset-top))] shrink-0 items-center gap-1.5 border-b bg-card/90 px-3 pt-[env(safe-area-inset-top)] shadow-sm shadow-foreground/[0.03] backdrop-blur-xl md:h-16 md:gap-2 md:px-4 md:pt-0">
-                    <SidebarTrigger aria-label="Open navigation menu" />
+                    <SidebarTrigger aria-label="Open navigation menu" className="hidden md:flex" />
                     <YearSwitcher />
                     <AccountSwitcher />
                     <div className="hidden md:block">
@@ -204,7 +206,7 @@ function MainAppShell({ children }: { children: React.ReactNode }) {
                             onClick={() => setIsNewTxSheetOpen(true)}
                         >
                             <PlusCircle className="h-4 w-4 min-[360px]:mr-1.5 md:mr-2" />
-                            <span className="hidden min-[360px]:inline md:hidden">Add</span>
+                            <span className="hidden min-[440px]:inline md:hidden">Add</span>
                             <span className="hidden md:inline">New</span>
                         </Button>
 
@@ -240,7 +242,7 @@ function MainAppShell({ children }: { children: React.ReactNode }) {
                             </DropdownMenuContent>
                         </DropdownMenu>
 
-                        <div>
+                        <div className="hidden md:block">
                             <UserNav />
                         </div>
                     </div>
@@ -277,11 +279,11 @@ function MainAppShell({ children }: { children: React.ReactNode }) {
                         />
                     ) : null}
                 </header>
-                <div className={cn("ledgerly-app-content flex-1", showAds && "ledgerly-app-content--with-ads")}>
+                <div className={cn("ledgerly-app-content min-w-0 flex-1", showAds && "ledgerly-app-content--with-ads")}>
                     <main
                         id="main-content"
                         tabIndex={-1}
-                        className="flex-1 overflow-y-auto p-4 outline-none md:p-6 lg:p-8 xl:p-10"
+                        className="min-w-0 max-w-full flex-1 overflow-y-auto p-4 outline-none md:p-6 lg:p-8 xl:p-10"
                     >
                         {children}
                     </main>

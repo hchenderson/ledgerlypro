@@ -105,6 +105,8 @@ import {
   DEFAULT_REPORTING_TIME_ZONE,
   ledgerDateToDate,
 } from '@/lib/ledger-date';
+import { ViewSwitcher } from '@/components/view-switcher';
+import type { LedgerlyLayout } from '@/lib/ui-layout';
 
 const OverviewChart = dynamic(
   () =>
@@ -714,11 +716,11 @@ function LegacyReportView({ period }: { period: 'monthly' | 'yearly' }) {
   );
 }
 
-function ReportView({ period }: { period: 'monthly' | 'yearly' }) {
+function ReportView({ period, layout }: { period: 'monthly' | 'yearly'; layout: LedgerlyLayout }) {
   if (process.env.NEXT_PUBLIC_LEGACY_REPORTS === 'true') {
     return <LegacyReportView period={period} />;
   }
-  return <CustomReportWorkspace period={period} />;
+  return <CustomReportWorkspace period={period} layout={layout} />;
 }
 
 function AdvancedReportView() {
@@ -1412,18 +1414,22 @@ function AdvancedReportView() {
 
 export default function ReportsPage() {
     const [activeTab, setActiveTab] = useState('monthly');
-    const { budgetingMode } = useAuth();
+    const { budgetingMode, uiLayout } = useAuth();
     const showEnvelopeReports = budgetingMode !== 'tracking';
 
     return (
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col items-start gap-4 border-b pb-5 sm:flex-row sm:items-end sm:justify-between">
                 <div>
-                    <h2 className="text-2xl font-bold tracking-tight font-headline sm:text-3xl">Reports</h2>
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">Financial review</p>
+                    <h1 className="mt-1 text-2xl font-bold tracking-tight font-headline text-[#293A5E] dark:text-foreground sm:text-3xl">Reports</h1>
                      <p className="text-muted-foreground">
                         A summary of your financial activity.
                     </p>
                 </div>
+                <ViewSwitcher />
+            </div>
+            <div className="mt-4 flex justify-start sm:justify-end">
                 <TabsList className={cn("grid h-auto w-full", showEnvelopeReports ? "grid-cols-2 sm:w-auto sm:grid-cols-5" : "grid-cols-2 sm:w-auto sm:grid-cols-4")}>
                     <TabsTrigger value="monthly" className="min-w-0">Monthly</TabsTrigger>
                     <TabsTrigger value="yearly" className="min-w-0">Yearly</TabsTrigger>
@@ -1434,12 +1440,12 @@ export default function ReportsPage() {
             </div>
             {activeTab === 'monthly' && (
               <TabsContent value="monthly" className="pt-6">
-                  <ReportView period="monthly" />
+                  <ReportView period="monthly" layout={uiLayout} />
               </TabsContent>
             )}
             {activeTab === 'yearly' && (
               <TabsContent value="yearly" className="pt-6">
-                  <ReportView period="yearly" />
+                  <ReportView period="yearly" layout={uiLayout} />
               </TabsContent>
             )}
             {activeTab === 'advanced' && (

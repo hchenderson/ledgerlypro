@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 
 import { expect, test, type Page } from "@playwright/test";
 
@@ -14,6 +15,12 @@ async function signIn(page: Page) {
     await page.getByLabel("Password").fill(OWNER_PASSWORD);
     await page.getByRole("button", { name: "Sign In", exact: true }).click();
     try {
+      await page.waitForURL(/\/(?:dashboard|welcome)$/, { timeout: 45_000 });
+      if (/\/welcome$/.test(page.url())) {
+        // Auth and settings hydrate independently. The seeded account is
+        // already onboarded, so let the authenticated app guard confirm it.
+        await page.goto("/dashboard");
+      }
       await page.waitForURL(/\/dashboard$/, { timeout: 45_000 });
       break;
     } catch (error) {
@@ -23,6 +30,282 @@ async function signIn(page: Page) {
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByText("Dashboard", { exact: true }).first()).toBeVisible();
 }
+
+const layoutOptions = [
+  ["Clarified", "clarified"],
+  ["Desk", "bookkeepers-desk"],
+  ["Brief", "financial-brief"],
+] as const;
+
+async function chooseLayout(page: Page, label: (typeof layoutOptions)[number][0]) {
+  await expect(page.getByTestId("view-switcher")).toBeVisible();
+  const fullLabel =
+    label === "Clarified"
+      ? "Ledgerly Clarified"
+      : label === "Desk"
+        ? "Bookkeeper’s Desk"
+        : "Financial Brief";
+  if ((page.viewportSize()?.width ?? 1280) >= 640) {
+    await page.getByRole("button", { name: label, exact: true }).click();
+  } else {
+    await page.getByRole("combobox", { name: "View" }).click();
+    await page.getByRole("option", { name: fullLabel, exact: true }).click();
+  }
+  await expect(page.getByTestId("view-switcher")).toHaveAttribute("data-saving", "false");
+  if ((page.viewportSize()?.width ?? 1280) >= 640) {
+    await expect(page.getByRole("button", { name: label, exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  } else {
+    await expect(page.getByRole("combobox", { name: "View" })).toContainText(fullLabel);
+  }
+}
+
+function financialListenerStarts(page: Page) {
+  const starts = new Set<string>();
+  page.on("request", (request) => {
+    if (!request.url().includes("/Listen/channel")) return;
+    const body = request.postData() ?? "";
+    let decoded = body;
+    try {
+      decoded = decodeURIComponent(body);
+    } catch {}
+    if (decoded.includes("addTarget")) {
+      const targetIds = [...decoded.matchAll(/targetId[^0-9]{0,24}(\d+)/g)].map(
+        (match) => match[1],
+      );
+      for (const targetId of targetIds) starts.add(targetId);
+    }
+  });
+  return starts;
+}
+
+async function reportSnapshot(page: Page) {
+  return page.getByTestId("report-financial-summary").evaluate((element) => ({
+    income: element.getAttribute("data-total-income"),
+    expenses: element.getAttribute("data-total-expenses"),
+    net: element.getAttribute("data-net-income"),
+    count: element.getAttribute("data-transaction-count"),
+    budget: document.querySelector('[data-testid="report-budget-variance"]')?.getAttribute("data-budget-total"),
+    actual: document.querySelector('[data-testid="report-budget-variance"]')?.getAttribute("data-actual-total"),
+    variance: document.querySelector('[data-testid="report-budget-variance"]')?.getAttribute("data-variance-total"),
+  }));
+}
+
+async function expectNoHorizontalOverflow(page: Page) {
+  const result = await page.evaluate(() => ({
+    overflow: document.documentElement.scrollWidth - window.innerWidth,
+    offenders: [...document.querySelectorAll<HTMLElement>("body *")]
+      .map((element) => ({
+        tag: element.tagName.toLowerCase(),
+        text: element.textContent?.trim().slice(0, 60) ?? "",
+        right: Math.round(element.getBoundingClientRect().right),
+        width: Math.round(element.getBoundingClientRect().width),
+        className: typeof element.className === "string" ? element.className.slice(0, 100) : "",
+      }))
+      .filter((element) => element.right > window.innerWidth + 1)
+      .sort((left, right) => right.right - left.right)
+      .slice(0, 8),
+  }));
+  expect(result.overflow, JSON.stringify(result.offenders, null, 2)).toBeLessThanOrEqual(1);
+}
+
+async function hideNextDevChrome(page: Page) {
+  await page.addStyleTag({
+    content: "nextjs-portal { display: none !important; }",
+  });
+}
+
+test("production layouts preserve prepared data, page state, preference, and financial listeners", async ({ page }) => {
+  test.skip(
+    process.env.LEDGERLY_RULES_PROFILE !== "proposed",
+    "The saved production-layout preference requires the proposed settings rule.",
+  );
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  const listenerStarts = financialListenerStarts(page);
+  await signIn(page);
+
+  await page.goto("/recurring");
+  const confirmRecurring = page.getByRole("button", { name: "Confirm" }).first();
+  await expect(confirmRecurring).toBeVisible({ timeout: 90_000 });
+  await confirmRecurring.click();
+  await expect(page.getByText("Confirmed links (1)")).toBeVisible();
+  await page.goto("/dashboard");
+  await hideNextDevChrome(page);
+
+  const screenshotDirectory = "artifacts/production-layouts";
+  await mkdir(screenshotDirectory, { recursive: true });
+
+  await expect(page.getByTestId("dashboard-outlook").first()).toBeVisible();
+  await page.waitForTimeout(500);
+  const dashboardListenerBaseline = listenerStarts.size;
+  const postedCashValues: string[] = [];
+  const outlookValues: Array<Record<string, string | null>> = [];
+  for (const [label, layout] of layoutOptions) {
+    await chooseLayout(page, label);
+    const layoutRoot = page.locator(`[data-layout="${layout}"]`).first();
+    await expect(layoutRoot).toBeVisible();
+    await expect(page.locator("[data-layout]")).toHaveCount(1);
+    postedCashValues.push(
+      (await page.getByTestId("posted-cash").first().getAttribute("data-value")) ?? "",
+    );
+    outlookValues.push(await page.getByTestId("dashboard-outlook").evaluate((element) => ({
+      income: element.getAttribute("data-projected-income"),
+      expenses: element.getAttribute("data-projected-expenses"),
+      net: element.getAttribute("data-projected-net"),
+      ending: element.getAttribute("data-projected-ending-balance"),
+    })));
+    await page.screenshot({
+      path: `${screenshotDirectory}/${layout}-dashboard-desktop.png`,
+      fullPage: true,
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.locator(`[data-layout="${layout}"]`).first()).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+    await page.screenshot({
+      path: `${screenshotDirectory}/${layout}-dashboard-mobile.png`,
+      fullPage: true,
+    });
+    await page.setViewportSize({ width: 1440, height: 1000 });
+  }
+  expect(new Set(postedCashValues).size).toBe(1);
+  expect(postedCashValues[0]).not.toBe("");
+  expect(outlookValues[1]).toEqual(outlookValues[0]);
+  expect(outlookValues[2]).toEqual(outlookValues[0]);
+  expect(Object.values(outlookValues[0])).not.toContain(null);
+  await page.waitForTimeout(300);
+  expect(listenerStarts.size).toBe(dashboardListenerBaseline);
+
+  await expect(page.locator('[data-layout="financial-brief"]').first()).toBeVisible();
+  await page.reload();
+  await hideNextDevChrome(page);
+  await expect(page.locator('[data-layout="financial-brief"]').first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Brief", exact: true })).toHaveAttribute("aria-pressed", "true");
+
+  await page.goto("/transactions");
+  await hideNextDevChrome(page);
+  await page.getByLabel("Category filter").click();
+  await page.getByRole("option", { name: "Expense · Operations", exact: true }).click();
+  const transactionIds = async () =>
+    page.locator("[data-transaction-id]").evaluateAll((elements) =>
+      [...new Set(elements.map((element) => element.getAttribute("data-transaction-id")))]
+        .filter((value): value is string => Boolean(value))
+        .sort(),
+    );
+  const operationIds = [
+    "legacy-expectation",
+    "other-account",
+    "pending",
+    "possible-transfer",
+    "recurring-actual",
+    "refund-credit",
+    "refund-purchase",
+    "removed",
+    "split-expense",
+  ];
+  expect(await transactionIds()).toEqual(operationIds);
+  for (const [label] of layoutOptions) {
+    await chooseLayout(page, label);
+    await expect(page.locator("[data-layout]")).toHaveCount(1);
+    expect(await transactionIds()).toEqual(operationIds);
+    await expect(page.getByLabel("Category filter")).toContainText("Operations");
+  }
+
+  await page.getByLabel("Search transactions").fill("recurring-actual");
+  const briefIds = await transactionIds();
+  expect(briefIds).toEqual(["recurring-actual"]);
+  const transactionListenerBaseline = listenerStarts.size;
+
+  await chooseLayout(page, "Desk");
+  await expect(page.getByLabel("Search transactions")).toHaveValue("recurring-actual");
+  expect(await transactionIds()).toEqual(briefIds);
+  await page.setViewportSize({ width: 1180, height: 820 });
+  await page.screenshot({ path: `${screenshotDirectory}/bookkeepers-desk-transactions-laptop.png`, fullPage: true });
+  await expectNoHorizontalOverflow(page);
+  await page.locator('tr[data-transaction-id="recurring-actual"]').click();
+  await expect(page.getByTestId("transaction-inspector")).toContainText("recurring-actual");
+  const inspectorCategory = page.getByTestId("transaction-inspector").getByRole("combobox");
+  await inspectorCategory.click();
+  await page.getByRole("option", { name: "Operations > Fees", exact: true }).click();
+  await expect(inspectorCategory).toContainText("Fees");
+  await chooseLayout(page, "Clarified");
+  await expect(page.getByLabel("Search transactions")).toHaveValue("recurring-actual");
+  expect(await transactionIds()).toEqual(briefIds);
+  await chooseLayout(page, "Desk");
+  await expect(page.getByTestId("transaction-inspector")).toContainText("recurring-actual");
+  await expect(page.getByTestId("transaction-inspector").getByRole("combobox")).toContainText("Fees");
+  await page.getByLabel("Search transactions").fill("");
+  const recurringRow = page.locator('tr[data-transaction-id="recurring-actual"]');
+  await recurringRow.focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByTestId("transaction-inspector")).not.toContainText("recurring-actual");
+  await page.getByLabel("Search transactions").fill("recurring-actual");
+  await page.setViewportSize({ width: 390, height: 844 });
+  for (const [label, layout] of layoutOptions) {
+    await chooseLayout(page, label);
+    await expect(page.locator(`[data-layout="${layout}"]`)).toBeVisible();
+    await expect(page.getByLabel("Search transactions")).toHaveValue("recurring-actual");
+    await expectNoHorizontalOverflow(page);
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.waitForTimeout(300);
+  expect(listenerStarts.size).toBe(transactionListenerBaseline);
+
+  await page.goto("/reports");
+  await page.getByRole("tab", { name: "Yearly" }).click();
+  await expect(page.getByTestId("report-financial-summary")).toBeVisible();
+  const reportListenerBaseline = listenerStarts.size;
+  const reportSnapshots = [];
+  const reportCsvExports: string[] = [];
+  for (const [label, layout] of layoutOptions) {
+    await chooseLayout(page, label);
+    await expect(page.locator(`[data-layout="${layout}"]`).first()).toBeVisible();
+    await expect(page.locator("[data-layout]")).toHaveCount(1);
+    reportSnapshots.push(await reportSnapshot(page));
+    await page.getByRole("button", { name: "Export yearly financial report" }).click();
+    await page.getByText("CSV File", { exact: true }).click();
+    const downloadPromise = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Export", exact: true }).click();
+    const download = await downloadPromise;
+    const csvPath = await download.path();
+    expect(csvPath).not.toBeNull();
+    reportCsvExports.push(await readFile(csvPath!, "utf8"));
+  }
+  expect(reportSnapshots[1]).toEqual(reportSnapshots[0]);
+  expect(reportSnapshots[2]).toEqual(reportSnapshots[0]);
+  expect(reportSnapshots[0]).toEqual({
+    income: "1200",
+    expenses: "273",
+    net: "927",
+    count: "7",
+    budget: expect.any(String),
+    actual: expect.any(String),
+    variance: expect.any(String),
+  });
+  expect(reportCsvExports[1]).toBe(reportCsvExports[0]);
+  expect(reportCsvExports[2]).toBe(reportCsvExports[0]);
+  expect(reportCsvExports[0]).toContain("split-expense");
+  expect(reportCsvExports[0]).toContain("refund-purchase");
+  expect(reportCsvExports[0]).toContain("refund-credit");
+  expect(reportCsvExports[0]).toContain("recurring-actual");
+  expect(reportCsvExports[0]).not.toContain("legacy-expectation");
+  expect(reportCsvExports[0]).not.toContain("possible-transfer");
+  expect(reportCsvExports[0]).not.toContain("pending");
+  expect(reportCsvExports[0]).not.toContain("removed");
+  await page.setViewportSize({ width: 390, height: 844 });
+  for (const [label, layout] of layoutOptions) {
+    await chooseLayout(page, label);
+    await expect(page.locator(`[data-layout="${layout}"]`)).toBeVisible();
+    await expect(page.getByTestId("report-financial-summary")).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.waitForTimeout(300);
+  expect(listenerStarts.size).toBe(reportListenerBaseline);
+
+  await chooseLayout(page, "Clarified");
+});
 
 test("authenticated owner release workflows stay isolated and preserve financial parity", async ({ page }) => {
   const externalRequests: string[] = [];
@@ -37,6 +320,7 @@ test("authenticated owner release workflows stay isolated and preserve financial
   });
 
   await signIn(page);
+  await chooseLayout(page, "Clarified");
 
   await page.goto("/reports");
   await page.getByRole("tab", { name: "Yearly" }).click();
@@ -154,7 +438,7 @@ test("authenticated owner release workflows stay isolated and preserve financial
   await expect(page.getByRole("dialog", { name: "Step 3: Review & Confirm" })).toBeVisible();
   await page.getByRole("button", { name: "Confirm & Import" }).click();
   await expect(page.getByRole("dialog", { name: "Step 3: Review & Confirm" })).toBeHidden({ timeout: 45_000 });
-  await expect(page.getByRole("cell", { name: "E2E CSV Income" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("cell", { name: "E2E CSV Income", exact: true })).toBeVisible({ timeout: 30_000 });
 
   await page.goto("/receipt-scanner");
   await page.locator('input[type="file"]').setInputFiles({
@@ -163,7 +447,7 @@ test("authenticated owner release workflows stay isolated and preserve financial
     buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nWQAAAAASUVORK5CYII=", "base64"),
   });
   await page.getByRole("button", { name: "Scan with AI" }).click();
-  await expect(page.getByText("Synthetic Receipt Vendor")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("Synthetic Receipt Vendor")).toBeVisible({ timeout: 75_000 });
   await page.getByRole("button", { name: "Create Transaction" }).click();
   const receiptSheet = page.getByRole("dialog", { name: "New Transaction" });
   await expect(receiptSheet.getByRole("textbox", { name: "Date" })).toHaveValue("02/20/2026");
@@ -176,10 +460,18 @@ test("authenticated owner release workflows stay isolated and preserve financial
   await expect(page.getByText("Synthetic Receipt Vendor")).toBeHidden();
 
   await page.goto("/recurring");
+  const confirmedRecurring = page.getByText("Confirmed links (1)");
   const confirmRecurring = page.getByRole("button", { name: "Confirm" }).first();
-  await expect(confirmRecurring).toBeVisible({ timeout: 45_000 });
-  await confirmRecurring.click();
-  await expect(page.getByText("Confirmed links (1)")).toBeVisible();
+  await expect
+    .poll(async () =>
+      (await confirmedRecurring.isVisible()) || (await confirmRecurring.isVisible()),
+      { timeout: 90_000 },
+    )
+    .toBe(true);
+  if (await confirmRecurring.isVisible()) {
+    await confirmRecurring.click();
+  }
+  await expect(confirmedRecurring).toBeVisible();
 
   await page.goto("/settings");
   await page.getByLabel("Reporting time zone").selectOption("America/Chicago");

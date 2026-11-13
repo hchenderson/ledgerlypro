@@ -76,7 +76,11 @@ async function main() {
       }
     }
 
-    const playwright = spawn("npx", ["playwright", "test"], { env, stdio: "inherit" });
+    const playwrightArgs = ["playwright", "test"];
+    if (process.env.LEDGERLY_E2E_GREP) {
+      playwrightArgs.push("--grep", process.env.LEDGERLY_E2E_GREP);
+    }
+    const playwright = spawn("npx", playwrightArgs, { env, stdio: "inherit" });
     const exitCode = await new Promise<number>((resolve) => playwright.on("exit", (code) => resolve(code ?? 1)));
     if (exitCode !== 0) process.exitCode = exitCode;
   } finally {

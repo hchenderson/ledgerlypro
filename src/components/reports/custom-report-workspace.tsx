@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import {
+  Fragment,
   useCallback,
   useEffect,
   useMemo,
@@ -27,6 +28,7 @@ import {
   BarChart3,
   Calendar as CalendarIcon,
   ChevronDown,
+  ChevronRight,
   Columns3,
   FileBarChart2,
   GripVertical,
@@ -113,11 +115,13 @@ import {
   computeReportBalances,
   computeReportBudgets,
   type ReportAnalytics,
+  type ReportBudgetRow,
   type ReportComparisonMode,
   type ReportGranularity,
   type ReportMetricId,
   type ReportSectionId,
 } from "@/lib/report-analytics";
+import type { LedgerlyLayout } from "@/lib/ui-layout";
 import { cn } from "@/lib/utils";
 import { buildProcessedGoals } from "@/lib/goal-progress";
 import { buildFinancialCategoryOptions } from "@/lib/financial-category";
@@ -317,7 +321,7 @@ function SummaryCard({
   );
 }
 
-function metricCard(
+function _metricCard(
   metric: ReportMetricId,
   current: ReportAnalytics,
   comparison: ReportAnalytics | null,
@@ -362,8 +366,10 @@ function metricPdfValue(
 
 export function CustomReportWorkspace({
   period,
+  layout,
 }: {
   period: "monthly" | "yearly";
+  layout: LedgerlyLayout;
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -428,6 +434,8 @@ export function CustomReportWorkspace({
   const [selectedViewId, setSelectedViewId] = useState<string>();
   const [savingView, setSavingView] = useState(false);
   const [draggedSection, setDraggedSection] = useState<ReportSectionId | null>(null);
+  const [budgetSort, setBudgetSort] = useState<"adverse" | "percent-used">("adverse");
+  const [expandedBudgetId, setExpandedBudgetId] = useState<string | null>(null);
   const skipDefaultReset = useRef(false);
 
   useEffect(() => {
@@ -552,6 +560,18 @@ export function CustomReportWorkspace({
       ),
     [budgets, categories, currentAnalytics.transactions, filters, primaryRange],
   );
+  const sortedBudgetRows = useMemo(
+    () =>
+      [...budgetSummary.rows].sort((left, right) => {
+        if (budgetSort === "percent-used") {
+          return right.percentUsed - left.percentUsed;
+        }
+        const leftVariance = left.actual - left.budget;
+        const rightVariance = right.actual - right.budget;
+        return rightVariance - leftVariance || right.actual - left.actual;
+      }),
+    [budgetSort, budgetSummary.rows],
+  );
   const expenseMovement = useMemo(
     () =>
       computeCategoryMovement(
@@ -618,6 +638,18 @@ export function CustomReportWorkspace({
     goalsLoading ||
     envelopesLoading;
   const selectedView = views.find((view) => view.id === selectedViewId);
+  const displaySectionOrder = useMemo(() => {
+    const priority: ReportSectionId[] =
+      layout === "bookkeepers-desk"
+        ? ["summary", "budgets", "transactions", "category-movement"]
+        : layout === "financial-brief"
+          ? ["summary", "category-movement", "budgets", "insights", "cash-flow"]
+          : ["summary", "budgets", "cash-flow", "insights"];
+    return [
+      ...priority,
+      ...sectionOrder.filter((section) => !priority.includes(section)),
+    ];
+  }, [layout, sectionOrder]);
 
   const configuration = useMemo<ReportViewConfiguration>(
     () => ({
@@ -999,26 +1031,108 @@ export function CustomReportWorkspace({
     router.push("/compare");
   };
 
-  const renderSummary = () => (
-    <section key="summary" aria-labelledby={`${reportDomId}-summary`}>
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <h3 id={`${reportDomId}-summary`} className="font-headline text-lg font-semibold">Financial summary</h3>
-        {comparisonRange ? <Badge variant="outline">Compared with {rangeLabel(comparisonRange)}</Badge> : null}
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {visibleMetrics.map((metric) =>
-          metricCard(
-            metric,
-            currentAnalytics,
-            comparisonAnalytics,
-            balances.endingBalance,
-            budgetSummary.remaining,
-            categoryFiltersActive,
-          ),
+  const summaryMetricItems = visibleMetrics.map((metric) => ({
+    id: metric,
+    label:
+      metric === "ending-balance" && categoryFiltersActive
+        ? "Filtered ending balance"
+        : METRIC_LABELS[metric],
+    value: metricPdfValue(
+      metric,
+      currentAnalytics,
+      balances.endingBalance,
+      budgetSummary.remaining,
+    ),
+  }));
+
+  const renderSummary = () => {
+    const comparisonNet = comparisonAnalytics?.summary.net;
+    const netDifference =
+      comparisonNet === undefined
+        ? null
+        : currentAnalytics.summary.net - comparisonNet;
+    const budgetDifference = budgetSummary.actual - budgetSummary.budget;
+    const leadingMovement = expenseMovement[0];
+
+    return (
+      <section
+        key="summary"
+        aria-labelledby={`${reportDomId}-summary`}
+        data-testid="report-financial-summary"
+        data-total-income={currentAnalytics.summary.income}
+        data-total-expenses={currentAnalytics.summary.expenses}
+        data-net-income={currentAnalytics.summary.net}
+        data-transaction-count={currentAnalytics.summary.transactionCount}
+      >
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">
+              {rangeLabel(primaryRange)}
+            </p>
+            <h3 id={`${reportDomId}-summary`} className="mt-1 font-headline text-lg font-semibold">
+              Financial summary
+            </h3>
+          </div>
+          {comparisonRange ? (
+            <Badge variant="outline">Compared with {rangeLabel(comparisonRange)}</Badge>
+          ) : null}
+        </div>
+
+        {layout === "financial-brief" ? (
+          <div className="border-y py-6">
+            <p className="max-w-4xl font-headline text-lg leading-8 text-[#293A5E] dark:text-foreground sm:text-xl">
+              Net cash flow was <strong>{currency.format(currentAnalytics.summary.net)}</strong>
+              {netDifference !== null
+                ? `, ${currency.format(Math.abs(netDifference))} ${netDifference >= 0 ? "ahead of" : "behind"} the comparison period`
+                : " for the selected period"}
+              . {budgetSummary.budget > 0
+                ? `Budgeted categories finished ${currency.format(Math.abs(budgetDifference))} ${budgetDifference > 0 ? "over" : "under"} target.`
+                : "No budget target applies to this selection."}
+              {leadingMovement
+                ? ` ${leadingMovement.category} explains the largest expense movement.`
+                : ""}
+            </p>
+            <dl className="mt-6 grid grid-cols-2 gap-x-8 gap-y-5 border-t pt-5 sm:grid-cols-4">
+              {summaryMetricItems.slice(0, 8).map((item) => (
+                <div key={item.id}>
+                  <dt className="text-xs text-muted-foreground">{item.label}</dt>
+                  <dd className="mt-1 break-words font-code text-lg font-semibold tabular-nums">{item.value}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        ) : layout === "bookkeepers-desk" ? (
+          <div className="overflow-x-auto border-y">
+            <table className="w-full min-w-[640px] border-collapse text-sm">
+              <thead>
+                <tr className="border-b text-left text-[11px] uppercase tracking-wide text-muted-foreground">
+                  {summaryMetricItems.map((item) => (
+                    <th key={item.id} className="px-3 py-2 font-medium">{item.label}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  {summaryMetricItems.map((item) => (
+                    <td key={item.id} className="whitespace-nowrap px-3 py-3 text-right font-code font-semibold tabular-nums first:text-left">{item.value}</td>
+                  ))}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <dl className="grid border-y sm:grid-cols-2 xl:grid-cols-4">
+            {summaryMetricItems.map((item, index) => (
+              <div key={item.id} className={cn("px-4 py-4", index > 0 && "border-t sm:border-l sm:border-t-0", index > 1 && "sm:border-t xl:border-t-0")}>
+                <dt className="text-xs text-muted-foreground">{item.label}</dt>
+                <dd className="mt-1 break-words font-code text-xl font-semibold tabular-nums text-[#293A5E] dark:text-foreground">{item.value}</dd>
+              </div>
+            ))}
+          </dl>
         )}
-      </div>
-    </section>
-  );
+      </section>
+    );
+  };
 
   const renderCashFlow = () => (
     <Card key="cash-flow" id={`${reportDomId}-cash-flow-chart`} data-pdf-title="Income vs. expense chart">
@@ -1092,22 +1206,114 @@ export function CustomReportWorkspace({
     </Card>
   );
 
-  const renderBudgets = () => (
-    <Card key="budgets">
-      <CardHeader><CardTitle className="flex items-center gap-2"><PiggyBank className="h-5 w-5" /> Budget vs. actual</CardTitle><CardDescription>Budgets are prorated to the exact selected dates. Each expense is counted once in its most specific matching budget, so Actual reconciles with the filtered Expenses card.</CardDescription></CardHeader>
-      <CardContent>
-        {budgetSummary.rows.length > 0 ? <>
-          <div className="mb-5 grid gap-3 sm:grid-cols-4">
-            {[['Budget', budgetSummary.budget], ['Actual', budgetSummary.actual], ['Remaining', budgetSummary.remaining]].map(([label, value]) => <div key={String(label)} className="rounded-xl border p-4"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-lg font-semibold tabular-nums">{currency.format(Number(value))}</p></div>)}
-            <div className="rounded-xl border p-4"><p className="text-xs text-muted-foreground">Used</p><p className="mt-1 text-lg font-semibold">{budgetSummary.percentUsed.toFixed(1)}%</p></div>
-          </div>
-          <div className="space-y-4">
-            {budgetSummary.rows.map((row) => <div key={row.budgetId}><div className="mb-1 flex items-center justify-between gap-3 text-sm"><span className="font-medium">{row.categoryName}</span><span className="text-right tabular-nums">{currency.format(row.actual)} / {row.isUnbudgeted ? "No budget" : currency.format(row.budget)}<span className="block text-xs text-muted-foreground">Projected {currency.format(row.projected)}</span></span></div><Progress value={Math.min(100, row.percentUsed)} className={cn("h-2", (row.isUnbudgeted || row.percentUsed > 100) && "[&>div]:bg-destructive")} /></div>)}
-          </div>
-        </> : <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">No budgets apply to this date range.</p>}
-      </CardContent>
-    </Card>
+  const budgetVariance = (row: ReportBudgetRow) => row.actual - row.budget;
+  const budgetVarianceLabel = (row: ReportBudgetRow) => {
+    const variance = budgetVariance(row);
+    if (Math.abs(variance) < 0.005) return "$0 on budget";
+    return `${currency.format(Math.abs(variance))} ${variance > 0 ? "over" : "under"}`;
+  };
+
+  const renderBudgetDetail = (row: ReportBudgetRow) => (
+    <div className="grid gap-3 bg-muted/25 p-4 text-sm sm:grid-cols-3">
+      <div><p className="text-xs text-muted-foreground">Supporting actual</p><p className="mt-1 font-code font-semibold tabular-nums">{currency.format(row.actual)}</p></div>
+      <div><p className="text-xs text-muted-foreground">Full category subtree</p><p className="mt-1 font-code font-semibold tabular-nums">{currency.format(row.subtreeActual ?? row.actual)}</p></div>
+      <div><p className="text-xs text-muted-foreground">Projected period-end</p><p className="mt-1 font-code font-semibold tabular-nums">{currency.format(row.projected)}</p></div>
+      <p className="sm:col-span-3 text-xs leading-5 text-muted-foreground">Actual is counted once in the most specific matching budget. Split allocations, refunds, status exclusions, and recurring actuals follow the same report filters as the summary above.</p>
+    </div>
   );
+
+  const renderBudgetMobileRows = () => (
+    <div className="divide-y md:hidden">
+      {sortedBudgetRows.map((row, index) => {
+        const variance = budgetVariance(row);
+        const expanded = expandedBudgetId === row.budgetId;
+        return (
+          <div key={row.budgetId} data-budget-id={row.budgetId}>
+            <button type="button" className="grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 py-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => setExpandedBudgetId(expanded ? null : row.budgetId)} aria-expanded={expanded}>
+              <span className="font-code text-xs text-muted-foreground">{String(index + 1).padStart(2, "0")}</span>
+              <span className="min-w-0"><span className="block truncate font-medium">{row.categoryName}</span><span className="mt-1 block text-xs text-muted-foreground">{currency.format(row.actual)} actual · {row.isUnbudgeted ? "No budget" : currency.format(row.budget)}</span></span>
+              <span className={cn("text-right font-code text-sm font-semibold tabular-nums", variance > 0 ? "text-destructive" : "text-emerald-700")}>{budgetVarianceLabel(row)}<span className="mt-1 block text-xs font-normal text-muted-foreground">{row.isUnbudgeted ? "—" : `${row.percentUsed.toFixed(0)}% used`}</span></span>
+            </button>
+            {expanded ? renderBudgetDetail(row) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  const renderBudgetTable = (compact = false) => {
+    const maximumVariance = Math.max(1, ...sortedBudgetRows.map((row) => Math.abs(budgetVariance(row))));
+    return (
+      <div className="hidden overflow-x-auto md:block">
+        <Table className="min-w-[800px]">
+          <TableHeader className={cn(compact && "sticky top-0 bg-card")}><TableRow><TableHead className="sticky left-0 bg-card">Category</TableHead><TableHead className="text-right">Budget</TableHead><TableHead className="text-right">Actual</TableHead><TableHead className="text-right">Variance</TableHead><TableHead className="text-right">Used</TableHead><TableHead className="text-right">Projected period-end</TableHead></TableRow></TableHeader>
+          <TableBody>
+            {sortedBudgetRows.map((row) => {
+              const variance = budgetVariance(row);
+              const expanded = expandedBudgetId === row.budgetId;
+              return (
+                <Fragment key={row.budgetId}>
+                  <TableRow data-budget-id={row.budgetId} className={cn(compact && "h-9")}>
+                    <TableCell className="sticky left-0 bg-card p-0 font-medium"><button type="button" className="flex w-full items-center gap-2 px-4 py-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => setExpandedBudgetId(expanded ? null : row.budgetId)} aria-expanded={expanded}><ChevronRight className={cn("h-4 w-4 shrink-0 transition-transform", expanded && "rotate-90")} /><span className="truncate">{row.categoryName}</span></button></TableCell>
+                    <TableCell className="text-right font-code tabular-nums">{row.isUnbudgeted ? "—" : currency.format(row.budget)}</TableCell>
+                    <TableCell className="text-right font-code tabular-nums">{currency.format(row.actual)}</TableCell>
+                    <TableCell className={cn("text-right font-code font-semibold tabular-nums", variance > 0 ? "text-destructive" : "text-emerald-700")}>
+                      {budgetVarianceLabel(row)}
+                      {layout === "bookkeepers-desk" ? <span className="mt-1 block h-1 bg-muted"><span className={cn("block h-1", variance > 0 ? "bg-destructive" : "bg-emerald-600")} style={{ width: `${Math.max(4, (Math.abs(variance) / maximumVariance) * 100)}%` }} /></span> : null}
+                    </TableCell>
+                    <TableCell className="text-right font-code tabular-nums">{row.isUnbudgeted ? "—" : `${row.percentUsed.toFixed(1)}%`}</TableCell>
+                    <TableCell className="text-right font-code tabular-nums">{currency.format(row.projected)}</TableCell>
+                  </TableRow>
+                  {expanded ? <TableRow><TableCell colSpan={6} className="p-0">{renderBudgetDetail(row)}</TableCell></TableRow> : null}
+                </Fragment>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </div>
+    );
+  };
+
+  const renderBudgets = () => {
+    const totalVariance = budgetSummary.actual - budgetSummary.budget;
+    const maximumVariance = Math.max(1, ...sortedBudgetRows.map((row) => Math.abs(budgetVariance(row))));
+    return (
+      <section
+        key="budgets"
+        aria-labelledby={`${reportDomId}-budgets`}
+        data-testid="report-budget-variance"
+        data-budget-total={budgetSummary.budget}
+        data-actual-total={budgetSummary.actual}
+        data-variance-total={totalVariance}
+      >
+        <div className="flex flex-col gap-3 border-b pb-3 sm:flex-row sm:items-end sm:justify-between">
+          <div><h3 id={`${reportDomId}-budgets`} className="flex items-center gap-2 font-headline text-lg font-semibold"><PiggyBank className="h-5 w-5" /> Budget vs. actual</h3><p className="mt-1 text-sm text-muted-foreground">Prorated to the selected dates; each expense is counted once in its most specific matching budget.</p></div>
+          <Select value={budgetSort} onValueChange={(value) => setBudgetSort(value as "adverse" | "percent-used")}><SelectTrigger className="w-full sm:w-52" aria-label="Sort budget variances"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="adverse">Largest adverse variance</SelectItem><SelectItem value="percent-used">Percent used</SelectItem></SelectContent></Select>
+        </div>
+        {budgetSummary.rows.length > 0 ? (
+          <>
+            {layout === "financial-brief" ? (
+              <div className="border-b py-6">
+                <p className="font-headline text-lg leading-8 text-[#293A5E] dark:text-foreground">Actual spending was <strong>{currency.format(budgetSummary.actual)}</strong> against <strong>{currency.format(budgetSummary.budget)}</strong> of budget — <span className={cn("font-semibold", totalVariance > 0 ? "text-destructive" : "text-emerald-700")}>{currency.format(Math.abs(totalVariance))} {totalVariance > 0 ? "over" : "under"}</span>.</p>
+                <div className="mt-6 space-y-3">
+                  {sortedBudgetRows.slice(0, 8).map((row, index) => {
+                    const variance = budgetVariance(row);
+                    return <button key={row.budgetId} type="button" className="grid w-full grid-cols-[1.25rem_minmax(8rem,.7fr)_minmax(6rem,1fr)_auto] items-center gap-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => setExpandedBudgetId(expandedBudgetId === row.budgetId ? null : row.budgetId)}><span className="font-code text-xs text-muted-foreground">{index + 1}</span><span className="truncate text-sm font-medium">{row.categoryName}</span><span className="h-2 bg-muted"><span className={cn("block h-2", variance > 0 ? "bg-destructive" : "bg-emerald-600")} style={{ width: `${Math.max(3, (Math.abs(variance) / maximumVariance) * 100)}%` }} /></span><span className={cn("font-code text-sm font-semibold tabular-nums", variance > 0 ? "text-destructive" : "text-emerald-700")}>{budgetVarianceLabel(row)}</span></button>;
+                  })}
+                </div>
+              </div>
+            ) : (
+              <dl className="grid border-b sm:grid-cols-4">
+                {[["Budget", budgetSummary.budget], ["Actual", budgetSummary.actual], [totalVariance > 0 ? "Over budget" : "Under budget", Math.abs(totalVariance)], ["Used", budgetSummary.percentUsed, true] as const].map(([label, value, percent], index) => <div key={label} className={cn("px-4 py-4", index > 0 && "border-t sm:border-l sm:border-t-0")}><dt className="text-xs text-muted-foreground">{label}</dt><dd className={cn("mt-1 font-code text-lg font-semibold tabular-nums", label === "Over budget" && "text-destructive", label === "Under budget" && "text-emerald-700")}>{percent ? `${Number(value).toFixed(1)}%` : currency.format(Number(value))}</dd></div>)}
+              </dl>
+            )}
+            {renderBudgetMobileRows()}
+            {renderBudgetTable(layout === "bookkeepers-desk")}
+          </>
+        ) : <p className="border border-dashed p-8 text-center text-sm text-muted-foreground">No budgets apply to this date range.</p>}
+      </section>
+    );
+  };
 
   const renderBalances = () => (
     <Card key="balances" id={`${reportDomId}-balance-chart`} data-pdf-title="Account balance chart">
@@ -1240,8 +1446,16 @@ export function CustomReportWorkspace({
 
       <div className="flex flex-wrap items-center gap-2 text-sm"><Badge variant="outline">{rangeLabel(primaryRange)}</Badge><Badge variant="outline">{accountIds.length === 0 ? "All accounts" : `${accountIds.length} account${accountIds.length === 1 ? "" : "s"}`}</Badge>{includedCategoryKeys.length > 0 ? <Badge variant="secondary">{includedCategoryKeys.length} included categories</Badge> : null}{excludedCategoryKeys.length > 0 ? <Badge variant="secondary">{excludedCategoryKeys.length} excluded categories</Badge> : null}{includePending ? <Badge variant="destructive">Pending included</Badge> : <Badge variant="secondary">Posted only</Badge>}</div>
 
-      <div id={reportDomId} className="space-y-6 rounded-xl">
-        {sectionOrder.filter((section) => visibleSections.includes(section)).map((section) => sectionRenderers[section]())}
+      <div
+        id={reportDomId}
+        data-layout={layout}
+        className={cn(
+          "rounded-xl",
+          layout === "bookkeepers-desk" ? "space-y-4 text-sm" : "space-y-6",
+          layout === "financial-brief" && "mx-auto max-w-6xl",
+        )}
+      >
+        {displaySectionOrder.filter((section) => visibleSections.includes(section)).map((section) => sectionRenderers[section]())}
       </div>
 
       <Dialog open={saveDialogOpen} onOpenChange={setSaveDialogOpen}>
