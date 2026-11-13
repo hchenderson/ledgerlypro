@@ -73,7 +73,7 @@ export function ForecastNetChart({
       <ResponsiveContainer width="100%" height="100%">
         <LineChart
           data={chartData}
-          margin={{ top: 10, right: isMobile ? 2 : 10, left: isMobile ? -16 : 0, bottom: 0 }}
+          margin={{ top: 10, right: isMobile ? 14 : 10, left: isMobile ? -12 : 0, bottom: 0 }}
           accessibilityLayer
         >
           <CartesianGrid strokeDasharray="3 3" />
@@ -101,19 +101,12 @@ export function ForecastNetChart({
             }}
           />
           {hasBand && mode === 'cumulativeNet' && (
-            <defs>
-                <linearGradient id="bandGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="hsl(var(--chart-1))" stopOpacity={0.4}/>
-                    <stop offset="95%" stopColor="hsl(var(--chart-1))" stopOpacity={0.1}/>
-                </linearGradient>
-            </defs>
-          )}
-          {hasBand && mode === 'cumulativeNet' && (
             <Area
               type="monotone"
               dataKey="band"
               stroke="none"
-              fill="url(#bandGradient)"
+              fill="hsl(var(--chart-1))"
+              fillOpacity={0.12}
               isAnimationActive={false}
             name="Historical variability range"
             />
@@ -126,6 +119,7 @@ export function ForecastNetChart({
             activeDot={{ r: 6 }}
             strokeWidth={2}
             name="Projected net"
+            isAnimationActive={false}
           />
         </LineChart>
       </ResponsiveContainer>

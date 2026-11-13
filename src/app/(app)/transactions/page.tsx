@@ -1,6 +1,8 @@
 
 "use client";
 
+export { ProductionTransactionsPage as default } from "@/components/layouts/production-transactions-page";
+
 import { useState, useMemo, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -81,7 +83,7 @@ function TransactionsSkeleton() {
   );
 }
 
-export default function TransactionsPage() {
+export function LegacyTransactionsPage() {
   const {
     transactions: allTransactions,
     addTransaction,

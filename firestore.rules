@@ -519,7 +519,7 @@ service cloud.firestore {
           'budgetingMode', 'envelopeSettings', 'forecastSettings',
           'dashboardPreferences', 'reportingTimeZone', 'startingBalance',
           'accountSchemaVersion', 'categorySchemaVersion',
-          'dataSchemaVersion', 'primaryAccountId'
+          'dataSchemaVersion', 'primaryAccountId', 'uiLayout'
         ])
         && (!data.keys().hasAny(['activeYear'])
           || (data.activeYear is int && data.activeYear >= 1900 && data.activeYear <= 2200))
@@ -532,7 +532,9 @@ service cloud.firestore {
             && data.startingBalance >= -90000000000
             && data.startingBalance <= 90000000000))
         && (!data.keys().hasAny(['reportingTimeZone'])
-          || validText(data.reportingTimeZone, 100));
+          || validText(data.reportingTimeZone, 100))
+        && (!data.keys().hasAny(['uiLayout'])
+          || data.uiLayout in ['clarified', 'bookkeepers-desk', 'financial-brief']);
     }
 
     match /users/{userId}/settings/{settingId} {

@@ -102,13 +102,13 @@ export function OverviewChart({ data }: OverviewChartProps) {
               <ChartLegendContent className="flex-wrap gap-x-3 gap-y-1 text-[10px] sm:text-xs" />
             }
           />
-          <Bar dataKey="income" fill="var(--color-income)" radius={[4, 4, 0, 0]} />
-          <Bar dataKey="expense" fill="var(--color-expense)" radius={[4, 4, 0, 0]} />
+          <Bar dataKey="income" fill="var(--color-income)" radius={[4, 4, 0, 0]} isAnimationActive={false} />
+          <Bar dataKey="expense" fill="var(--color-expense)" radius={[4, 4, 0, 0]} isAnimationActive={false} />
           {data[0]?.incomeTrend !== undefined && (
-            <Line type="monotone" dataKey="incomeTrend" stroke="var(--color-income)" strokeWidth={2} dot={false} strokeDasharray="5 5" legendType={isMobile ? "none" : "line"} />
+            <Line type="monotone" dataKey="incomeTrend" stroke="var(--color-income)" strokeWidth={2} dot={false} strokeDasharray="5 5" legendType={isMobile ? "none" : "line"} isAnimationActive={false} />
           )}
           {data[0]?.expenseTrend !== undefined && (
-             <Line type="monotone" dataKey="expenseTrend" stroke="var(--color-expense)" strokeWidth={2} dot={false} strokeDasharray="5 5" legendType={isMobile ? "none" : "line"}/>
+             <Line type="monotone" dataKey="expenseTrend" stroke="var(--color-expense)" strokeWidth={2} dot={false} strokeDasharray="5 5" legendType={isMobile ? "none" : "line"} isAnimationActive={false}/>
           )}
         </ComposedChart>
       </ChartContainer>

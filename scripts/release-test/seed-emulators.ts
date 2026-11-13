@@ -29,7 +29,14 @@ const categoryDocuments = [
     type: "expense",
     icon: "Building2",
     subCategories: [
-      { id: "supplies", name: "Supplies", icon: "Package", subCategories: [] },
+      {
+        id: "supplies",
+        name: "Supplies",
+        icon: "Package",
+        subCategories: [
+          { id: "office-paper", name: "Paper", icon: "Package", subCategories: [] },
+        ],
+      },
       { id: "fees", name: "Fees", icon: "Receipt", subCategories: [] },
     ],
   },
@@ -158,8 +165,8 @@ export async function seedReleaseFixture() {
     transaction("recurring-actual", 10300, "expense", {
       date: "2026-11-08",
       ledgerDate: "2026-11-08",
-      category: "Supplies",
-      categoryId: "supplies",
+      category: "Paper",
+      categoryId: "office-paper",
       source: "plaid",
       provider: "plaid",
       providerTransactionId: "provider-recurring-actual",
@@ -174,6 +181,16 @@ export async function seedReleaseFixture() {
     transaction("pending", 90000, "expense", { postingStatus: "pending", categoryId: "supplies" }),
     transaction("removed", 80000, "expense", { postingStatus: "removed", providerRemovedAt: "2026-02-16T00:00:00.000Z", categoryId: "supplies" }),
     transaction("possible-transfer", 70000, "expense", { possibleTransfer: true, categoryId: "supplies" }),
+    transaction("refund-purchase", 4000, "expense", {
+      category: "Operations",
+      categoryId: "operations",
+    }),
+    transaction("refund-credit", 4000, "income", {
+      category: "Operations",
+      categoryId: "operations",
+      refundOfTransactionId: "refund-purchase",
+      refundStatus: "confirmed",
+    }),
     transaction("transfer-out", 30000, "transfer", {
       category: "Transfer",
       transferId: "seed-transfer",
