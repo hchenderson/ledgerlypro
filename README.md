@@ -323,6 +323,13 @@ opening balance. Review that estimate during the first reconciliation.
 
 ## Production readiness
 
+Read-only church-leader budget sharing is documented in
+[`docs/BUDGET_PORTAL.md`](docs/BUDGET_PORTAL.md). It uses isolated Firebase
+viewer identities, single-use emailed PINs, server-only grants, and the same
+canonical Budget calculation as the owner page. Complete its email, custom-token
+IAM, secrets, staged rules, and two-leader pilot checklist before sending a real
+invitation.
+
 Before allowing public signups:
 
 1. Obtain Plaid Trial or Production access, use the matching Production secret,

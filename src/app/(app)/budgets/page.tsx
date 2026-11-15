@@ -8,7 +8,8 @@ import { useTransactionsForYears } from '@/hooks/use-transactions';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { PlusCircle, Target, Trash2, Edit, Star, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, WalletCards } from 'lucide-react';
+import { PlusCircle, Target, Trash2, Edit, Star, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, WalletCards, UsersRound } from 'lucide-react';
+import Link from 'next/link';
 import {
   Dialog,
   DialogContent,
@@ -381,6 +382,10 @@ function CategoryBudgetsView() {
             arrow controls on mobile or drag and drop on larger screens.
           </p>
         </div>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button asChild variant="outline" className="h-11 w-full sm:h-10 sm:w-auto">
+            <Link href="/settings/budget-access"><UsersRound className="mr-2 h-4 w-4" /> Budget Access</Link>
+          </Button>
         <BudgetDialog onSave={handleSaveBudget} isReadOnly={isReadOnly}>
              <Button
                 disabled={isReadOnly}
@@ -391,6 +396,7 @@ function CategoryBudgetsView() {
                 New Budget
             </Button>
         </BudgetDialog>
+        </div>
       </div>
 
        <Card>

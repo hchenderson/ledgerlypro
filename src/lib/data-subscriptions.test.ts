@@ -36,4 +36,10 @@ describe("domain subscription routing", () => {
         .recurringTransactions,
     ).toBe(true);
   });
+
+  it("loads budgets for owner access management", () => {
+    expect(
+      domainSubscriptionsForPath("/settings/budget-access").budgets,
+    ).toBe(true);
+  });
 });

@@ -20,6 +20,14 @@ env:
   # to "enforce" only after valid production traffic has been observed.
   - variable: FIREBASE_APP_CHECK_MODE
     value: monitor
+  - variable: BUDGET_PORTAL_EMAIL_PROVIDER
+    value: resend
+  - variable: BUDGET_PORTAL_EMAIL_FROM
+    value: Ledgerly Pro <budgets@ledgerly.business>
+  - variable: BUDGET_PORTAL_PIN_PEPPER
+    secret: BUDGET_PORTAL_PIN_PEPPER
+  - variable: RESEND_API_KEY
+    secret: RESEND_API_KEY
   - variable: PLAID_CLIENT_ID
     secret: PLAID_CLIENT_ID
   - variable: PLAID_SECRET

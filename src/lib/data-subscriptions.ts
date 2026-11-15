@@ -18,6 +18,7 @@ export function domainSubscriptionsForPath(
     budgets:
       isRoute(pathname, "/dashboard") ||
       isRoute(pathname, "/budgets") ||
+      isRoute(pathname, "/settings/budget-access") ||
       pathname === "/reports",
     goals:
       isRoute(pathname, "/dashboard") ||

@@ -115,6 +115,30 @@ describe("owner isolation and normal reads", () => {
     await assertFails(getDocs(collection(anonymous, `users/${ALICE}/transactions`)));
     await assertFails(setDoc(doc(alice, `users/${ALICE}/unreviewedCollection/one`), { id: "one" }));
   });
+
+  it("denies a Budget Portal viewer direct ledger and portal-control access", async () => {
+    await seed(`users/${ALICE}/budgets/operations`, {
+      id: "operations",
+      categoryId: "operations-category",
+      amount: 1000,
+      amountMinor: 100000,
+      currency: "USD",
+      period: "yearly",
+      year: 2026,
+    });
+    await seed("budgetPortalGrants/grant-one", { ownerUid: ALICE, status: "active" });
+    const viewer = environment.authenticatedContext(ALICE, {
+      ledgerlyRole: "budget_viewer",
+      viewerKey: "synthetic-viewer-key",
+    }).firestore();
+    await assertFails(getDoc(doc(viewer, `users/${ALICE}/budgets/operations`)));
+    await assertFails(getDocs(collection(viewer, `users/${ALICE}/transactions`)));
+    await assertFails(setDoc(doc(viewer, `users/${ALICE}/settings/main`), { activeYear: 2026 }));
+    await assertFails(getDoc(doc(viewer, "budgetPortalGrants/grant-one")));
+    await assertFails(setDoc(doc(viewer, "budgetPortalGrants/forged"), { ownerUid: ALICE }));
+    await assertFails(getDocs(collection(viewer, "budgetPortalChallenges")));
+    await assertFails(getDocs(collection(viewer, "budgetPortalAuditEvents")));
+  });
 });
 
 describe("transactions and DATA-001 compatibility", () => {

@@ -54,6 +54,9 @@ export async function requireUid(req: Request): Promise<string> {
   await verifyRequestAppCheck(req);
   const idToken = extractBearerToken(req.headers.get("authorization"));
   const decoded = await adminAuth.verifyIdToken(idToken);
+  if (decoded.ledgerlyRole === "budget_viewer") {
+    throw new AuthenticationError("Budget viewers cannot access owner APIs");
+  }
   return decoded.uid;
 }
 
@@ -67,6 +70,9 @@ export async function requireRecentUid(
   await verifyRequestAppCheck(req);
   const idToken = extractBearerToken(req.headers.get("authorization"));
   const decoded = await adminAuth.verifyIdToken(idToken, true);
+  if (decoded.ledgerlyRole === "budget_viewer") {
+    throw new AuthenticationError("Budget viewers cannot access owner APIs");
+  }
   const authTime = Number(decoded.auth_time ?? 0);
   if (!authTime || Math.floor(Date.now() / 1000) - authTime > maximumAgeSeconds) {
     throw new AuthenticationError("Please sign in again before deleting your account.");
