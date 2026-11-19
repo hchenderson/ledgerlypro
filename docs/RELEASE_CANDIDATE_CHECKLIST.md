@@ -127,3 +127,51 @@ git diff --check
 ```
 
 Use documented synthetic configuration for the build and local emulators. Do not use production credentials for CI or browser tests.
+
+## ORG-001A Budget Portal extension (release candidate)
+
+Prepared: 2026-11-15 on branch `codex/org-001a-budget-portal-rollout`, rebased
+onto current `main` at `ebf9046` (which includes the production-layout work
+merged after `60bc2f0`). Production deployment remains gated on the email and
+Firebase prerequisites below.
+
+### Local validation
+
+- Unit suite: PASS — 41 files, 191 tests, including canonical portal budget
+  totals, nested overlap, splits, refunds, finalized-status exclusions, zero
+  budgets, negative net spending, and PIN verifier properties.
+- Firestore emulator: PASS — 2 files, 17 tests, including viewer-claim denial
+  for owner paths, collection queries, and every portal-control collection.
+- Authenticated Chromium + Auth/Firestore emulators: PASS — three integrated
+  tests cover the selectable production layouts, the established owner release
+  workflow, and a two-leader portal workflow with synthetic data. The portal
+  checks shared and distinct assignments, an invited email that is also an
+  owner email, mobile-width layout, live assignment changes, refresh,
+  revocation, owner-API denial, sign-out,
+  incorrect/reused/expired/superseded PINs, concurrent redemption, attempt
+  locking, and the distributed email limit.
+- TypeScript: PASS. Lint: PASS with the existing custom-font warning only.
+- Synthetic Next.js 15.5.29 production build: PASS — 54 static pages, including
+  `/settings/budget-access`, `/signin`, and `/budgets/view`.
+- External email: NOT TESTED. The isolated run uses the server-only local
+  capture transport; Resend domain alignment and delivery require the pilot.
+
+### Additional release gates
+
+1. Verify the Resend sending domain and sender, create the Resend key, and add
+   the `RESEND_API_KEY` and `BUDGET_PORTAL_PIN_PEPPER` App Hosting secrets.
+2. Grant the App Hosting runtime identity the custom-token signing permission
+   documented in `docs/BUDGET_PORTAL.md`; do not download a service-account key.
+3. Deploy the app without issuing real viewer tokens. Confirm normal owner
+   authentication and Budget Access loading under the current rules baseline.
+4. Publish the reviewed hardened Firestore rules and TTL index policies, then
+   repeat owner workflow smoke tests. Roll rules back on any legitimate denial.
+5. Only after step 4, invite two pilot leaders. This ordering is mandatory:
+   current production rules isolate viewers from the owner's ledger but still
+   allow a synthetic viewer UID to create an empty owner subtree; the proposed
+   rules deny viewer claims from every owner path.
+6. Keep App Check in monitor mode during the pilot. Enforce custom routes,
+   Firestore, and Authentication only as separate, later-authorized decisions.
+
+The detailed owner/leader workflow, Firebase and email setup, rollback order,
+and two-leader pilot are in `docs/BUDGET_PORTAL.md`.

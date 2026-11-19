@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { LedgerlyBrand, LedgerlyLogo } from "@/components/icons";
 import { signInWithGoogle, signUpWithEmail, signInWithEmail, sendPasswordResetEmail } from "@/lib/auth";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
@@ -24,6 +24,7 @@ import {
   DialogClose,
 } from "@/components/ui/dialog"
 import { Check, ShieldCheck, TrendingUp } from "lucide-react";
+import { BudgetPortalPinSignIn } from "@/components/budget-portal/pin-sign-in";
 
 const GoogleIcon = () => (
     <svg className="size-4" viewBox="0 0 48 48">
@@ -89,6 +90,7 @@ function ForgotPasswordDialog() {
 
 export default function SignInPage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
     const { toast } = useToast();
     const { onboardingComplete } = useAuth();
     const [email, setEmail] = useState("");
@@ -267,6 +269,11 @@ export default function SignInPage() {
                        <GoogleIcon />
                         Sign in with Google
                     </Button>
+                    <div className="relative">
+                        <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
+                        <div className="relative flex justify-center text-xs uppercase"><span className="bg-card px-2 text-muted-foreground">Budget access</span></div>
+                    </div>
+                    <BudgetPortalPinSignIn defaultOpen={searchParams.get("budget") === "1"} />
                       </CardContent>
                     </Card>
                     <p className="mt-7 text-center text-xs leading-5 text-muted-foreground">

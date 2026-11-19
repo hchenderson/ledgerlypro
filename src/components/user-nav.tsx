@@ -14,7 +14,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuPortal,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, Settings, User, Monitor, Moon, Sun } from "lucide-react";
+import { KeyRound, LogOut, Settings, User, Monitor, Moon, Sun } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/hooks/use-auth";
 import { signOut } from "@/lib/auth";
@@ -60,6 +60,12 @@ export function UserNav() {
             <Link href="/settings">
               <User className="mr-2 h-4 w-4" />
               <span>Profile</span>
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild className="min-h-11 md:min-h-0">
+            <Link href="/signin?budget=1">
+              <KeyRound className="mr-2 h-4 w-4" />
+              <span>View shared budget</span>
             </Link>
           </DropdownMenuItem>
           <DropdownMenuItem asChild className="min-h-11 md:min-h-0">

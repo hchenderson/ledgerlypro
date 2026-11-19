@@ -1,6 +1,7 @@
-import { readFile } from "node:fs/promises";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 
+import { deleteApp, initializeApp } from "firebase-admin/app";
+import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { expect, test, type Page } from "@playwright/test";
 
 import {
@@ -307,6 +308,56 @@ test("production layouts preserve prepared data, page state, preference, and fin
   await chooseLayout(page, "Clarified");
 });
 
+async function latestPortalPin(email: string, excludedChallengeIds: string[] = []) {
+  const app = initializeApp({ projectId: "ledgerly-release-demo" }, `portal-e2e-${Date.now()}-${Math.random()}`);
+  try {
+    const deadline = Date.now() + 5_000;
+    do {
+      const snapshot = await getFirestore(app).collection("budgetPortalTestEmails").get();
+      const messages = snapshot.docs
+        .map((document) => ({ id: document.id, ...document.data() } as {
+          id: string;
+          kind?: string;
+          to?: string;
+          text?: string;
+          createdAt?: { toMillis?: () => number };
+        }))
+        .filter((message) => message.kind === "pin" && message.to === email && !excludedChallengeIds.includes(message.id))
+        .sort((first, second) => Number(second.createdAt?.toMillis?.() ?? 0) - Number(first.createdAt?.toMillis?.() ?? 0));
+      const message = messages[0];
+      const match = typeof message?.text === "string" ? message.text.match(/\b(\d{6})\b/) : null;
+      if (message && match) return { pin: match[1], challengeId: message.id };
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    } while (Date.now() < deadline);
+    throw new Error(`No captured PIN email was found for ${email}.`);
+  } finally {
+    await deleteApp(app);
+  }
+}
+
+async function resetPortalPinCooldown(challengeId: string) {
+  const app = initializeApp({ projectId: "ledgerly-release-demo" }, `portal-cooldown-${Date.now()}-${Math.random()}`);
+  try {
+    const db = getFirestore(app);
+    const states = await db.collection("budgetPortalPinStates").where("activeChallengeId", "==", challengeId).get();
+    expect(states.size).toBe(1);
+    await states.docs[0].ref.update({ nextAllowedAt: Timestamp.fromMillis(0) });
+  } finally {
+    await deleteApp(app);
+  }
+}
+
+async function expirePortalChallenge(challengeId: string) {
+  const app = initializeApp({ projectId: "ledgerly-release-demo" }, `portal-expire-${Date.now()}-${Math.random()}`);
+  try {
+    await getFirestore(app).collection("budgetPortalChallenges").doc(challengeId).update({
+      expiresAt: Timestamp.fromMillis(Date.now() - 1),
+    });
+  } finally {
+    await deleteApp(app);
+  }
+}
+
 test("authenticated owner release workflows stay isolated and preserve financial parity", async ({ page }) => {
   const externalRequests: string[] = [];
   await page.route("**/*", async (route) => {
@@ -483,4 +534,216 @@ test("authenticated owner release workflows stay isolated and preserve financial
     return hostname !== "fonts.googleapis.com" && hostname !== "fonts.gstatic.com";
   });
   expect(unexpectedExternalRequests).toEqual([]);
+});
+
+test("owner grants and revokes read-only PIN budget access", async ({ page, browser }) => {
+  const leaderTwo = "leader-two@ledgerly.test";
+  await signIn(page);
+  await page.goto("/settings/budget-access");
+  await expect(page.getByRole("heading", { name: "Budget Access" })).toBeVisible();
+
+  await page.getByLabel("Email").fill(OWNER_EMAIL);
+  await page.getByLabel("Display name (optional)").fill("Owner-email leader");
+  await page.getByText("Operations", { exact: true }).click();
+  await page.getByText("Operations > Supplies", { exact: true }).click();
+  await page.getByRole("button", { name: "Preview permitted summary" }).click();
+  await expect(page.getByRole("dialog", { name: "Leader preview" }).getByText("Operations", { exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Grant access" }).click();
+  await expect(page.getByText(/Access saved/)).toBeVisible();
+
+  await page.getByLabel("Email").fill(leaderTwo);
+  await page.getByLabel("Display name (optional)").fill("Second leader");
+  await page.getByText("Operations > Supplies", { exact: true }).click();
+  await page.getByRole("button", { name: "Grant access" }).click();
+  await expect(page.getByText(leaderTwo)).toBeVisible();
+
+  const viewerContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const viewerPage = await viewerContext.newPage();
+  await viewerPage.goto("/signin");
+  await viewerPage.getByRole("button", { name: "View a budget with a code" }).click();
+  await viewerPage.getByLabel("Invited email").fill(OWNER_EMAIL);
+  await viewerPage.getByRole("button", { name: "Email my code" }).click();
+  await expect(viewerPage.getByText(/If budget access is available/)).toBeVisible();
+  const ownerEmailCode = await latestPortalPin(OWNER_EMAIL);
+  const incorrectCode = ownerEmailCode.pin === "000000" ? "000001" : "000000";
+  const incorrect = await viewerPage.request.post("/api/budget-portal/pin/verify", {
+    data: { challengeId: ownerEmailCode.challengeId, code: incorrectCode },
+  });
+  expect(incorrect.status()).toBe(401);
+  await viewerPage.getByLabel("One-time code").fill(ownerEmailCode.pin);
+  const tokenResponsePromise = viewerPage.waitForResponse((response) => response.url().endsWith("/api/budget-portal/pin/verify") && response.status() === 200);
+  await viewerPage.getByRole("button", { name: "Open budget portal" }).click();
+  const issued = await (await tokenResponsePromise).json() as { customToken: string };
+  await expect(viewerPage).toHaveURL(/\/budgets\/view$/);
+  await expect(viewerPage.getByText("Operations", { exact: true })).toBeVisible();
+  await expect(viewerPage.getByText("Operations > Supplies", { exact: true })).toBeVisible();
+  await expect(viewerPage.getByText(/overlap by category/i)).toBeVisible();
+
+  const reuse = await viewerPage.request.post("/api/budget-portal/pin/verify", {
+    data: { challengeId: ownerEmailCode.challengeId, code: ownerEmailCode.pin },
+  });
+  expect(reuse.status()).toBe(401);
+
+  const emulatorSignIn = await fetch("http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=demo-api-key", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ token: issued.customToken, returnSecureToken: true }),
+  });
+  const viewerIdentity = await emulatorSignIn.json() as { idToken: string };
+  expect(emulatorSignIn.ok).toBe(true);
+  const forbiddenOwnerApi = await fetch("http://127.0.0.1:9002/api/budget-portal/access", {
+    headers: { authorization: `Bearer ${viewerIdentity.idToken}` },
+  });
+  expect(forbiddenOwnerApi.status).toBe(401);
+
+  const beforeRefreshResponse = viewerPage.waitForResponse((response) => response.url().endsWith("/api/budget-portal/summary"));
+  await viewerPage.getByRole("button", { name: "Refresh" }).click();
+  const beforeRefresh = await (await beforeRefreshResponse).json() as { budgets: Array<{ name: string; spendingMinor: number }> };
+  const beforeSupplies = beforeRefresh.budgets.find((budget) => budget.name.endsWith("Supplies"))?.spendingMinor;
+  expect(beforeSupplies).toBeDefined();
+  const dbApp = initializeApp({ projectId: "ledgerly-release-demo" }, `portal-update-${Date.now()}`);
+  try {
+    await getFirestore(dbApp).collection("users").doc("release-owner").collection("transactions").doc("portal-refresh-expense").set({
+      id: "portal-refresh-expense",
+      date: "2026-11-09",
+      ledgerDate: "2026-11-09",
+      description: "Portal refresh expense",
+      amount: 10,
+      amountMinor: 1000,
+      currency: "USD",
+      type: "expense",
+      category: "Supplies",
+      categoryId: "supplies",
+      accountId: "checking",
+      postingStatus: "posted",
+      source: "actual",
+    });
+  } finally {
+    await deleteApp(dbApp);
+  }
+  const afterRefreshResponse = viewerPage.waitForResponse((response) => response.url().endsWith("/api/budget-portal/summary"));
+  await viewerPage.getByRole("button", { name: "Refresh" }).click();
+  const afterRefresh = await (await afterRefreshResponse).json() as { budgets: Array<{ name: string; spendingMinor: number }> };
+  expect(afterRefresh.budgets.find((budget) => budget.name.endsWith("Supplies"))?.spendingMinor).toBe(beforeSupplies! + 1000);
+
+  // Assignment changes are enforced on the next request of an already-open session.
+  const ownerGrantRow = page.getByText(`${OWNER_EMAIL} · 2 budgets`, { exact: true }).locator("..").locator("..");
+  await ownerGrantRow.getByRole("button", { name: "Edit" }).click();
+  const editAssignment = page.getByRole("dialog", { name: "Edit budget assignment" });
+  await editAssignment.getByText("Operations", { exact: true }).click();
+  await editAssignment.getByRole("button", { name: "Save assignment" }).click();
+  await expect(editAssignment).toBeHidden();
+  await expect(page.getByText(`${OWNER_EMAIL} · 1 budget`, { exact: true })).toBeVisible();
+  await viewerPage.getByRole("button", { name: "Refresh" }).click();
+  await expect(viewerPage.getByText("Operations", { exact: true })).toHaveCount(0);
+  await expect(viewerPage.getByText("Operations > Supplies", { exact: true })).toBeVisible();
+
+  const reducedOwnerGrantRow = page.getByText(`${OWNER_EMAIL} · 1 budget`, { exact: true }).locator("..").locator("..");
+  await reducedOwnerGrantRow.getByRole("button", { name: "Edit" }).click();
+  await page.getByRole("dialog", { name: "Edit budget assignment" }).getByText("Operations", { exact: true }).click();
+  await page.getByRole("dialog", { name: "Edit budget assignment" }).getByRole("button", { name: "Save assignment" }).click();
+  await expect(page.getByText(`${OWNER_EMAIL} · 2 budgets`, { exact: true })).toBeVisible();
+  await viewerPage.getByRole("button", { name: "Refresh" }).click();
+  await expect(viewerPage.getByText("Operations", { exact: true })).toBeVisible();
+
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByText(`${OWNER_EMAIL} · 2 budgets`, { exact: true }).locator("..").locator("..").getByRole("button", { name: "Revoke" }).click();
+  await expect(page.getByText("revoked", { exact: true })).toBeVisible();
+  await viewerPage.getByRole("button", { name: "Refresh" }).click();
+  await expect(viewerPage.getByText("Budget access needed", { exact: true })).toBeVisible();
+
+  const secondContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const secondPage = await secondContext.newPage();
+  await secondPage.goto("/signin");
+  await secondPage.getByRole("button", { name: "View a budget with a code" }).click();
+  await secondPage.getByLabel("Invited email").fill(leaderTwo);
+  await secondPage.getByRole("button", { name: "Email my code" }).click();
+  const firstSecondLeaderCode = await latestPortalPin(leaderTwo);
+
+  // Resending invalidates the previous code, even if it has not expired.
+  await resetPortalPinCooldown(firstSecondLeaderCode.challengeId);
+  const resend = await secondPage.request.post("/api/budget-portal/pin/request", { data: { email: leaderTwo } });
+  expect(resend.status()).toBe(202);
+  const secondSecondLeaderCode = await latestPortalPin(leaderTwo, [firstSecondLeaderCode.challengeId]);
+  const superseded = await secondPage.request.post("/api/budget-portal/pin/verify", {
+    data: { challengeId: firstSecondLeaderCode.challengeId, code: firstSecondLeaderCode.pin },
+  });
+  expect(superseded.status()).toBe(401);
+
+  // An otherwise-correct code cannot be redeemed after its ten-minute window.
+  await expirePortalChallenge(secondSecondLeaderCode.challengeId);
+  const expired = await secondPage.request.post("/api/budget-portal/pin/verify", {
+    data: { challengeId: secondSecondLeaderCode.challengeId, code: secondSecondLeaderCode.pin },
+  });
+  expect(expired.status()).toBe(401);
+
+  // Two simultaneous redemptions have exactly one winner.
+  await resetPortalPinCooldown(secondSecondLeaderCode.challengeId);
+  const concurrentRequest = await secondPage.request.post("/api/budget-portal/pin/request", { data: { email: leaderTwo } });
+  expect(concurrentRequest.status()).toBe(202);
+  const concurrentCode = await latestPortalPin(leaderTwo, [firstSecondLeaderCode.challengeId, secondSecondLeaderCode.challengeId]);
+  const concurrentResults = await Promise.all([
+    secondPage.request.post("/api/budget-portal/pin/verify", { data: { challengeId: concurrentCode.challengeId, code: concurrentCode.pin } }),
+    secondPage.request.post("/api/budget-portal/pin/verify", { data: { challengeId: concurrentCode.challengeId, code: concurrentCode.pin } }),
+  ]);
+  expect(concurrentResults.map((response) => response.status()).sort()).toEqual([200, 401]);
+
+  // Start a fresh browser-visible challenge after the API concurrency check.
+  await resetPortalPinCooldown(concurrentCode.challengeId);
+  await secondPage.goto("/signin");
+  await secondPage.getByRole("button", { name: "View a budget with a code" }).click();
+  await secondPage.getByLabel("Invited email").fill(leaderTwo);
+  await secondPage.getByRole("button", { name: "Email my code" }).click();
+  const secondCode = await latestPortalPin(leaderTwo, [
+    firstSecondLeaderCode.challengeId,
+    secondSecondLeaderCode.challengeId,
+    concurrentCode.challengeId,
+  ]);
+  await secondPage.getByLabel("One-time code").fill(secondCode.pin);
+  await secondPage.getByRole("button", { name: "Open budget portal" }).click();
+  await expect(secondPage.getByText("Operations > Supplies", { exact: true })).toBeVisible();
+  await expect(secondPage.getByText("Operations", { exact: true })).toHaveCount(0);
+  await secondPage.getByRole("button", { name: "Sign out" }).click();
+  await expect(secondPage.getByText("Budget access needed", { exact: true })).toBeVisible();
+
+  // Five failed attempts lock a challenge, including against the right code.
+  await resetPortalPinCooldown(secondCode.challengeId);
+  const lockRequest = await secondPage.request.post("/api/budget-portal/pin/request", { data: { email: leaderTwo } });
+  expect(lockRequest.status()).toBe(202);
+  const lockCode = await latestPortalPin(leaderTwo, [
+    firstSecondLeaderCode.challengeId,
+    secondSecondLeaderCode.challengeId,
+    concurrentCode.challengeId,
+    secondCode.challengeId,
+  ]);
+  const wrongLockCode = lockCode.pin === "999999" ? "999998" : "999999";
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const response = await secondPage.request.post("/api/budget-portal/pin/verify", {
+      data: { challengeId: lockCode.challengeId, code: wrongLockCode },
+    });
+    expect(response.status()).toBe(401);
+  }
+  const lockedCorrectCode = await secondPage.request.post("/api/budget-portal/pin/verify", {
+    data: { challengeId: lockCode.challengeId, code: lockCode.pin },
+  });
+  expect(lockedCorrectCode.status()).toBe(401);
+
+  // The distributed per-email limit remains effective when cooldowns are reset.
+  let activeRateChallenge = lockCode.challengeId;
+  for (let requestNumber = 6; requestNumber <= 6; requestNumber += 1) {
+    await resetPortalPinCooldown(activeRateChallenge);
+    const response = await secondPage.request.post("/api/budget-portal/pin/request", { data: { email: leaderTwo } });
+    expect(response.status()).toBe(202);
+    const payload = await response.json() as { challengeId?: string };
+    expect(payload.challengeId).toBeTruthy();
+    activeRateChallenge = payload.challengeId!;
+  }
+  await resetPortalPinCooldown(activeRateChallenge);
+  const rateLimited = await secondPage.request.post("/api/budget-portal/pin/request", { data: { email: leaderTwo } });
+  expect(rateLimited.status()).toBe(202);
+  expect(rateLimited.headers()["retry-after"]).toBeTruthy();
+  expect((await rateLimited.json() as { challengeId?: string }).challengeId).toBeUndefined();
+  await viewerContext.close();
+  await secondContext.close();
 });

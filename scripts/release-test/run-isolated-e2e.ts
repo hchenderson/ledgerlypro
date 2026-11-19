@@ -23,6 +23,8 @@ const env = {
   LEDGERLY_ISOLATED_TEST: "true",
   LEDGERLY_EXTERNAL_SERVICES_MODE: "stub",
   FIREBASE_APP_CHECK_MODE: "off",
+  BUDGET_PORTAL_EMAIL_PROVIDER: "test",
+  BUDGET_PORTAL_PIN_PEPPER: "isolated-release-test-budget-portal-pepper",
   NEXT_PUBLIC_ADSENSE_ENABLED: "false",
   PLAID_ENV: "sandbox",
 };

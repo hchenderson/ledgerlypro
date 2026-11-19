@@ -3,7 +3,10 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function isOwner(userId) {
-      return request.auth != null && request.auth.uid == userId;
+      return request.auth != null
+        && request.auth.uid == userId
+        && (!request.auth.token.keys().hasAny(['ledgerlyRole'])
+          || request.auth.token.ledgerlyRole != 'budget_viewer');
     }
 
     function validDocumentId(data, documentId) {
@@ -603,6 +606,29 @@ service cloud.firestore {
       allow read, write: if false;
     }
     match /rateLimitBuckets/{document=**} {
+      allow read, write: if false;
+    }
+    // ORG-001A data is intentionally Admin-only. Viewers receive calculated,
+    // grant-filtered summaries through authenticated server routes.
+    match /budgetPortalGrants/{document=**} {
+      allow read, write: if false;
+    }
+    match /budgetPortalChallenges/{document=**} {
+      allow read, write: if false;
+    }
+    match /budgetPortalPinStates/{document=**} {
+      allow read, write: if false;
+    }
+    match /budgetPortalViewerMappings/{document=**} {
+      allow read, write: if false;
+    }
+    match /budgetPortalSettings/{document=**} {
+      allow read, write: if false;
+    }
+    match /budgetPortalAuditEvents/{document=**} {
+      allow read, write: if false;
+    }
+    match /budgetPortalTestEmails/{document=**} {
       allow read, write: if false;
     }
   }
